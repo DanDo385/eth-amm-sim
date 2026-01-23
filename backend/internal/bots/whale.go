@@ -6,128 +6,114 @@ import (
 	"crypto/ecdsa"
 	"log"
 	"math/big"
-	"math/rand"
 	"time"
+
+	"eth-amm-sim/internal/config"
+	"eth-amm-sim/internal/engine"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// TradeExecutor interface for executing trades (breaks import cycle)
-type TradeExecutor interface {
-	SwapETHForApples(ctx context.Context, privateKey *ecdsa.PrivateKey, ethAmount *big.Int) (string, error)
-	SwapApplesForETH(ctx context.Context, privateKey *ecdsa.PrivateKey, appleAmount *big.Int) (string, error)
-}
-
-// WhaleBot makes large, infrequent trades that visibly move the market
-// Whale1: Starts long (has APPL), tends to sell
-// Whale2: Starts empty, tends to buy
-// Whale3: Partial position, trades both ways
+// WhaleBot executes large, infrequent trades
 type WhaleBot struct {
 	*BaseBot
-	executor   TradeExecutor
 	privateKey *ecdsa.PrivateKey
-	
-	// Trading parameters
-	minSize    *big.Int // Minimum trade size
-	maxSize    *big.Int // Maximum trade size
-	minDelay   time.Duration
-	maxDelay   time.Duration
-	buyBias    float64  // 0.0 = always sell, 1.0 = always buy, 0.5 = neutral
-	
-	rng *rand.Rand
-}
-
-// WhaleConfig configures a whale bot
-type WhaleConfig struct {
-	Nickname   string
-	PrivateKey *ecdsa.PrivateKey
-	MinSize    *big.Int
-	MaxSize    *big.Int
-	MinDelay   time.Duration
-	MaxDelay   time.Duration
-	BuyBias    float64
-	Seed       int64
 }
 
 // NewWhaleBot creates a new whale bot
-func NewWhaleBot(executor TradeExecutor, config WhaleConfig) *WhaleBot {
+func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor) *WhaleBot {
+	privateKeyHex := cfg.PrivateKey()
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	if err != nil {
+		panic("invalid private key for " + cfg.Nickname)
+	}
+
 	return &WhaleBot{
-		BaseBot:    NewBaseBot(config.Nickname),
-		executor:   executor,
-		privateKey: config.PrivateKey,
-		minSize:    config.MinSize,
-		maxSize:    config.MaxSize,
-		minDelay:   config.MinDelay,
-		maxDelay:   config.MaxDelay,
-		buyBias:    config.BuyBias,
-		rng:        rand.New(rand.NewSource(config.Seed)),
+		BaseBot:    NewBaseBot(cfg, executor),
+		privateKey: privateKey,
 	}
 }
 
 // Run starts the whale bot trading loop
 func (w *WhaleBot) Run(ctx context.Context) {
-	w.SetRunning()
 	log.Printf("[%s] Whale bot started", w.Nickname())
-	
+
 	for {
-		// Random delay between trades
-		delay := w.randomDelay()
-		
 		select {
 		case <-ctx.Done():
 			log.Printf("[%s] Whale bot stopped (context cancelled)", w.Nickname())
 			return
-		case <-w.StopCh():
+		case <-w.stopCh:
 			log.Printf("[%s] Whale bot stopped", w.Nickname())
 			return
-		case <-time.After(delay):
-			w.executeTrade(ctx)
+		default:
+			// Wait random interval from config
+			delay := w.RandomDelay()
+			select {
+			case <-ctx.Done():
+				return
+			case <-w.stopCh:
+				return
+			case <-time.After(delay):
+			}
+
+			// Decide trade direction based on starting position
+			side := w.decideSide()
+			size := w.RandomSize()
+
+			if size.Sign() > 0 {
+				w.executeTrade(ctx, side, size)
+			}
 		}
 	}
 }
 
-// executeTrade performs a single trade
-func (w *WhaleBot) executeTrade(ctx context.Context) {
-	// Determine direction based on bias
-	direction := Sell
-	if w.rng.Float64() < w.buyBias {
-		direction = Buy
+// decideSide determines trade direction based on starting position
+func (w *WhaleBot) decideSide() engine.TradeSide {
+	startingApples := w.config.StartingApples
+
+	// If started with lots of APPLES, 70% chance to sell
+	eth500 := new(big.Int).Mul(big.NewInt(500), big.NewInt(1e18))
+	if startingApples != nil && startingApples.Cmp(eth500) > 0 {
+		if w.rng.Float64() < 0.7 {
+			return engine.SELL
+		}
+		return engine.BUY
 	}
-	
-	// Random size within range
-	size := w.randomSize()
-	
-	log.Printf("[%s] Executing %s trade, size: %s", w.Nickname(), direction, formatEther(size))
-	
+
+	// If started with no APPLES, 70% chance to buy
+	if startingApples == nil || startingApples.Sign() == 0 {
+		if w.rng.Float64() < 0.7 {
+			return engine.BUY
+		}
+		return engine.SELL
+	}
+
+	// Otherwise 50/50
+	if w.rng.Float64() < 0.5 {
+		return engine.BUY
+	}
+	return engine.SELL
+}
+
+// executeTrade performs a single trade
+func (w *WhaleBot) executeTrade(ctx context.Context, side engine.TradeSide, size *big.Int) {
 	var err error
 	var txHash string
-	
-	if direction == Buy {
+
+	if side == engine.BUY {
+		// Buy: swap ETH for APPLES
 		txHash, err = w.executor.SwapETHForApples(ctx, w.privateKey, size)
 	} else {
+		// Sell: swap APPLES for ETH
 		txHash, err = w.executor.SwapApplesForETH(ctx, w.privateKey, size)
 	}
-	
+
 	if err != nil {
 		log.Printf("[%s] Trade failed: %v", w.Nickname(), err)
 		return
 	}
-	
-	log.Printf("[%s] Trade submitted: %s", w.Nickname(), txHash)
-}
 
-// randomDelay returns a random delay between minDelay and maxDelay
-func (w *WhaleBot) randomDelay() time.Duration {
-	diff := w.maxDelay - w.minDelay
-	return w.minDelay + time.Duration(w.rng.Int63n(int64(diff)))
-}
-
-// randomSize returns a random size between minSize and maxSize
-func (w *WhaleBot) randomSize() *big.Int {
-	diff := new(big.Int).Sub(w.maxSize, w.minSize)
-	
-	// Generate random value up to diff
-	randomOffset := new(big.Int).Rand(w.rng, diff)
-	
-	return new(big.Int).Add(w.minSize, randomOffset)
+	log.Printf("[%s] Trade submitted: %s (%s, size: %s)", w.Nickname(), txHash, side, formatEther(size))
 }
 
 // formatEther formats a big.Int as ETH with 4 decimal places
@@ -135,41 +121,4 @@ func formatEther(wei *big.Int) string {
 	eth := new(big.Float).SetInt(wei)
 	eth.Quo(eth, big.NewFloat(1e18))
 	return eth.Text('f', 4) + " ETH"
-}
-
-// DefaultWhaleConfigs returns default configurations for whale bots
-func DefaultWhaleConfigs() []WhaleConfig {
-	ether := func(n int64) *big.Int {
-		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
-	}
-	
-	return []WhaleConfig{
-		{
-			Nickname:   "Whale1",
-			MinSize:    ether(100),
-			MaxSize:    ether(500),
-			MinDelay:   15 * time.Second,
-			MaxDelay:   30 * time.Second,
-			BuyBias:    0.3, // Tends to sell (starts with APPL)
-			Seed:       1,
-		},
-		{
-			Nickname:   "Whale2",
-			MinSize:    ether(100),
-			MaxSize:    ether(500),
-			MinDelay:   15 * time.Second,
-			MaxDelay:   30 * time.Second,
-			BuyBias:    0.7, // Tends to buy (starts empty)
-			Seed:       2,
-		},
-		{
-			Nickname:   "Whale3",
-			MinSize:    ether(50),
-			MaxSize:    ether(300),
-			MinDelay:   20 * time.Second,
-			MaxDelay:   40 * time.Second,
-			BuyBias:    0.5, // Neutral
-			Seed:       3,
-		},
-	}
 }

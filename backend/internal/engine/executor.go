@@ -332,13 +332,13 @@ var _ bind.ContractCaller = (*chain.Client)(nil)
 func packSwapETHForApples(minApples *big.Int) []byte {
 	// swapETHForApples(uint256 minApples)
 	// selector: keccak256("swapETHForApples(uint256)")[:4]
-	selector := []byte{0x8d, 0x82, 0x7a, 0xb0}
+	selector := []byte{0xe2, 0x6a, 0x3c, 0x8a}
 	return append(selector, common.LeftPadBytes(minApples.Bytes(), 32)...)
 }
 
 func packSwapApplesForETH(appleAmount, minETH *big.Int) []byte {
 	// swapApplesForETH(uint256 appleAmount, uint256 minETH)
-	selector := []byte{0x9d, 0x59, 0x74, 0xb3}
+	selector := []byte{0x48, 0xaf, 0x57, 0x21}
 	data := append(selector, common.LeftPadBytes(appleAmount.Bytes(), 32)...)
 	return append(data, common.LeftPadBytes(minETH.Bytes(), 32)...)
 }
@@ -364,5 +364,5 @@ func packGetReserves() []byte {
 
 func packGetSpotPrice() []byte {
 	// getSpotPrice()
-	return []byte{0xb6, 0xb5, 0x5f, 0x25}
+	return []byte{0xdc, 0x76, 0xfa, 0xbc}
 }

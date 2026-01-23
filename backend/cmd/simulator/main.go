@@ -58,16 +58,16 @@ func main() {
 	session := engine.NewSession(orchestrator)
 	memStore := store.NewMemoryStore()
 	
-	// Set up nicknames
-	for _, acc := range cfg.Accounts {
-		executor.SetNickname(acc.Address, acc.Nickname)
+	// Set up nicknames using new config system
+	for _, acc := range config.Accounts {
+		executor.SetNickname(acc.Address(), acc.Nickname)
 	}
 	
-	// Create bots
-	createBots(cfg, executor, orchestrator)
+	// Create bots using config-driven approach
+	createBots(executor, orchestrator)
 	
 	// Initialize account metrics
-	initializeAccountMetrics(cfg, memStore)
+	initializeAccountMetrics(memStore)
 	
 	// Set up trade callback to record trades
 	executor.OnTrade(func(trade *engine.Trade) {
@@ -79,7 +79,7 @@ func main() {
 	})
 	
 	// Initialize LP metrics with initial pool state
-	initLPMetrics(cfg, memStore)
+	initLPMetrics(memStore)
 	
 	// Create and start server
 	srv := server.NewServer(session, memStore, executor)
@@ -116,82 +116,62 @@ func main() {
 	}
 }
 
-// createBots creates all trading bots
-func createBots(cfg *config.Config, executor *engine.Executor, orchestrator *engine.Orchestrator) {
-	ether := func(n int64) *big.Int {
-		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
-	}
-	
-	// Whale bots
-	whaleConfigs := []bots.WhaleConfig{
-		{
-			Nickname: "Whale1",
-			MinSize:  ether(100),
-			MaxSize:  ether(500),
-			MinDelay: 15 * time.Second,
-			MaxDelay: 30 * time.Second,
-			BuyBias:  0.3, // Tends to sell (starts with APPL)
-			Seed:     1,
-		},
-		{
-			Nickname: "Whale2",
-			MinSize:  ether(100),
-			MaxSize:  ether(500),
-			MinDelay: 15 * time.Second,
-			MaxDelay: 30 * time.Second,
-			BuyBias:  0.7, // Tends to buy (starts empty)
-			Seed:     2,
-		},
-		{
-			Nickname: "Whale3",
-			MinSize:  ether(50),
-			MaxSize:  ether(300),
-			MinDelay: 20 * time.Second,
-			MaxDelay: 40 * time.Second,
-			BuyBias:  0.5, // Neutral
-			Seed:     3,
-		},
-	}
-	
-	for _, wc := range whaleConfigs {
-		acc := cfg.GetAccountByNickname(wc.Nickname)
-		if acc != nil {
-			wc.PrivateKey = acc.PrivateKey
-			bot := bots.NewWhaleBot(executor, wc)
-			orchestrator.AddBot(bot)
+// createBots creates all trading bots based on config
+func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator) {
+	for _, acc := range config.Accounts {
+		var bot bots.Bot
+
+		switch acc.Type {
+		case config.BotTypeLP:
+			// LP doesn't trade, skip
+			continue
+
+		case config.BotTypeWhale:
+			bot = bots.NewWhaleBot(&acc, executor)
+
+		case config.BotTypeRetail:
+			bot = bots.NewRetailBot(&acc, executor)
+
+		case config.BotTypeMeanRev:
+			// TODO: Implement MeanRev bot
+			log.Printf("MeanRev bot not yet implemented: %s", acc.Nickname)
+			continue
+
+		case config.BotTypeMomentum:
+			// TODO: Implement Momentum bot
+			log.Printf("Momentum bot not yet implemented: %s", acc.Nickname)
+			continue
+
+		case config.BotTypeLeverage:
+			// Phase 2
+			continue
+
+		case config.BotTypeLiquidator:
+			// Phase 2
+			continue
+
+		default:
+			log.Printf("Unknown bot type for %s: %s", acc.Nickname, acc.Type)
+			continue
 		}
+
+		orchestrator.AddBot(bot)
 	}
-	
-	// Retail bots
-	for i := 1; i <= 15; i++ {
-		nickname := "Retail" + string(rune('0'+i/10)) + string(rune('0'+i%10))
-		if i < 10 {
-			nickname = "Retail" + string(rune('0'+i))
-		}
-		
-		acc := cfg.GetAccountByNickname(nickname)
-		if acc != nil {
-			rc := bots.DefaultRetailConfig(nickname, int64(i+100))
-			rc.PrivateKey = acc.PrivateKey
-			bot := bots.NewRetailBot(executor, rc)
-			orchestrator.AddBot(bot)
-		}
-	}
-	
-	log.Printf("Created %d bots", len(orchestrator.GetBots()))
+
+	log.Printf("Created %d bots", orchestrator.BotCount())
 }
 
 // initializeAccountMetrics initializes metrics for all accounts
-func initializeAccountMetrics(cfg *config.Config, memStore *store.MemoryStore) {
-	for _, acc := range cfg.Accounts {
-		// Initial equity = starting ETH (10000)
-		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address, 10000)
+func initializeAccountMetrics(memStore *store.MemoryStore) {
+	for _, acc := range config.Accounts {
+		// Initial equity = starting ETH (10000 from Anvil default)
+		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address(), 10000)
 	}
 }
 
 // initLPMetrics initializes LP metrics with pool state
-func initLPMetrics(cfg *config.Config, memStore *store.MemoryStore) {
-	// Initial pool: 1000 APPL + 1000 ETH
+func initLPMetrics(memStore *store.MemoryStore) {
+	// Initial pool: 1000 APPL + 1000 ETH (from config.PoolApples and config.PoolETH)
 	ether := func(n int64) *big.Int {
 		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
 	}

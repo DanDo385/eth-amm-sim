@@ -137,13 +137,13 @@ func (s *Session) Start(ctx context.Context) error {
 // run executes the session
 func (s *Session) run(ctx context.Context) {
 	// Start all bots
-	s.orchestrator.StartAll(ctx)
+	s.orchestrator.Start(ctx)
 	
 	// Wait for context to complete (timeout or cancellation)
 	<-ctx.Done()
 	
 	// Stop all bots
-	s.orchestrator.StopAll()
+	s.orchestrator.Stop()
 	
 	s.mu.Lock()
 	now := time.Now()

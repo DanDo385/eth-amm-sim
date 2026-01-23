@@ -14,11 +14,12 @@ type Bot interface {
 	Nickname() string
 }
 
-// Orchestrator manages multiple bots
+// Orchestrator manages all bot goroutines
 type Orchestrator struct {
-	mu   sync.RWMutex
-	bots []Bot
-	wg   sync.WaitGroup
+	bots   []Bot
+	wg     sync.WaitGroup
+	cancel context.CancelFunc
+	mu     sync.RWMutex
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -28,21 +29,14 @@ func NewOrchestrator() *Orchestrator {
 	}
 }
 
-// AddBot adds a bot to the orchestrator
-func (o *Orchestrator) AddBot(bot Bot) {
-	o.mu.Lock()
-	o.bots = append(o.bots, bot)
-	o.mu.Unlock()
-	log.Printf("[Orchestrator] Added bot: %s", bot.Nickname())
-}
-
-// StartAll starts all bots
-func (o *Orchestrator) StartAll(ctx context.Context) {
+// Start starts all bots with a cancellable context
+func (o *Orchestrator) Start(ctx context.Context) {
+	ctx, o.cancel = context.WithCancel(ctx)
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	
-	log.Printf("[Orchestrator] Starting %d bots", len(o.bots))
-	
+
+	log.Printf("Orchestrator starting %d bots", len(o.bots))
+
 	for _, bot := range o.bots {
 		o.wg.Add(1)
 		go func(b Bot) {
@@ -52,44 +46,45 @@ func (o *Orchestrator) StartAll(ctx context.Context) {
 	}
 }
 
-// StopAll stops all bots
-func (o *Orchestrator) StopAll() {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	
-	log.Printf("[Orchestrator] Stopping all bots")
-	
+// Stop stops all bot goroutines
+func (o *Orchestrator) Stop() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.cancel != nil {
+		o.cancel()
+	}
+
 	for _, bot := range o.bots {
 		bot.Stop()
 	}
-	
-	// Wait for all bots to complete
+
 	o.wg.Wait()
-	
-	log.Printf("[Orchestrator] All bots stopped")
+	log.Println("All bots stopped")
+}
+
+// BotCount returns the number of active bots
+func (o *Orchestrator) BotCount() int {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return len(o.bots)
 }
 
 // GetBots returns all bots
 func (o *Orchestrator) GetBots() []Bot {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	
 	result := make([]Bot, len(o.bots))
 	copy(result, o.bots)
 	return result
 }
 
-// GetBotByNickname returns a bot by nickname
-func (o *Orchestrator) GetBotByNickname(nickname string) Bot {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	
-	for _, bot := range o.bots {
-		if bot.Nickname() == nickname {
-			return bot
-		}
-	}
-	return nil
+// AddBot adds a bot to the orchestrator
+func (o *Orchestrator) AddBot(bot Bot) {
+	o.mu.Lock()
+	o.bots = append(o.bots, bot)
+	o.mu.Unlock()
+	log.Printf("[Orchestrator] Added bot: %s", bot.Nickname())
 }
 
 // Clear removes all bots
