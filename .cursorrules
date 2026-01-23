@@ -1,0 +1,127 @@
+# ============================================================
+# Cursor Rules — eth-amm-sim
+# ============================================================
+# Purpose:
+# Portfolio-grade DeFi AMM simulation showcasing:
+# - AMM mechanics
+# - Market microstructure
+# - TradFi-style risk metrics
+# - Go concurrency + Solidity integration
+#
+# This is a DEMO-FIRST project.
+# Visual clarity and conceptual correctness > production rigor.
+# ============================================================
+
+# ------------------------------------------------------------
+# GENERAL BEHAVIOR
+# ------------------------------------------------------------
+
+- Prefer clear, readable code over clever abstractions.
+- Do NOT introduce unnecessary frameworks, patterns, or layers.
+- Avoid premature optimization.
+- Avoid enterprise-grade patterns (repositories, factories, DI containers).
+- This is NOT a long-lived open-source project.
+
+# ------------------------------------------------------------
+# ARCHITECTURE RULES
+# ------------------------------------------------------------
+
+- Solidity contracts:
+  - Must be simple, explicit, and heavily commented.
+  - Prefer clarity over gas micro-optimizations.
+  - No upgradeability patterns.
+  - No proxy contracts.
+  - No governance systems.
+
+- Go backend:
+  - Use standard library + go-ethereum only.
+  - Favor small packages with obvious responsibilities.
+  - Concurrency should be explicit (goroutines, channels, mutexes).
+  - Do NOT hide concurrency behind abstractions.
+
+- Frontend:
+  - Next.js App Router.
+  - Tailwind CSS for layout.
+  - TradingView Lightweight Charts for price/equity curves.
+  - No state management libraries (Redux, Zustand, etc.).
+  - Keep components dumb; logic lives in hooks.
+
+# ------------------------------------------------------------
+# METRICS & FINANCE RULES (IMPORTANT)
+# ------------------------------------------------------------
+
+- All financial metrics must be computed in the Go backend.
+- Frontend only displays metrics; it does NOT calculate them.
+- Use TradFi terminology:
+  - Sharpe ratio
+  - Volatility
+  - Max drawdown
+  - Equity curve
+  - PnL (realized vs unrealized)
+- Prefer mathematically correct implementations over shortcuts.
+- Assume risk-free rate = 0 for Sharpe.
+
+# ------------------------------------------------------------
+# BOT & SIMULATION RULES
+# ------------------------------------------------------------
+
+- Bots must:
+  - Implement the Bot interface.
+  - Run inside goroutines.
+  - Respect context cancellation.
+- Randomness should be seeded and reproducible where possible.
+- Whale behavior should visibly move the market.
+- Retail behavior should add noise, not dominate price.
+
+# ------------------------------------------------------------
+# PHASING & TODOs
+# ------------------------------------------------------------
+
+- Code may include TODO comments explicitly marked with:
+  // TODO (Phase X):
+- Phase 1–2 code should be runnable and demo-ready.
+- Phase 3+ code may be stubbed but must not break builds.
+
+# ------------------------------------------------------------
+# TESTING RULES
+# ------------------------------------------------------------
+
+- Solidity:
+  - Write minimal Foundry tests for core invariants.
+  - Focus on correctness, not edge-case exhaustion.
+
+- Go:
+  - Tests only where logic is non-trivial:
+    - NonceManager
+    - Metrics calculations
+  - Do NOT attempt full integration tests.
+
+# ------------------------------------------------------------
+# DOCUMENTATION
+# ------------------------------------------------------------
+
+- Prefer inline comments over external docs.
+- README should explain:
+  - What the system demonstrates
+  - How to run the demo
+  - What to look for visually
+
+# ------------------------------------------------------------
+# WHAT NOT TO DO
+# ------------------------------------------------------------
+
+- Do NOT:
+  - Add Docker, Kubernetes, or CI pipelines.
+  - Introduce databases (Postgres, Redis, etc.).
+  - Add auth, users, or permissions.
+  - Add frontend trading controls.
+  - Over-abstract metrics pipelines.
+
+# ------------------------------------------------------------
+# FINAL GUIDING PRINCIPLE
+# ------------------------------------------------------------
+
+# If a hiring manager watches a 2–3 minute demo video:
+# - They should understand what is happening
+# - They should see price move, LP PnL change, and risk metrics update
+# - They should immediately recognize TradFi + DeFi fluency

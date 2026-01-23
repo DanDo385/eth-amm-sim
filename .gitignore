@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+vendor/
+lib/
+
+# Build outputs
+dist/
+build/
+out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+*.test
+
+# Foundry
+cache/
+out/
+broadcast/
+
+# Go
+*.test
+*.prof
+
+# Next.js
+.next/
+.vercel
+
+# Misc
+*.bak
+*.tmp
+.cache/
