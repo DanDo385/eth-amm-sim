@@ -1,54 +1,45 @@
 # Dependencies
 node_modules/
-vendor/
-lib/
+frontend/node_modules/
 
 # Build outputs
-dist/
-build/
-out/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-bin/
+frontend/.next/
+frontend/out/
+backend/bin/
+contracts/out/
+contracts/cache/
 
-# Environment variables
+# Environment files
 .env
 .env.local
 .env.*.local
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Foundry
+contracts/broadcast/
+contracts/cache/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 
 # Logs
 *.log
-logs/
-
-# Testing
-coverage/
-*.test
-
-# Foundry
-cache/
-out/
-broadcast/
-
-# Go
-*.test
-*.prof
-
-# Next.js
-.next/
-.vercel
+npm-debug.log*
 
 # Misc
-*.bak
-*.tmp
-.cache/
+*.pem
