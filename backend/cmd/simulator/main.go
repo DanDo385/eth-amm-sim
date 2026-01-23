@@ -210,7 +210,8 @@ func pollPrices(client *chain.Client, executor *engine.Executor, memStore *store
 		
 		// Get current price
 		price, err := executor.GetSpotPrice(ctx)
-		if err != nil {
+if err != nil {
+			log.Printf("Error getting spot price: %v", err)
 			continue
 		}
 		
