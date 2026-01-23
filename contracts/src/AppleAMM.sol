@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title AppleAMM
@@ -15,7 +16,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * - Swaps maintain the x*y=k invariant (minus fees)
  * - Fees accumulate in the pool, benefiting all LPs
  */
-contract AppleAMM {
+contract AppleAMM is ReentrancyGuard {
     using SafeERC20 for IERC20;
     
     // ============================================================
@@ -90,7 +91,7 @@ contract AppleAMM {
      *      Subsequent deposits must maintain the current ratio.
      *      ETH is sent as msg.value.
      */
-    function addLiquidity(uint256 appleAmount) external payable returns (uint256 lpTokens) {
+    function addLiquidity(uint256 appleAmount) external payable nonReentrant returns (uint256 lpTokens) {
         require(appleAmount > 0 && msg.value > 0, "AppleAMM: amounts must be positive");
         
         // Transfer APPL from sender
@@ -127,7 +128,7 @@ contract AppleAMM {
      * @return appleOut Amount of APPL returned
      * @return ethOut Amount of ETH returned
      */
-    function removeLiquidity(uint256 lpTokenAmount) external returns (uint256 appleOut, uint256 ethOut) {
+    function removeLiquidity(uint256 lpTokenAmount) external nonReentrant returns (uint256 appleOut, uint256 ethOut) {
         require(lpTokenAmount > 0, "AppleAMM: amount must be positive");
         require(lpBalances[msg.sender] >= lpTokenAmount, "AppleAMM: insufficient LP tokens");
         
@@ -160,7 +161,7 @@ contract AppleAMM {
      * @param minApples Minimum APPL to receive (slippage protection)
      * @return applesOut Amount of APPL received
      */
-    function swapETHForApples(uint256 minApples) external payable returns (uint256 applesOut) {
+    function swapETHForApples(uint256 minApples) external payable nonReentrant returns (uint256 applesOut) {
         require(msg.value > 0, "AppleAMM: ETH amount must be positive");
         require(appleReserve > 0 && ethReserve > 0, "AppleAMM: pool is empty");
         
@@ -197,7 +198,7 @@ contract AppleAMM {
      * @param minETH Minimum ETH to receive (slippage protection)
      * @return ethOut Amount of ETH received
      */
-    function swapApplesForETH(uint256 appleAmount, uint256 minETH) external returns (uint256 ethOut) {
+    function swapApplesForETH(uint256 appleAmount, uint256 minETH) external nonReentrant returns (uint256 ethOut) {
         require(appleAmount > 0, "AppleAMM: APPL amount must be positive");
         require(appleReserve > 0 && ethReserve > 0, "AppleAMM: pool is empty");
         

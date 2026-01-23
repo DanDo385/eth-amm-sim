@@ -1,0 +1,27 @@
+# Wake static analysis configuration
+# Exclude third-party libraries from analysis
+
+[compiler.solc]
+exclude_paths = [
+    "contracts/lib",
+    "contracts/test",
+    "contracts/script"
+]
+remappings = [
+    "@openzeppelin/=contracts/lib/openzeppelin-contracts/",
+    "forge-std/=contracts/lib/forge-std/src/"
+]
+
+[detectors]
+exclude_paths = [
+    "contracts/lib",
+    "contracts/test",
+    "contracts/script",
+    "contracts/lib/**/certora"
+]
+ignore_paths = [
+    "contracts/lib",
+    "contracts/test",
+    "contracts/script",
+    "contracts/lib/**/certora"
+]
