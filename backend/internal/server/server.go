@@ -196,6 +196,9 @@ func (s *Server) reinitializeLPMetrics(ctx context.Context) {
 	// Set initial state to current reserves (this is the new baseline)
 	s.store.GetLPMetrics().SetInitialState(apples, eth)
 	s.store.GetLPMetrics().SetInitialFees(feesApple, feesETH)
+	
+	// Also update current state to match (ensures metrics show current pool state)
+	s.store.GetLPMetrics().UpdateState(apples, eth, feesApple, feesETH)
 	s.store.GetImpactCurve().UpdateReserves(apples, eth)
 	
 	log.Printf("LP metrics re-initialized: APPL=%s, ETH=%s", apples.String(), eth.String())

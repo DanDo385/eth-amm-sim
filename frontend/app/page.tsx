@@ -31,10 +31,11 @@ export default function Dashboard() {
       setTrades([]);
       refreshPriceData(); // Refresh LP metrics and candles
     } else if (session.status === 'idle' || !session.startedAt) {
-      // Session is idle/reset - clear trades and refresh LP metrics
+      // Session is idle/reset - clear trades, events, and refresh LP metrics
       if (sessionStartRef.current !== undefined) {
         sessionStartRef.current = undefined;
         setTrades([]);
+        setEvents([]); // Clear Key Events on reset
         refreshPriceData(); // Refresh LP metrics to get current state
       }
     }

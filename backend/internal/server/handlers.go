@@ -83,7 +83,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Reset store
+	// Reset store (clears trades, events, price metrics, LP metrics)
 	s.store.Reset()
 	
 	// Re-initialize LP metrics with current pool state
@@ -92,6 +92,12 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	
 	// Broadcast updated LP metrics
 	s.BroadcastLPMetrics()
+	
+	// Broadcast empty events list to clear Key Events in frontend
+	s.Broadcast(WSMessage{
+		Type: "events",
+		Data: s.store.GetRecentEvents(0), // Empty events array
+	})
 	
 	respondJSON(w, map[string]string{"status": "reset"})
 }

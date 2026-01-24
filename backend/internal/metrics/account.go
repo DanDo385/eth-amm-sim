@@ -25,6 +25,10 @@ type AccountMetrics struct {
 	// Running calculations
 	initialEquity float64
 	peakEquity    float64
+	
+	// Balance tracking (for accurate equity calculation)
+	ethBalance  float64 // ETH balance in ETH
+	appleBalance float64 // APPL balance in APPL tokens
 }
 
 // TradeRecord records a single trade
@@ -69,29 +73,65 @@ func NewAccountMetrics(nickname string, address common.Address, initialEquity fl
 		equityCurve:   []EquityPoint{{Timestamp: now, Equity: initialEquity, Drawdown: 0}},
 		initialEquity: initialEquity,
 		peakEquity:    initialEquity,
+		ethBalance:    initialEquity, // Start with all ETH (no APPL)
+		appleBalance:  0,
 	}
 }
 
 // RecordTrade records a trade and updates metrics
-func (am *AccountMetrics) RecordTrade(isBuy bool, size, price, newEquity float64) {
+// isBuy: true for buy, false for sell
+// ethAmount: ETH amount (spent for buy, received for sell)
+// appleAmount: APPL amount (received for buy, spent for sell)
+// currentSpotPrice: current market price (ETH per APPL) for mark-to-market
+func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, currentSpotPrice float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	
 	now := time.Now()
 	
-	// Calculate PnL from this trade
+	// Update balances based on trade
+	if isBuy {
+		// Buy: spend ETH, receive APPL
+		am.ethBalance -= ethAmount
+		am.appleBalance += appleAmount
+	} else {
+		// Sell: spend APPL, receive ETH
+		am.ethBalance += ethAmount
+		am.appleBalance -= appleAmount
+	}
+	
+	// Calculate equity using current spot price (mark-to-market)
+	// Equity = ETH_balance + APPL_balance * current_spot_price
+	newEquity := am.ethBalance + (am.appleBalance * currentSpotPrice)
+	
+	// Calculate PnL from this trade (change in equity)
 	var pnl float64
 	if len(am.equityCurve) > 0 {
 		lastEquity := am.equityCurve[len(am.equityCurve)-1].Equity
 		pnl = newEquity - lastEquity
 	}
 	
+	// Calculate trade size and execution price for display
+	var tradeSize float64
+	var executionPrice float64
+	if isBuy {
+		tradeSize = ethAmount // Size in ETH for buys
+		if appleAmount > 0 {
+			executionPrice = ethAmount / appleAmount // ETH per APPL
+		}
+	} else {
+		tradeSize = appleAmount * currentSpotPrice // Size in ETH equivalent for sells
+		if appleAmount > 0 {
+			executionPrice = ethAmount / appleAmount // ETH per APPL
+		}
+	}
+	
 	// Record trade
 	trade := TradeRecord{
 		Timestamp: now,
 		IsBuy:     isBuy,
-		Size:      size,
-		Price:     price,
+		Size:      tradeSize,
+		Price:     executionPrice,
 		PnL:       pnl,
 		Equity:    newEquity,
 	}
@@ -148,7 +188,7 @@ func (am *AccountMetrics) GetPerformance() PerformanceData {
 	totalReturn := am.calculateTotalReturn()
 	totalPnL := am.calculateTotalPnL()
 	returns := am.calculateReturns()
-	volatility := standardDeviation(returns)
+	volatility := am.calculateVolatility(returns)
 	sharpe := am.calculateSharpe(returns)
 	maxDD := am.calculateMaxDrawdown()
 	winRate := am.calculateWinRate()
@@ -200,6 +240,26 @@ func (am *AccountMetrics) calculateReturns() []float64 {
 		}
 	}
 	return returns
+}
+
+// calculateVolatility calculates annualized volatility from returns
+// Assumes returns are per-trade, annualizes assuming ~252 trading days
+// For simplicity, we'll annualize based on number of trades
+func (am *AccountMetrics) calculateVolatility(returns []float64) float64 {
+	if len(returns) == 0 {
+		return 0
+	}
+	
+	// Calculate standard deviation of returns
+	stdDev := standardDeviation(returns)
+	
+	// Annualize: multiply by sqrt(252) for daily returns
+	// Since we don't have exact time periods, we'll use a simple annualization
+	// Assuming trades happen roughly every few seconds, we'll scale by sqrt(number_of_periods_per_year)
+	// For demo purposes, we'll use sqrt(252) to annualize daily-like returns
+	annualizedVol := stdDev * math.Sqrt(252) * 100 // Convert to percentage
+	
+	return annualizedVol
 }
 
 // calculateSharpe calculates the Sharpe ratio
@@ -280,6 +340,8 @@ func (am *AccountMetrics) Reset(initialEquity float64) {
 	am.equityCurve = []EquityPoint{{Timestamp: now, Equity: initialEquity, Drawdown: 0}}
 	am.initialEquity = initialEquity
 	am.peakEquity = initialEquity
+	am.ethBalance = initialEquity
+	am.appleBalance = 0
 }
 
 // AccountMetricsManager manages metrics for multiple accounts
