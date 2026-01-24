@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import type { Trade } from '@/types';
 
 interface BlotterProps {
@@ -10,13 +10,20 @@ interface BlotterProps {
 
 export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(0);
   
-  // Auto-scroll to bottom on new trades
+  // Auto-scroll to bottom only when new trades are added (not on every render)
   useEffect(() => {
-    if (containerRef.current) {
+    if (trades.length > prevLengthRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
+    prevLengthRef.current = trades.length;
   }, [trades.length]);
+  
+  // Memoize display trades to prevent unnecessary recalculations
+  const displayTrades = useMemo(() => {
+    return trades.slice(-maxRows);
+  }, [trades, maxRows]);
 
   const formatAmount = (amount: string | undefined) => {
     if (!amount) return '-';
@@ -24,12 +31,36 @@ export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
     return num.toFixed(4);
   };
 
+  const formatPrice = (trade: Trade) => {
+    // If price is explicitly provided, use it
+    if (trade.price) {
+      const priceNum = parseFloat(trade.price) / 1e18;
+      return priceNum.toFixed(6);
+    }
+    
+    // Otherwise calculate from amountIn and amountOut
+    if (trade.amountIn && trade.amountOut) {
+      const amountIn = parseFloat(trade.amountIn) / 1e18;
+      const amountOut = parseFloat(trade.amountOut) / 1e18;
+      
+      if (amountIn > 0 && amountOut > 0) {
+        if (trade.isBuy) {
+          // Buy: price = ETH spent / APPL received
+          return (amountIn / amountOut).toFixed(6);
+        } else {
+          // Sell: price = ETH received / APPL sold
+          return (amountOut / amountIn).toFixed(6);
+        }
+      }
+    }
+    
+    return '-';
+  };
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString();
   };
-
-  const displayTrades = trades.slice(-maxRows);
 
   return (
     <div className="bg-surface rounded-lg border border-border">
@@ -47,13 +78,14 @@ export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
               <th className="px-3 py-2 text-left">Account</th>
               <th className="px-3 py-2 text-left">Side</th>
               <th className="px-3 py-2 text-right">Size</th>
+              <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Tx</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {displayTrades.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-3 py-8 text-center text-gray-500">
                   No trades yet
                 </td>
               </tr>
@@ -74,6 +106,9 @@ export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
                   </td>
                   <td className="px-3 py-2 text-right text-gray-300">
                     {formatAmount(trade.amountIn)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-300 font-mono text-xs">
+                    {formatPrice(trade)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <a 

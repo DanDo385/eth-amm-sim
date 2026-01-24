@@ -147,13 +147,50 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
 	
-	// Record trade (we'll get actual amounts from events in production)
+	// Calculate amount out and price using constant product formula
+	// Get reserves before the trade
+	appleReserve, ethReserve, err := e.GetReserves(ctx)
+	if err != nil {
+		// If we can't get reserves, still record trade without amounts
+		trade := &Trade{
+			TxHash:    signedTx.Hash().Hex(),
+			Trader:    addr,
+			Nickname:  e.GetNickname(addr),
+			IsBuy:     true,
+			AmountIn:  ethAmount,
+			Timestamp: time.Now(),
+		}
+		e.emitTrade(trade)
+		return signedTx.Hash().Hex(), nil
+	}
+	
+	// Calculate fee (0.30% = 30/10000)
+	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(30)), big.NewInt(10000))
+	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
+	
+	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, appleReserve)
+	denominator := new(big.Int).Add(ethReserve, amountInAfterFee)
+	appleAmountOut := new(big.Int).Div(numerator, denominator)
+	
+	// Calculate execution price: ETH spent / APPL received (scaled by 1e18)
+	var price *big.Int
+	if appleAmountOut.Sign() > 0 {
+		// price = (ethAmount * 1e18) / appleAmountOut
+		price = new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(1e18)), appleAmountOut)
+	} else {
+		price = big.NewInt(0)
+	}
+	
 	trade := &Trade{
 		TxHash:    signedTx.Hash().Hex(),
 		Trader:    addr,
 		Nickname:  e.GetNickname(addr),
 		IsBuy:     true,
 		AmountIn:  ethAmount,
+		AmountOut: appleAmountOut,
+		Price:     price,
+		Fee:       fee,
 		Timestamp: time.Now(),
 	}
 	e.emitTrade(trade)
@@ -205,12 +242,50 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
 	
+	// Calculate amount out and price using constant product formula
+	// Get reserves before the trade
+	appleReserve, ethReserve, err := e.GetReserves(ctx)
+	if err != nil {
+		// If we can't get reserves, still record trade without amounts
+		trade := &Trade{
+			TxHash:    signedTx.Hash().Hex(),
+			Trader:    addr,
+			Nickname:  e.GetNickname(addr),
+			IsBuy:     false,
+			AmountIn:  appleAmount,
+			Timestamp: time.Now(),
+		}
+		e.emitTrade(trade)
+		return signedTx.Hash().Hex(), nil
+	}
+	
+	// Calculate fee (0.30% = 30/10000)
+	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(30)), big.NewInt(10000))
+	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
+	
+	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, ethReserve)
+	denominator := new(big.Int).Add(appleReserve, amountInAfterFee)
+	ethAmountOut := new(big.Int).Div(numerator, denominator)
+	
+	// Calculate execution price: ETH received / APPL sold (scaled by 1e18)
+	var price *big.Int
+	if appleAmount.Sign() > 0 {
+		// price = (ethAmountOut * 1e18) / appleAmount
+		price = new(big.Int).Div(new(big.Int).Mul(ethAmountOut, big.NewInt(1e18)), appleAmount)
+	} else {
+		price = big.NewInt(0)
+	}
+	
 	trade := &Trade{
 		TxHash:    signedTx.Hash().Hex(),
 		Trader:    addr,
 		Nickname:  e.GetNickname(addr),
 		IsBuy:     false,
 		AmountIn:  appleAmount,
+		AmountOut: ethAmountOut,
+		Price:     price,
+		Fee:       fee,
 		Timestamp: time.Now(),
 	}
 	e.emitTrade(trade)
@@ -365,4 +440,69 @@ func packGetReserves() []byte {
 func packGetSpotPrice() []byte {
 	// getSpotPrice()
 	return []byte{0xdc, 0x76, 0xfa, 0xbc}
+}
+
+// GetTotalFees returns total fees collected by the AMM
+func (e *Executor) GetTotalFees(ctx context.Context) (appleFees, ethFees *big.Int, err error) {
+	data := packGetTotalFees()
+	
+	msg := ethereum.CallMsg{
+		To:   &e.ammAddress,
+		Data: data,
+	}
+	
+	result, err := e.client.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	
+	// Decode (uint256, uint256)
+	if len(result) < 64 {
+		return nil, nil, fmt.Errorf("invalid fees response")
+	}
+	
+	appleFees = new(big.Int).SetBytes(result[0:32])
+	ethFees = new(big.Int).SetBytes(result[32:64])
+	
+	return appleFees, ethFees, nil
+}
+
+func packGetTotalFees() []byte {
+	// getTotalFees()
+	// selector: keccak256("getTotalFees()")[:4] = 0x626e1ae7
+	return []byte{0x62, 0x6e, 0x1a, 0xe7}
+}
+
+// GetETHBalance returns the ETH balance of an address
+func (e *Executor) GetETHBalance(ctx context.Context, address common.Address) (*big.Int, error) {
+	return e.client.GetBalance(ctx, address)
+}
+
+// GetAPPLBalance returns the APPL token balance of an address
+func (e *Executor) GetAPPLBalance(ctx context.Context, address common.Address) (*big.Int, error) {
+	// balanceOf(address) selector: 0x70a08231
+	data := packBalanceOf(address)
+	
+	msg := ethereum.CallMsg{
+		To:   &e.tokenAddress,
+		Data: data,
+	}
+	
+	result, err := e.client.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(result) < 32 {
+		return nil, fmt.Errorf("invalid balance response")
+	}
+	
+	return new(big.Int).SetBytes(result), nil
+}
+
+func packBalanceOf(owner common.Address) []byte {
+	// balanceOf(address owner)
+	// selector: keccak256("balanceOf(address)")[:4] = 0x70a08231
+	selector := []byte{0x70, 0xa0, 0x82, 0x31}
+	return append(selector, common.LeftPadBytes(owner.Bytes(), 32)...)
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
 import { PriceChart } from '@/components/PriceChart';
 import { Blotter } from '@/components/Blotter';
@@ -16,10 +16,42 @@ import * as api from '@/lib/api';
 
 export default function Dashboard() {
   const { session, isLoading, start, stop, reset, updateFromWS } = useSession();
-  const { candles, lpMetrics, addCandle, updateLPMetrics } = usePriceData();
+  const { candles, lpMetrics, addCandle, updateLPMetrics, refresh: refreshPriceData } = usePriceData();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [events, setEvents] = useState<KeyEvent[]>([]);
   const [impactData, setImpactData] = useState<{ buy: ImpactPoint[]; sell: ImpactPoint[] }>({ buy: [], sell: [] });
+  const [priceRange, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
+  const sessionStartRef = useRef<string | undefined>(undefined);
+
+  // Clear trades and refresh data when a new session starts or when session is reset
+  useEffect(() => {
+    if (session.startedAt && session.startedAt !== sessionStartRef.current) {
+      // New session started - clear trades and refresh all data
+      sessionStartRef.current = session.startedAt;
+      setTrades([]);
+      refreshPriceData(); // Refresh LP metrics and candles
+    } else if (session.status === 'idle' || !session.startedAt) {
+      // Session is idle/reset - clear trades and refresh LP metrics
+      if (sessionStartRef.current !== undefined) {
+        sessionStartRef.current = undefined;
+        setTrades([]);
+        refreshPriceData(); // Refresh LP metrics to get current state
+      }
+    }
+  }, [session.startedAt, session.status, refreshPriceData]);
+
+  // Filter trades to only show those from the current session
+  const sessionTrades = useMemo(() => {
+    if (!session.startedAt) {
+      return []; // No session started, show no trades
+    }
+
+    const startTime = new Date(session.startedAt).getTime();
+    return trades.filter((t) => {
+      const tradeTime = new Date(t.timestamp).getTime();
+      return tradeTime >= startTime;
+    });
+  }, [trades, session.startedAt]);
 
   // Handle WebSocket messages
   const handleWSMessage = useCallback((message: WSMessage) => {
@@ -28,7 +60,11 @@ export default function Dashboard() {
         updateFromWS(message.data as typeof session);
         break;
       case 'trade':
-        setTrades((prev) => [...prev.slice(-99), message.data as Trade]);
+        setTrades((prev) => {
+          // Keep only last 100 trades to prevent memory issues
+          const newTrades = [...prev.slice(-99), message.data as Trade];
+          return newTrades;
+        });
         break;
       case 'trades':
         setTrades(message.data as Trade[]);
@@ -99,13 +135,13 @@ export default function Dashboard() {
 
         {/* Center Column - Charts */}
         <div className="col-span-12 lg:col-span-6 space-y-6">
-          <PriceChart candles={candles} height={350} />
+          <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
           <ImpactCurve buyData={impactData.buy} sellData={impactData.sell} />
         </div>
 
         {/* Right Column - Blotter & Events */}
         <div className="col-span-12 lg:col-span-3 space-y-6">
-          <Blotter trades={trades} />
+          <Blotter trades={sessionTrades} />
           <KeyEvents events={events} />
         </div>
       </div>

@@ -2,6 +2,7 @@
 package store
 
 import (
+	"math/big"
 	"sync"
 	"time"
 
@@ -129,6 +130,59 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.trades = append(s.trades, trade)
+	
+	// Update account metrics for this trade
+	// Get or create account metrics
+	am := s.accountMetrics.GetOrCreate(trade.Nickname, trade.Trader, 10000) // Initial equity 10000 ETH
+	
+	// Convert trade amounts to float64
+	// For BUY: amountIn is ETH (wei), amountOut is APPL (wei)
+	// For SELL: amountIn is APPL (wei), amountOut is ETH (wei)
+	amountInFloat := new(big.Float).SetInt(trade.AmountIn)
+	amountInFloat.Quo(amountInFloat, big.NewFloat(1e18))
+	amountIn, _ := amountInFloat.Float64()
+	
+	amountOutFloat := new(big.Float).SetInt(trade.AmountOut)
+	amountOutFloat.Quo(amountOutFloat, big.NewFloat(1e18))
+	amountOut, _ := amountOutFloat.Float64()
+	
+	priceFloat := new(big.Float).SetInt(trade.Price)
+	priceFloat.Quo(priceFloat, big.NewFloat(1e18))
+	priceETH, _ := priceFloat.Float64()
+	
+	// Calculate trade size in ETH terms
+	var tradeSize float64
+	if trade.IsBuy {
+		tradeSize = amountIn // Buying: amountIn is ETH
+	} else {
+		tradeSize = amountIn * priceETH // Selling: amountIn is APPL, convert to ETH
+	}
+	
+	// Get current equity from account metrics
+	currentPerf := am.GetPerformance()
+	var currentEquity float64
+	if len(currentPerf.EquityCurve) > 0 {
+		currentEquity = currentPerf.EquityCurve[len(currentPerf.EquityCurve)-1].Equity
+	} else {
+		currentEquity = 10000 // Default initial equity
+	}
+	
+	// Calculate new equity based on trade
+	// For buy: equity decreases by ETH spent, increases by APPL received * price
+	// For sell: equity increases by ETH received, decreases by APPL sold * price
+	var newEquity float64
+	if trade.IsBuy {
+		// Buy: spent ETH, received APPL
+		// Equity change = -ETH_spent + APPL_received * execution_price
+		newEquity = currentEquity - amountIn + (amountOut * priceETH)
+	} else {
+		// Sell: spent APPL, received ETH
+		// Equity change = +ETH_received - APPL_spent * execution_price
+		newEquity = currentEquity + amountOut - (amountIn * priceETH)
+	}
+	
+	// Record trade in account metrics
+	am.RecordTrade(trade.IsBuy, tradeSize, priceETH, newEquity)
 }
 
 func (s *MemoryStore) GetTrades() []engine.Trade {
@@ -191,14 +245,15 @@ func (s *MemoryStore) GetRecentEvents(n int) []KeyEvent {
 	return result
 }
 
-// Reset clears all stored data
+// Reset clears stored data but preserves account metrics
+// Account metrics persist across sessions to show performance history
 func (s *MemoryStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
 	s.priceMetrics.Reset()
 	s.lpMetrics.Reset()
-	s.accountMetrics.Reset()
+	// Note: We don't reset accountMetrics here - they persist across sessions
 	s.trades = make([]engine.Trade, 0)
 	s.events = make([]KeyEvent, 0)
 }

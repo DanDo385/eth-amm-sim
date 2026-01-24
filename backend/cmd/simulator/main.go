@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"math"
 	"math/big"
 	"os"
 	"os/signal"
@@ -54,35 +56,86 @@ func main() {
 	// Initialize components
 	nonceManager := chain.NewNonceManager(client)
 	executor := engine.NewExecutor(client, nonceManager, cfg.AMMAddress, cfg.TokenAddress)
-	orchestrator := engine.NewOrchestrator()
-	session := engine.NewSession(orchestrator)
-	memStore := store.NewMemoryStore()
+	
+	// Verify contracts are deployed and initialized
+	ctx := context.Background()
+	log.Println("Verifying contracts...")
+	
+	// Check if we can read from the AMM contract
+	apples, eth, err := executor.GetReserves(ctx)
+	if err != nil {
+		log.Fatalf("Failed to read AMM reserves. Make sure contracts are deployed and pool is initialized. Error: %v", err)
+	}
+	
+	if apples.Sign() == 0 || eth.Sign() == 0 {
+		log.Fatalf("AMM pool is empty! Reserves: APPL=%s, ETH=%s. Deploy contracts and seed liquidity first.", apples.String(), eth.String())
+	}
+	
+	log.Printf("✓ Contracts verified. Pool reserves: APPL=%s, ETH=%s", apples.String(), eth.String())
+	
+	// Get initial spot price
+	spotPrice, err := executor.GetSpotPrice(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price: %v", err)
+	} else {
+		log.Printf("✓ Initial spot price: %.6f ETH per APPL", toEther(spotPrice))
+	}
 	
 	// Set up nicknames using new config system
 	for _, acc := range config.Accounts {
 		executor.SetNickname(acc.Address(), acc.Nickname)
 	}
 	
+	orchestrator := engine.NewOrchestrator()
+	session := engine.NewSession(orchestrator)
+	memStore := store.NewMemoryStore()
+	
+	// Create price provider for strategy bots
+	priceProvider := bots.NewPriceProvider(memStore)
+	
 	// Create bots using config-driven approach
-	createBots(executor, orchestrator)
+	createBots(executor, orchestrator, priceProvider)
 	
 	// Initialize account metrics
 	initializeAccountMetrics(memStore)
 	
-	// Set up trade callback to record trades
+	// Initialize LP metrics with initial pool state and fees
+	initLPMetrics(ctx, executor, memStore)
+	
+	// Create server
+	srv := server.NewServer(session, memStore, executor)
+	
+	// Set up trade callback to record trades and broadcast
 	executor.OnTrade(func(trade *engine.Trade) {
 		memStore.RecordTrade(*trade)
 		log.Printf("[Trade] %s %s %.4f", 
 			trade.Nickname, 
 			directionStr(trade.IsBuy), 
 			toEther(trade.AmountIn))
+		
+		// Broadcast trade to WebSocket clients
+		srv.BroadcastTrade(trade)
+		
+		// Record key events for large trades
+		amountInETH := toEther(trade.AmountIn)
+		if amountInETH >= 100.0 { // Large trade threshold
+			severity := "warning"
+			if amountInETH >= 300.0 {
+				severity = "critical"
+			}
+			event := store.KeyEvent{
+				Timestamp:   time.Now(),
+				Type:        "trade",
+				Description: fmt.Sprintf("%s executed %s of %.2f ETH", trade.Nickname, directionStr(trade.IsBuy), amountInETH),
+				Severity:    severity,
+			}
+			memStore.RecordEvent(event.Type, event.Description, event.Severity)
+			srv.BroadcastEvent(event)
+		}
+		
+		// Broadcast account update
+		srv.BroadcastAccountUpdate(trade.Nickname)
 	})
-	
-	// Initialize LP metrics with initial pool state
-	initLPMetrics(memStore)
-	
-	// Create and start server
-	srv := server.NewServer(session, memStore, executor)
 	
 	// Start price polling (for demo)
 	go pollPrices(client, executor, memStore, srv)
@@ -117,7 +170,7 @@ func main() {
 }
 
 // createBots creates all trading bots based on config
-func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator) {
+func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, priceProvider bots.PriceProvider) {
 	for _, acc := range config.Accounts {
 		var bot bots.Bot
 
@@ -133,21 +186,17 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator) {
 			bot = bots.NewRetailBot(&acc, executor)
 
 		case config.BotTypeMeanRev:
-			// TODO: Implement MeanRev bot
-			log.Printf("MeanRev bot not yet implemented: %s", acc.Nickname)
-			continue
+			bot = bots.NewMeanRevBot(&acc, executor, priceProvider)
 
 		case config.BotTypeMomentum:
-			// TODO: Implement Momentum bot
-			log.Printf("Momentum bot not yet implemented: %s", acc.Nickname)
-			continue
+			bot = bots.NewMomentumBot(&acc, executor, priceProvider)
 
 		case config.BotTypeLeverage:
-			// Phase 2
-			continue
+			bot = bots.NewLeverageBot(&acc, executor, priceProvider)
 
 		case config.BotTypeLiquidator:
-			// Phase 2
+			// Phase 2 - not yet implemented
+			log.Printf("Liquidator bot not yet implemented: %s", acc.Nickname)
 			continue
 
 		default:
@@ -170,13 +219,22 @@ func initializeAccountMetrics(memStore *store.MemoryStore) {
 }
 
 // initLPMetrics initializes LP metrics with pool state
-func initLPMetrics(memStore *store.MemoryStore) {
+func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
 	// Initial pool: 1000 APPL + 1000 ETH (from config.PoolApples and config.PoolETH)
 	ether := func(n int64) *big.Int {
 		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
 	}
 	
+	// Get initial fees from contract (should be 0 at start, but track for accuracy)
+	initialFeesApple, initialFeesETH, err := executor.GetTotalFees(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get initial fees: %v", err)
+		initialFeesApple = big.NewInt(0)
+		initialFeesETH = big.NewInt(0)
+	}
+	
 	memStore.GetLPMetrics().SetInitialState(ether(1000), ether(1000))
+	memStore.GetLPMetrics().SetInitialFees(initialFeesApple, initialFeesETH)
 	memStore.GetImpactCurve().UpdateReserves(ether(1000), ether(1000))
 }
 
@@ -185,12 +243,15 @@ func pollPrices(client *chain.Client, executor *engine.Executor, memStore *store
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	
+	var lastPrice float64
+	var priceInitialized bool
+	
 	for range ticker.C {
 		ctx := context.Background()
 		
 		// Get current price
 		price, err := executor.GetSpotPrice(ctx)
-if err != nil {
+		if err != nil {
 			log.Printf("Error getting spot price: %v", err)
 			continue
 		}
@@ -199,14 +260,53 @@ if err != nil {
 		priceFloat := toEtherFloat(price)
 		memStore.RecordPrice(priceFloat)
 		
+		// Track price movements for key events
+		if !priceInitialized {
+			lastPrice = priceFloat
+			priceInitialized = true
+		} else if lastPrice > 0 {
+			priceChange := (priceFloat - lastPrice) / lastPrice
+			if math.Abs(priceChange) >= 0.05 { // 5% price move
+				severity := "info"
+				if math.Abs(priceChange) >= 0.10 {
+					severity = "warning"
+				}
+				if math.Abs(priceChange) >= 0.20 {
+					severity = "critical"
+				}
+				direction := "up"
+				if priceChange < 0 {
+					direction = "down"
+				}
+				event := store.KeyEvent{
+					Timestamp:   time.Now(),
+					Type:        "strategy_trigger",
+					Description: fmt.Sprintf("Price moved %s %.2f%% (%.6f → %.6f ETH)", direction, math.Abs(priceChange)*100, lastPrice, priceFloat),
+					Severity:    severity,
+				}
+				memStore.RecordEvent(event.Type, event.Description, event.Severity)
+				srv.BroadcastEvent(event)
+				lastPrice = priceFloat
+			}
+		}
+		
 		// Get reserves
 		apples, eth, err := executor.GetReserves(ctx)
 		if err != nil {
 			continue
 		}
 		
-		// Update LP metrics
-		memStore.GetLPMetrics().UpdateState(apples, eth, big.NewInt(0), big.NewInt(0))
+		// Get total fees collected
+		feesApple, feesETH, err := executor.GetTotalFees(ctx)
+		if err != nil {
+			log.Printf("Error getting total fees: %v", err)
+			// Continue with zero fees if we can't read them
+			feesApple = big.NewInt(0)
+			feesETH = big.NewInt(0)
+		}
+		
+		// Update LP metrics with actual fees
+		memStore.GetLPMetrics().UpdateState(apples, eth, feesApple, feesETH)
 		memStore.GetImpactCurve().UpdateReserves(apples, eth)
 		
 		// Broadcast updates

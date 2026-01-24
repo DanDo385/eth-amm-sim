@@ -16,10 +16,11 @@ type Bot interface {
 
 // Orchestrator manages all bot goroutines
 type Orchestrator struct {
-	bots   []Bot
-	wg     sync.WaitGroup
-	cancel context.CancelFunc
-	mu     sync.RWMutex
+	bots      []Bot
+	wg        sync.WaitGroup
+	cancel    context.CancelFunc
+	isRunning bool
+	mu        sync.RWMutex
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -31,17 +32,36 @@ func NewOrchestrator() *Orchestrator {
 
 // Start starts all bots with a cancellable context
 func (o *Orchestrator) Start(ctx context.Context) {
-	ctx, o.cancel = context.WithCancel(ctx)
-	o.mu.RLock()
-	defer o.mu.RUnlock()
+	o.mu.Lock()
+	
+	// If already running, stop first
+	if o.isRunning {
+		o.mu.Unlock()
+		log.Printf("Orchestrator already running, stopping first...")
+		o.Stop()
+		o.mu.Lock()
+	}
+	
+	// Wait for any previous goroutines to finish
+	o.mu.Unlock()
+	o.wg.Wait()
+	o.mu.Lock()
+	
+	o.isRunning = true
+	sessionCtx, cancel := context.WithCancel(ctx)
+	o.cancel = cancel
+	
+	bots := make([]Bot, len(o.bots))
+	copy(bots, o.bots)
+	o.mu.Unlock()
 
-	log.Printf("Orchestrator starting %d bots", len(o.bots))
+	log.Printf("Orchestrator starting %d bots", len(bots))
 
-	for _, bot := range o.bots {
+	for _, bot := range bots {
 		o.wg.Add(1)
 		go func(b Bot) {
 			defer o.wg.Done()
-			b.Run(ctx)
+			b.Run(sessionCtx)
 		}(bot)
 	}
 }
@@ -49,16 +69,29 @@ func (o *Orchestrator) Start(ctx context.Context) {
 // Stop stops all bot goroutines
 func (o *Orchestrator) Stop() {
 	o.mu.Lock()
-	defer o.mu.Unlock()
-
+	
+	if !o.isRunning {
+		o.mu.Unlock()
+		return // Already stopped
+	}
+	
+	o.isRunning = false
+	
 	if o.cancel != nil {
 		o.cancel()
+		o.cancel = nil
 	}
 
-	for _, bot := range o.bots {
+	bots := make([]Bot, len(o.bots))
+	copy(bots, o.bots)
+	o.mu.Unlock()
+
+	// Stop all bots
+	for _, bot := range bots {
 		bot.Stop()
 	}
 
+	// Wait for all goroutines to finish
 	o.wg.Wait()
 	log.Println("All bots stopped")
 }

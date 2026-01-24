@@ -61,7 +61,10 @@ func (w *WhaleBot) Run(ctx context.Context) {
 			size := w.RandomSize()
 
 			if size.Sign() > 0 {
-				w.executeTrade(ctx, side, size)
+				// Check balance before attempting trade
+				if w.hasSufficientBalance(ctx, side, size) {
+					w.executeTrade(ctx, side, size)
+				}
 			}
 		}
 	}
@@ -95,6 +98,29 @@ func (w *WhaleBot) decideSide() engine.TradeSide {
 	return engine.SELL
 }
 
+// hasSufficientBalance checks if the bot has enough balance for the trade
+// Note: For SELL trades, we don't check APPL balance - bots can build short positions over time
+func (w *WhaleBot) hasSufficientBalance(ctx context.Context, side engine.TradeSide, size *big.Int) bool {
+	addr := crypto.PubkeyToAddress(w.privateKey.PublicKey)
+	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
+	
+	if side == engine.BUY {
+		ethBalance, err := w.executor.GetETHBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
+		required := new(big.Int).Add(size, gasReserve)
+		return ethBalance.Cmp(required) >= 0
+	} else {
+		// For SELL: Only check ETH for gas (allow short positions)
+		ethBalance, err := w.executor.GetETHBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
+		return ethBalance.Cmp(gasReserve) >= 0
+	}
+}
+
 // executeTrade performs a single trade
 func (w *WhaleBot) executeTrade(ctx context.Context, side engine.TradeSide, size *big.Int) {
 	var err error
@@ -113,7 +139,7 @@ func (w *WhaleBot) executeTrade(ctx context.Context, side engine.TradeSide, size
 		return
 	}
 
-	log.Printf("[%s] Trade submitted: %s (%s, size: %s)", w.Nickname(), txHash, side, formatEther(size))
+	log.Printf("[%s] ✓ Trade executed: %s (%s, size: %s)", w.Nickname(), txHash[:10]+"...", side, formatEther(size))
 }
 
 // formatEther formats a big.Int as ETH with 4 decimal places

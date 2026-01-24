@@ -68,9 +68,35 @@ func (r *RetailBot) Run(ctx context.Context) {
 			size := r.RandomSize()
 
 			if size.Sign() > 0 {
-				r.executeTrade(ctx, side, size)
+				// Check balance before attempting trade
+				if r.hasSufficientBalance(ctx, side, size) {
+					r.executeTrade(ctx, side, size)
+				}
 			}
 		}
+	}
+}
+
+// hasSufficientBalance checks if the bot has enough balance for the trade
+// Note: For SELL trades, we don't check APPL balance - bots can build short positions over time
+func (r *RetailBot) hasSufficientBalance(ctx context.Context, side engine.TradeSide, size *big.Int) bool {
+	addr := crypto.PubkeyToAddress(r.privateKey.PublicKey)
+	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
+	
+	if side == engine.BUY {
+		ethBalance, err := r.executor.GetETHBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
+		required := new(big.Int).Add(size, gasReserve)
+		return ethBalance.Cmp(required) >= 0
+	} else {
+		// For SELL: Only check ETH for gas (allow short positions)
+		ethBalance, err := r.executor.GetETHBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
+		return ethBalance.Cmp(gasReserve) >= 0
 	}
 }
 
@@ -92,5 +118,5 @@ func (r *RetailBot) executeTrade(ctx context.Context, side engine.TradeSide, siz
 		return
 	}
 
-	log.Printf("[%s] Trade submitted: %s (%s, size: %s)", r.Nickname(), txHash, side, formatEther(size))
+	log.Printf("[%s] ✓ Trade executed: %s (%s, size: %s)", r.Nickname(), txHash[:10]+"...", side, formatEther(size))
 }

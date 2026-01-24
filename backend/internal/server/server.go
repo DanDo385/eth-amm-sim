@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math/big"
 	"net/http"
 	"sync"
 	"time"
@@ -173,4 +174,29 @@ func respondError(w http.ResponseWriter, status int, message string) {
 // SetDuration allows setting session duration (for API)
 func (s *Server) SetDuration(seconds int) {
 	s.session.SetDuration(time.Duration(seconds) * time.Second)
+}
+
+// reinitializeLPMetrics re-initializes LP metrics with current pool state
+func (s *Server) reinitializeLPMetrics(ctx context.Context) {
+	// Get current reserves from contract
+	apples, eth, err := s.executor.GetReserves(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get reserves for LP metrics reinit: %v", err)
+		return
+	}
+	
+	// Get current fees from contract
+	feesApple, feesETH, err := s.executor.GetTotalFees(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get fees for LP metrics reinit: %v", err)
+		feesApple = big.NewInt(0)
+		feesETH = big.NewInt(0)
+	}
+	
+	// Set initial state to current reserves (this is the new baseline)
+	s.store.GetLPMetrics().SetInitialState(apples, eth)
+	s.store.GetLPMetrics().SetInitialFees(feesApple, feesETH)
+	s.store.GetImpactCurve().UpdateReserves(apples, eth)
+	
+	log.Printf("LP metrics re-initialized: APPL=%s, ETH=%s", apples.String(), eth.String())
 }
