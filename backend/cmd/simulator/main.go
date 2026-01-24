@@ -3,10 +3,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -137,34 +139,73 @@ func main() {
 		srv.BroadcastAccountUpdate(trade.Nickname)
 	})
 	
-	// Start price polling (for demo)
-	go pollPrices(client, executor, memStore, srv)
+	// Start price polling (for demo) with cancellation context
+	pollCtx, pollCancel := context.WithCancel(context.Background())
+	defer pollCancel()
+	go pollPrices(pollCtx, client, executor, memStore, srv)
 	
 	// Handle graceful shutdown
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
-		
-		log.Println("Shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		
-		if session.IsRunning() {
-			session.Stop()
-		}
-		srv.Stop(ctx)
-		os.Exit(0)
-	}()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	
-	// Start HTTP server
+	// Start HTTP server in a goroutine so we can handle shutdown signals
 	addr := ":8080"
 	if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port
 	}
 	
-	log.Printf("Starting server on %s", addr)
-	if err := srv.Start(addr); err != nil {
+	serverErrCh := make(chan error, 1)
+	go func() {
+		log.Printf("Starting server on %s", addr)
+		if err := srv.Start(addr); err != nil {
+			// Only send error if it's not the expected shutdown error
+			if !errors.Is(err, http.ErrServerClosed) {
+				select {
+				case serverErrCh <- err:
+				default:
+					// Channel might be closed if we're shutting down
+				}
+			}
+		}
+	}()
+	
+	log.Println("Server running. Press Ctrl+C to stop gracefully...")
+	
+	// Wait for shutdown signal or server error
+	select {
+	case <-sigCh:
+		log.Println("\n=== Shutting down gracefully ===")
+		log.Println("Stopping active sessions...")
+		
+		// Stop any running sessions
+		if session.IsRunning() {
+			if err := session.Stop(); err != nil {
+				log.Printf("Error stopping session: %v", err)
+			}
+			// Give bots a moment to finish
+			time.Sleep(500 * time.Millisecond)
+		}
+		
+		// Stop price polling
+		log.Println("Stopping price polling...")
+		pollCancel()
+		
+		// Stop server with timeout
+		log.Println("Stopping HTTP server...")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		
+		if err := srv.Stop(shutdownCtx); err != nil {
+			log.Printf("Error shutting down server: %v", err)
+		} else {
+			log.Println("✓ Server stopped gracefully")
+		}
+		
+		log.Println("=== Shutdown complete ===")
+		os.Exit(0)
+		
+	case err := <-serverErrCh:
+		// This is an actual server error (not graceful shutdown)
 		log.Fatalf("Server error: %v", err)
 	}
 }
@@ -239,14 +280,20 @@ func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *sto
 }
 
 // pollPrices periodically fetches price and updates metrics
-func pollPrices(client *chain.Client, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) {
+func pollPrices(ctx context.Context, client *chain.Client, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	
 	var lastPrice float64
 	var priceInitialized bool
 	
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Price polling stopped")
+			return
+		case <-ticker.C:
+		}
 		ctx := context.Background()
 		
 		// Get current price

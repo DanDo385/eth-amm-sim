@@ -125,8 +125,12 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 			side = engine.BUY
 		}
 
-		// Trade size based on deviation magnitude (stronger signal = larger trade)
-		sizeMultiplier := math.Min(math.Abs(zScore) / m.config.TriggerSigma, 2.0) // Cap at 2x
+		// Trade size based on deviation magnitude and volatility
+		// Scale trade size by how many sigmas we're trading at relative to threshold
+		// More extreme moves get larger trades, but cap at reasonable levels
+		sigmaRatio := math.Abs(zScore) / m.config.TriggerSigma
+		// Scale: at threshold (1.0x) = base size, at 2x threshold = 1.5x size, cap at 2x
+		sizeMultiplier := math.Min(1.0 + (sigmaRatio - 1.0) * 0.5, 2.0)
 		size := new(big.Int).Mul(m.config.MaxTradeSize, big.NewInt(int64(sizeMultiplier * 100)))
 		size.Div(size, big.NewInt(100))
 

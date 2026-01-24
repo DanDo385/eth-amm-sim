@@ -102,6 +102,22 @@ func (s *Server) Start(addr string) error {
 
 // Stop gracefully shuts down the server
 func (s *Server) Stop(ctx context.Context) error {
+	// Close all WebSocket connections
+	s.clientsMu.Lock()
+	clientCount := len(s.clients)
+	for client := range s.clients {
+		client.Close()
+		delete(s.clients, client)
+	}
+	s.clientsMu.Unlock()
+	if clientCount > 0 {
+		log.Printf("Closed %d WebSocket connection(s)", clientCount)
+	}
+	
+	// Close broadcast channel (this will stop the broadcast goroutine)
+	close(s.broadcast)
+	
+	// Shutdown HTTP server
 	return s.httpServer.Shutdown(ctx)
 }
 

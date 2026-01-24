@@ -181,37 +181,38 @@ func init() {
 
 		// ═══════════════════════════════════════════════════════════════
 		// MEAN REVERSION (Index 4-6)
-		// Fade extreme price moves, different time horizons
+		// Fade extreme price moves, different volatility thresholds
+		// Lower sigma = more sensitive, trades more frequently with smaller sizes
 		// ═══════════════════════════════════════════════════════════════
 		{
 			Index:          4,
 			Nickname:       "MeanRev1",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(50),
+			MaxTradeSize:   eth(40), // Smaller size for more frequent 1.0 std trades
 			MaxPosition:    eth(300),
-			LookbackBlocks: 10, // Short window
-			TriggerSigma:   2.0,
+			LookbackBlocks: 20,  // Medium lookback window
+			TriggerSigma:   1.0, // Most sensitive - trades at 1 std deviation
 		},
 		{
 			Index:          5,
 			Nickname:       "MeanRev2",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(75),
+			MaxTradeSize:   eth(60), // Medium size for 1.25 std trades
 			MaxPosition:    eth(400),
-			LookbackBlocks: 25, // Medium window
-			TriggerSigma:   2.25,
+			LookbackBlocks: 20,   // Medium lookback window
+			TriggerSigma:   1.25, // Medium sensitivity
 		},
 		{
 			Index:          6,
 			Nickname:       "MeanRev3",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(100),
+			MaxTradeSize:   eth(80), // Larger size for less frequent 1.5 std trades
 			MaxPosition:    eth(500),
-			LookbackBlocks: 50, // Long window
-			TriggerSigma:   2.5,
+			LookbackBlocks: 20,  // Medium lookback window
+			TriggerSigma:   1.5, // Least sensitive - trades at 1.5 std deviation
 		},
 
 		// ═══════════════════════════════════════════════════════════════
