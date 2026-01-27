@@ -142,9 +142,9 @@ func (s *Server) handleGetCandles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetTrades(w http.ResponseWriter, r *http.Request) {
-	// Optional limit parameter
+	// Optional limit parameter - default to 1000 to capture full sessions
 	limitStr := r.URL.Query().Get("limit")
-	limit := 100
+	limit := 1000 // Increased default to capture all trades in a session
 	if limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l

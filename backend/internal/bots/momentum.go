@@ -11,6 +11,8 @@ import (
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/metrics"
+	"eth-amm-sim/internal/store"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -18,12 +20,13 @@ import (
 type MomentumBot struct {
 	*BaseBot
 	privateKey   *ecdsa.PrivateKey
-	priceProvider PriceProvider
+	priceProvider metrics.PriceProvider
 	lastSignalPrice float64 // Track last price when signal fired to prevent duplicate trades
+	lastCheckedPrice float64 // Track last price we checked for signals
 }
 
 // NewMomentumBot creates a new momentum bot
-func NewMomentumBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider PriceProvider) *MomentumBot {
+func NewMomentumBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *MomentumBot {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -31,7 +34,7 @@ func NewMomentumBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 	}
 
 	return &MomentumBot{
-		BaseBot:      NewBaseBot(cfg, executor),
+		BaseBot:      NewBaseBot(cfg, executor, store),
 		privateKey:   privateKey,
 		priceProvider: priceProvider,
 	}
@@ -51,6 +54,18 @@ func (m *MomentumBot) Run(ctx context.Context) {
 			log.Printf("[%s] Momentum bot stopped", m.Nickname())
 			return
 		default:
+			// Check if stopped out
+			if m.IsStoppedOut() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-m.stopCh:
+					return
+				case <-time.After(10 * time.Second):
+				}
+				continue
+			}
+			
 			// Check price every few seconds
 			delay := m.RandomDelay()
 			select {
@@ -61,12 +76,22 @@ func (m *MomentumBot) Run(ctx context.Context) {
 			case <-time.After(delay):
 			}
 
+			// Get current price first
+			currentPrice := m.priceProvider.GetCurrentPrice()
+			if currentPrice == 0 {
+				continue // No price data yet
+			}
+
+			// Skip signal checking if price hasn't changed since last check
+			// This prevents flooding logs with repeated signal detections
+			if currentPrice == m.lastCheckedPrice {
+				continue
+			}
+			m.lastCheckedPrice = currentPrice
+
 			// Check if we should trade based on momentum signal
 			side, size := m.checkMomentumSignal()
 			if side != nil && size != nil && size.Sign() > 0 {
-				// Get current price to check if we've already traded on this signal
-				currentPrice := m.priceProvider.GetCurrentPrice()
-				
 				// Only execute if price has changed since last signal (prevent duplicate trades)
 				if currentPrice != m.lastSignalPrice {
 					// Check balance before attempting trade
@@ -83,15 +108,22 @@ func (m *MomentumBot) Run(ctx context.Context) {
 // checkMomentumSignal checks if price has moved significantly (trend detection)
 // Returns (side, size) if signal detected, (nil, nil) otherwise
 func (m *MomentumBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
-	// Get price history
+	// Get price history - require at least lookback+1, but allow trading with less
+	// Minimum 3 prices needed (current, previous, lookback)
 	prices := m.priceProvider.GetRecentPrices(m.config.LookbackBlocks + 1)
-	if len(prices) < m.config.LookbackBlocks+1 {
-		// Not enough history yet
+	minRequired := 3
+	if len(prices) < minRequired {
 		return nil, nil
+	}
+	
+	// If we don't have full lookback, use what we have (makes bots start trading sooner)
+	lookback := m.config.LookbackBlocks
+	if len(prices) < lookback+1 {
+		lookback = len(prices) - 1
 	}
 
 	currentPrice := prices[len(prices)-1]
-	lookbackPrice := prices[len(prices)-1-m.config.LookbackBlocks]
+	lookbackPrice := prices[len(prices)-1-lookback]
 
 	// Calculate percent change
 	priceChange := (currentPrice - lookbackPrice) / lookbackPrice

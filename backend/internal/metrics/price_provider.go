@@ -1,9 +1,13 @@
-// Package bots provides price data access for trading bots
-package bots
+// Package metrics provides market and performance analytics
+package metrics
 
-import (
-	"eth-amm-sim/internal/store"
-)
+// PriceDataStore defines the interface for accessing price data
+// This interface breaks the import cycle between metrics and store packages
+type PriceDataStore interface {
+	GetCandles() []Candle
+	GetTWAP() float64
+	GetVolatility() float64
+}
 
 // PriceProvider gives bots access to price history
 type PriceProvider interface {
@@ -13,13 +17,13 @@ type PriceProvider interface {
 	GetVolatility() float64
 }
 
-// StorePriceProvider wraps MemoryStore to provide price data
+// StorePriceProvider wraps a PriceDataStore to provide price data
 type StorePriceProvider struct {
-	store *store.MemoryStore
+	store PriceDataStore
 }
 
-// NewPriceProvider creates a price provider from a store
-func NewPriceProvider(s *store.MemoryStore) PriceProvider {
+// NewPriceProvider creates a price provider from a price data store
+func NewPriceProvider(s PriceDataStore) PriceProvider {
 	return &StorePriceProvider{store: s}
 }
 

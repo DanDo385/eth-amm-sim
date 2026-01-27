@@ -13,7 +13,7 @@ import (
 type NonceManager struct {
 	mu      sync.Mutex
 	client  *Client
-	nonces  map[common.Address]uint64
+	nonces  map[common.Address]uint64 // tracks nonces for each address
 	pending map[common.Address]uint64 // tracks pending nonces
 }
 
@@ -21,8 +21,8 @@ type NonceManager struct {
 func NewNonceManager(client *Client) *NonceManager {
 	return &NonceManager{
 		client:  client,
-		nonces:  make(map[common.Address]uint64),
-		pending: make(map[common.Address]uint64),
+		nonces:  make(map[common.Address]uint64), // tracks nonces for each address
+		pending: make(map[common.Address]uint64), // tracks pending nonces for each address
 	}
 }
 

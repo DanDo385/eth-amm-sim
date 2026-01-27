@@ -10,6 +10,7 @@ import (
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/store"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -20,7 +21,7 @@ type RetailBot struct {
 }
 
 // NewRetailBot creates a new retail bot
-func NewRetailBot(cfg *config.AccountConfig, executor *engine.Executor) *RetailBot {
+func NewRetailBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) *RetailBot {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -28,7 +29,7 @@ func NewRetailBot(cfg *config.AccountConfig, executor *engine.Executor) *RetailB
 	}
 
 	return &RetailBot{
-		BaseBot:    NewBaseBot(cfg, executor),
+		BaseBot:    NewBaseBot(cfg, executor, store),
 		privateKey: privateKey,
 	}
 }
@@ -46,6 +47,18 @@ func (r *RetailBot) Run(ctx context.Context) {
 			log.Printf("[%s] Retail bot stopped", r.Nickname())
 			return
 		default:
+			// Check if stopped out
+			if r.IsStoppedOut() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-r.stopCh:
+					return
+				case <-time.After(10 * time.Second):
+				}
+				continue
+			}
+			
 			// Wait random interval from config (2-5 seconds)
 			delay := r.RandomDelay()
 			select {

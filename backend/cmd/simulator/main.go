@@ -18,6 +18,7 @@ import (
 	"eth-amm-sim/internal/chain"
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/metrics"
 	"eth-amm-sim/internal/server"
 	"eth-amm-sim/internal/store"
 
@@ -93,10 +94,10 @@ func main() {
 	memStore := store.NewMemoryStore()
 	
 	// Create price provider for strategy bots
-	priceProvider := bots.NewPriceProvider(memStore)
+	priceProvider := metrics.NewPriceProvider(memStore)
 	
 	// Create bots using config-driven approach
-	createBots(executor, orchestrator, priceProvider)
+	createBots(executor, orchestrator, priceProvider, memStore)
 	
 	// Initialize account metrics
 	initializeAccountMetrics(memStore)
@@ -155,16 +156,27 @@ func main() {
 	}
 	
 	serverErrCh := make(chan error, 1)
+	shuttingDown := make(chan struct{})
+	
 	go func() {
 		log.Printf("Starting server on %s", addr)
-		if err := srv.Start(addr); err != nil {
-			// Only send error if it's not the expected shutdown error
-			if !errors.Is(err, http.ErrServerClosed) {
-				select {
-				case serverErrCh <- err:
-				default:
-					// Channel might be closed if we're shutting down
-				}
+		err := srv.Start(addr)
+		
+		// Check if we're shutting down first - if so, ignore all errors
+		select {
+		case <-shuttingDown:
+			// We're shutting down, ignore all errors (including ErrServerClosed)
+			return
+		default:
+		}
+		
+		// Only send error if it's not the expected shutdown error and we're not shutting down
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			select {
+			case serverErrCh <- err:
+			case <-shuttingDown:
+				// We started shutting down while trying to send error, ignore it
+				return
 			}
 		}
 	}()
@@ -174,6 +186,8 @@ func main() {
 	// Wait for shutdown signal or server error
 	select {
 	case <-sigCh:
+		close(shuttingDown) // Signal that we're shutting down
+		
 		log.Println("\n=== Shutting down gracefully ===")
 		log.Println("Stopping active sessions...")
 		
@@ -202,6 +216,12 @@ func main() {
 		}
 		
 		log.Println("=== Shutdown complete ===")
+		
+		// Exit with code 0 to indicate successful shutdown
+		// Give goroutines a moment to finish, then exit cleanly
+		time.Sleep(200 * time.Millisecond)
+		
+		// Explicitly exit with code 0
 		os.Exit(0)
 		
 	case err := <-serverErrCh:
@@ -211,7 +231,7 @@ func main() {
 }
 
 // createBots creates all trading bots based on config
-func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, priceProvider bots.PriceProvider) {
+func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, priceProvider metrics.PriceProvider, store *store.MemoryStore) {
 	for _, acc := range config.Accounts {
 		var bot bots.Bot
 
@@ -221,19 +241,19 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 			continue
 
 		case config.BotTypeWhale:
-			bot = bots.NewWhaleBot(&acc, executor)
+			bot = bots.NewWhaleBot(&acc, executor, store)
 
 		case config.BotTypeRetail:
-			bot = bots.NewRetailBot(&acc, executor)
+			bot = bots.NewRetailBot(&acc, executor, store)
 
 		case config.BotTypeMeanRev:
-			bot = bots.NewMeanRevBot(&acc, executor, priceProvider)
+			bot = bots.NewMeanRevBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeMomentum:
-			bot = bots.NewMomentumBot(&acc, executor, priceProvider)
+			bot = bots.NewMomentumBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeLeverage:
-			bot = bots.NewLeverageBot(&acc, executor, priceProvider)
+			bot = bots.NewLeverageBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeLiquidator:
 			// Phase 2 - not yet implemented

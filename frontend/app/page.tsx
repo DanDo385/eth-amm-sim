@@ -23,18 +23,18 @@ export default function Dashboard() {
   const [priceRange, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
   const sessionStartRef = useRef<string | undefined>(undefined);
 
-  // Clear trades and refresh data when a new session starts or when session is reset
+  // Track session start and handle reset
   useEffect(() => {
     if (session.startedAt && session.startedAt !== sessionStartRef.current) {
-      // New session started - clear trades and refresh all data
+      // New session started - track start time but DON'T clear trades yet
+      // Trades will accumulate throughout the session
       sessionStartRef.current = session.startedAt;
-      setTrades([]);
       refreshPriceData(); // Refresh LP metrics and candles
     } else if (session.status === 'idle' || !session.startedAt) {
       // Session is idle/reset - clear trades, events, and refresh LP metrics
       if (sessionStartRef.current !== undefined) {
         sessionStartRef.current = undefined;
-        setTrades([]);
+        setTrades([]); // Clear trades only on reset
         setEvents([]); // Clear Key Events on reset
         refreshPriceData(); // Refresh LP metrics to get current state
       }
@@ -62,9 +62,8 @@ export default function Dashboard() {
         break;
       case 'trade':
         setTrades((prev) => {
-          // Keep only last 100 trades to prevent memory issues
-          const newTrades = [...prev.slice(-99), message.data as Trade];
-          return newTrades;
+          // Append new trade - no limit, trades accumulate throughout session
+          return [...prev, message.data as Trade];
         });
         break;
       case 'trades':
@@ -89,7 +88,8 @@ export default function Dashboard() {
 
   // Fetch initial data
   useEffect(() => {
-    api.getTrades(50).then(setTrades).catch(console.error);
+    // Fetch more trades to ensure we get all session trades
+    api.getTrades(1000).then(setTrades).catch(console.error);
     api.getEvents(20).then(setEvents).catch(console.error);
     api.getImpactCurve().then(setImpactData).catch(console.error);
   }, []);
@@ -137,7 +137,11 @@ export default function Dashboard() {
         {/* Center Column - Charts */}
         <div className="col-span-12 lg:col-span-6 space-y-6">
           <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
-          <ImpactCurve buyData={impactData.buy} sellData={impactData.sell} />
+          <ImpactCurve 
+            buyData={impactData.buy} 
+            sellData={impactData.sell} 
+            currentPrice={lpMetrics?.currentPrice}
+          />
         </div>
 
         {/* Right Column - Blotter & Events */}

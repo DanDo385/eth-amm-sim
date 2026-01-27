@@ -11,6 +11,8 @@ import (
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/metrics"
+	"eth-amm-sim/internal/store"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -19,12 +21,13 @@ import (
 type LeverageBot struct {
 	*BaseBot
 	privateKey   *ecdsa.PrivateKey
-	priceProvider PriceProvider
+	priceProvider metrics.PriceProvider
 	lastSignalPrice float64 // Track last price when signal fired
+	lastCheckedPrice float64 // Track last price we checked for signals
 }
 
 // NewLeverageBot creates a new leverage bot
-func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider PriceProvider) *LeverageBot {
+func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *LeverageBot {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -32,7 +35,7 @@ func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 	}
 
 	return &LeverageBot{
-		BaseBot:      NewBaseBot(cfg, executor),
+		BaseBot:      NewBaseBot(cfg, executor, store),
 		privateKey:   privateKey,
 		priceProvider: priceProvider,
 	}
@@ -51,6 +54,18 @@ func (l *LeverageBot) Run(ctx context.Context) {
 			log.Printf("[%s] Leverage bot stopped", l.Nickname())
 			return
 		default:
+			// Check if stopped out
+			if l.IsStoppedOut() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-l.stopCh:
+					return
+				case <-time.After(10 * time.Second):
+				}
+				continue
+			}
+			
 			// Trade more frequently with leverage
 			// Higher leverage = more aggressive trading
 			baseDelay := 5 // Base delay in seconds
@@ -68,13 +83,23 @@ func (l *LeverageBot) Run(ctx context.Context) {
 			case <-time.After(delay):
 			}
 
+			// Get current price first
+			currentPrice := l.priceProvider.GetCurrentPrice()
+			if currentPrice == 0 {
+				continue // No price data yet
+			}
+
+			// Skip signal checking if price hasn't changed since last check
+			// This prevents flooding logs with repeated signal detections
+			if currentPrice == l.lastCheckedPrice {
+				continue
+			}
+			l.lastCheckedPrice = currentPrice
+
 			// Simple momentum-based strategy for leverage traders
 			// They chase trends more aggressively
 			side, size := l.checkLeverageSignal()
 			if side != nil && size != nil && size.Sign() > 0 {
-				// Get current price to check if we've already traded on this signal
-				currentPrice := l.priceProvider.GetCurrentPrice()
-				
 				// Only execute if price has changed since last signal
 				if currentPrice != l.lastSignalPrice {
 					// Check balance before attempting trade
@@ -94,8 +119,16 @@ func (l *LeverageBot) checkLeverageSignal() (*engine.TradeSide, *big.Int) {
 	// Get recent prices (shorter lookback for leverage traders)
 	lookback := 5 // Look back 5 candles
 	prices := l.priceProvider.GetRecentPrices(lookback + 1)
-	if len(prices) < lookback+1 {
+	
+	// Minimum 3 prices needed (current, previous, lookback)
+	minRequired := 3
+	if len(prices) < minRequired {
 		return nil, nil
+	}
+	
+	// Adjust lookback if we don't have enough data
+	if len(prices) < lookback+1 {
+		lookback = len(prices) - 1
 	}
 
 	currentPrice := prices[len(prices)-1]

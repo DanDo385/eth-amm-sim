@@ -5,10 +5,10 @@ import type { Trade } from '@/types';
 
 interface BlotterProps {
   trades: Trade[];
-  maxRows?: number;
+  maxRows?: number; // Optional limit, undefined means show all trades
 }
 
-export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
+export function Blotter({ trades, maxRows }: BlotterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   
@@ -20,9 +20,12 @@ export function Blotter({ trades, maxRows = 50 }: BlotterProps) {
     prevLengthRef.current = trades.length;
   }, [trades.length]);
   
-  // Memoize display trades to prevent unnecessary recalculations
+  // Memoize display trades - show all if maxRows not specified, otherwise limit
   const displayTrades = useMemo(() => {
-    return trades.slice(-maxRows);
+    if (maxRows === undefined || maxRows <= 0) {
+      return trades; // Show all trades
+    }
+    return trades.slice(-maxRows); // Show last N trades
   }, [trades, maxRows]);
 
   const formatAmount = (amount: string | undefined) => {

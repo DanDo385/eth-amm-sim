@@ -10,6 +10,7 @@ import (
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/store"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -20,7 +21,7 @@ type WhaleBot struct {
 }
 
 // NewWhaleBot creates a new whale bot
-func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor) *WhaleBot {
+func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) *WhaleBot {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -28,7 +29,7 @@ func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor) *WhaleBot
 	}
 
 	return &WhaleBot{
-		BaseBot:    NewBaseBot(cfg, executor),
+		BaseBot:    NewBaseBot(cfg, executor, store),
 		privateKey: privateKey,
 	}
 }
@@ -46,6 +47,19 @@ func (w *WhaleBot) Run(ctx context.Context) {
 			log.Printf("[%s] Whale bot stopped", w.Nickname())
 			return
 		default:
+			// Check if stopped out
+			if w.IsStoppedOut() {
+				// Sleep longer when stopped out, but keep checking
+				select {
+				case <-ctx.Done():
+					return
+				case <-w.stopCh:
+					return
+				case <-time.After(10 * time.Second):
+				}
+				continue
+			}
+			
 			// Wait random interval from config
 			delay := w.RandomDelay()
 			select {

@@ -37,6 +37,11 @@ contract AppleAMM is ReentrancyGuard {
     uint256 public constant FEE_NUMERATOR = 30;
     uint256 public constant FEE_DENOMINATOR = 10000;
     
+    // Virtual reserves multiplier: increases effective liquidity for smoother price action
+    // 1.5x = 150/100, 2x = 200/100
+    uint256 public constant VIRTUAL_RESERVE_NUMERATOR = 150; // 1.5x virtual liquidity
+    uint256 public constant VIRTUAL_RESERVE_DENOMINATOR = 100;
+    
     // Track fees for metrics
     uint256 public totalFeesApple;
     uint256 public totalFeesETH;
@@ -257,12 +262,14 @@ contract AppleAMM is ReentrancyGuard {
     }
     
     /**
-     * @notice Calculate output amount for a given input (constant product formula)
+     * @notice Calculate output amount for a given input (constant product formula with virtual reserves)
      * @param amountIn Input amount (after fee deduction)
      * @param reserveIn Reserve of input token
      * @param reserveOut Reserve of output token
      * @return amountOut Output amount
-     * @dev Uses x * y = k formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+     * @dev Uses x * y = k formula with virtual reserves for smoother price action
+     *      Virtual reserves increase effective liquidity, reducing price impact
+     *      amountOut = (amountIn * virtualReserveOut) / (virtualReserveIn + amountIn)
      */
     function getAmountOut(
         uint256 amountIn,
@@ -272,13 +279,18 @@ contract AppleAMM is ReentrancyGuard {
         require(amountIn > 0, "AppleAMM: insufficient input amount");
         require(reserveIn > 0 && reserveOut > 0, "AppleAMM: insufficient liquidity");
         
-        // Constant product formula
-        // newReserveIn = reserveIn + amountIn
-        // newReserveOut = k / newReserveIn = (reserveIn * reserveOut) / (reserveIn + amountIn)
-        // amountOut = reserveOut - newReserveOut
+        // Apply virtual reserves multiplier to increase effective liquidity
+        // This makes the curve smoother (less price impact for same trade size)
+        uint256 virtualReserveIn = (reserveIn * VIRTUAL_RESERVE_NUMERATOR) / VIRTUAL_RESERVE_DENOMINATOR;
+        uint256 virtualReserveOut = (reserveOut * VIRTUAL_RESERVE_NUMERATOR) / VIRTUAL_RESERVE_DENOMINATOR;
         
-        uint256 numerator = amountIn * reserveOut;
-        uint256 denominator = reserveIn + amountIn;
+        // Constant product formula with virtual reserves
+        // newVirtualReserveIn = virtualReserveIn + amountIn
+        // newVirtualReserveOut = k / newVirtualReserveIn = (virtualReserveIn * virtualReserveOut) / (virtualReserveIn + amountIn)
+        // amountOut = virtualReserveOut - newVirtualReserveOut
+        
+        uint256 numerator = amountIn * virtualReserveOut;
+        uint256 denominator = virtualReserveIn + amountIn;
         amountOut = numerator / denominator;
     }
     

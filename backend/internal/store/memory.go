@@ -14,7 +14,7 @@ import (
 
 // MemoryStore holds all simulation state in memory
 type MemoryStore struct {
-	mu sync.RWMutex
+	mu sync.RWMutex 
 	
 	// Price metrics
 	priceMetrics *metrics.PriceMetrics

@@ -2,29 +2,35 @@
 package bots
 
 import (
+	"log"
 	"math/big"
 	"math/rand"
 	"time"
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
+	"eth-amm-sim/internal/store"
 )
 
 // BaseBot contains common functionality for all bots
 type BaseBot struct {
-	config   *config.AccountConfig
-	executor *engine.Executor
-	stopCh   chan struct{}
-	rng      *rand.Rand
+	config     *config.AccountConfig
+	executor   *engine.Executor
+	store      *store.MemoryStore
+	stopCh     chan struct{}
+	rng        *rand.Rand
+	stoppedOut bool // Track if we've been stopped out
 }
 
 // NewBaseBot creates a new base bot
-func NewBaseBot(cfg *config.AccountConfig, executor *engine.Executor) *BaseBot {
+func NewBaseBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) *BaseBot {
 	return &BaseBot{
-		config:   cfg,
-		executor: executor,
-		stopCh:   make(chan struct{}),
-		rng:      rand.New(rand.NewSource(time.Now().UnixNano() + int64(cfg.Index))),
+		config:     cfg,
+		executor:   executor,
+		store:      store,
+		stopCh:     make(chan struct{}),
+		rng:        rand.New(rand.NewSource(time.Now().UnixNano() + int64(cfg.Index))),
+		stoppedOut: false,
 	}
 }
 
@@ -80,4 +86,36 @@ func (b *BaseBot) Config() *config.AccountConfig {
 // Executor returns the bot's executor
 func (b *BaseBot) Executor() *engine.Executor {
 	return b.executor
+}
+
+// IsStoppedOut checks if the bot should stop trading due to losses
+func (b *BaseBot) IsStoppedOut() bool {
+	if b.stoppedOut {
+		return true // Already stopped out
+	}
+	
+	if b.store == nil || b.config.StopOutPercent >= 0 {
+		return false // No stop-out configured or invalid value (only negative makes sense)
+	}
+	
+	metrics := b.store.GetAccountMetrics(b.Nickname())
+	if metrics == nil {
+		return false // No metrics yet, can't check
+	}
+	
+	perf := metrics.GetPerformance()
+	
+	// Calculate return percentage
+	// TotalReturn is already a percentage, so divide by 100 to get decimal
+	returnPercent := perf.TotalReturn / 100.0
+	
+	// Stop out if loss exceeds threshold (e.g., -20% when stopOutPercent = -0.20)
+	if returnPercent <= b.config.StopOutPercent {
+		b.stoppedOut = true
+		log.Printf("[%s] ⚠️ STOPPED OUT: Loss %.2f%% exceeded threshold %.1f%%", 
+			b.Nickname(), perf.TotalReturn, b.config.StopOutPercent*100)
+		return true
+	}
+	
+	return false
 }

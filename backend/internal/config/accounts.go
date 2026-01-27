@@ -38,13 +38,17 @@ type AccountConfig struct {
 	TradeFreqMax int      // Maximum seconds between trades
 
 	// Strategy-specific parameters
-	LookbackBlocks int     // For meanrev/momentum: blocks to look back
-	TriggerSigma   float64 // For meanrev: standard deviations to trigger
-	TriggerPercent float64 // For momentum: percent move to trigger (0.03 = 3%)
+	LookbackBlocks int       // For meanrev/momentum: blocks to look back
+	TriggerSigma   float64   // For meanrev: standard deviations to trigger (deprecated, use TriggerLevels)
+	TriggerLevels  []float64 // For meanrev: multiple sigma levels to trade at (e.g., [1.0, 1.5, 2.0])
+	TriggerPercent float64   // For momentum: percent move to trigger (0.03 = 3%)
 
 	// Leverage parameters (Phase 2)
 	Leverage   int      // Leverage multiplier (5, 10, 25)
 	Collateral *big.Int // ETH collateral for leveraged positions
+
+	// Risk management
+	StopOutPercent float64 // Stop trading if PnL reaches this % of initial capital (e.g., -0.20 = -20%, 0 = disabled)
 }
 
 // Anvil's deterministic addresses from default mnemonic:
@@ -153,66 +157,67 @@ func init() {
 			Nickname:       "Whale1",
 			Type:           BotTypeWhale,
 			StartingApples: eth(1000), // Already long, tends to sell
-			MaxTradeSize:   eth(500),
+			MaxTradeSize:   eth(600),  // Increased from 500
 			MaxPosition:    eth(2000),
-			TradeFreqMin:   15,
-			TradeFreqMax:   30,
+			TradeFreqMin:   12, // More frequent (down from 15)
+			TradeFreqMax:   25, // More frequent (down from 30)
 		},
 		{
 			Index:          2,
 			Nickname:       "Whale2",
 			Type:           BotTypeWhale,
-			StartingApples: eth(0), // Flat, tends to buy
-			MaxTradeSize:   eth(500),
+			StartingApples: eth(0),   // Flat, tends to buy
+			MaxTradeSize:   eth(600), // Increased from 500
 			MaxPosition:    eth(2000),
-			TradeFreqMin:   15,
-			TradeFreqMax:   30,
+			TradeFreqMin:   12, // More frequent (down from 15)
+			TradeFreqMax:   25, // More frequent (down from 30)
 		},
 		{
 			Index:          3,
 			Nickname:       "Whale3",
 			Type:           BotTypeWhale,
 			StartingApples: eth(500), // Partial position, opportunistic
-			MaxTradeSize:   eth(300),
+			MaxTradeSize:   eth(400), // Increased from 300
 			MaxPosition:    eth(1500),
-			TradeFreqMin:   15,
-			TradeFreqMax:   30,
+			TradeFreqMin:   12, // More frequent (down from 15)
+			TradeFreqMax:   25, // More frequent (down from 30)
 		},
 
 		// ═══════════════════════════════════════════════════════════════
 		// MEAN REVERSION (Index 4-6)
 		// Fade extreme price moves, different volatility thresholds
 		// Lower sigma = more sensitive, trades more frequently with smaller sizes
+		// Shorter lookback windows allow faster startup and more responsive trading
 		// ═══════════════════════════════════════════════════════════════
 		{
 			Index:          4,
 			Nickname:       "MeanRev1",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(40), // Smaller size for more frequent 1.0 std trades
+			MaxTradeSize:   eth(50), // Increased from 40 - scales with level
 			MaxPosition:    eth(300),
-			LookbackBlocks: 20,  // Medium lookback window
-			TriggerSigma:   1.0, // Most sensitive - trades at 1 std deviation
+			LookbackBlocks: 10,                       // Shorter window for faster startup (~20 seconds)
+			TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Multiple levels: trades at 1.0, 1.5, and 2.0 std deviations
 		},
 		{
 			Index:          5,
 			Nickname:       "MeanRev2",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(60), // Medium size for 1.25 std trades
+			MaxTradeSize:   eth(75), // Increased from 60 - scales with level
 			MaxPosition:    eth(400),
-			LookbackBlocks: 20,   // Medium lookback window
-			TriggerSigma:   1.25, // Medium sensitivity
+			LookbackBlocks: 10,                          // Shorter window for faster startup
+			TriggerLevels:  []float64{1.25, 1.75, 2.25}, // Multiple levels: trades at 1.25, 1.75, and 2.25 std deviations
 		},
 		{
 			Index:          6,
 			Nickname:       "MeanRev3",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(80), // Larger size for less frequent 1.5 std trades
+			MaxTradeSize:   eth(100), // Increased from 80 - scales with level
 			MaxPosition:    eth(500),
-			LookbackBlocks: 20,  // Medium lookback window
-			TriggerSigma:   1.5, // Least sensitive - trades at 1.5 std deviation
+			LookbackBlocks: 10,                       // Shorter window for faster startup
+			TriggerLevels:  []float64{1.5, 2.0, 2.5}, // Multiple levels: trades at 1.5, 2.0, and 2.5 std deviations
 		},
 
 		// ═══════════════════════════════════════════════════════════════
@@ -224,30 +229,33 @@ func init() {
 			Nickname:       "Momentum1",
 			Type:           BotTypeMomentum,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(50),
+			MaxTradeSize:   eth(65), // Increased from 50
 			MaxPosition:    eth(300),
 			LookbackBlocks: 10,
-			TriggerPercent: 0.03, // 3% move triggers
+			TriggerPercent: 0.03,  // 3% move triggers
+			StopOutPercent: -0.20, // Stop trading if down 20%
 		},
 		{
 			Index:          8,
 			Nickname:       "Momentum2",
 			Type:           BotTypeMomentum,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(75),
+			MaxTradeSize:   eth(95), // Increased from 75
 			MaxPosition:    eth(400),
 			LookbackBlocks: 20,
-			TriggerPercent: 0.05, // 5% move triggers
+			TriggerPercent: 0.05,  // 5% move triggers
+			StopOutPercent: -0.25, // Stop trading if down 25%
 		},
 		{
 			Index:          9,
 			Nickname:       "Momentum3",
 			Type:           BotTypeMomentum,
 			StartingApples: eth(100),
-			MaxTradeSize:   eth(100),
+			MaxTradeSize:   eth(125), // Increased from 100
 			MaxPosition:    eth(500),
 			LookbackBlocks: 30,
-			TriggerPercent: 0.07, // 7% move triggers
+			TriggerPercent: 0.07,  // 7% move triggers
+			StopOutPercent: -0.30, // Stop trading if down 30%
 		},
 	}
 
@@ -261,10 +269,10 @@ func init() {
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
 			StartingApples: eth(20),
-			MaxTradeSize:   eth(10),
+			MaxTradeSize:   eth(15), // Increased from 10
 			MaxPosition:    eth(100),
-			TradeFreqMin:   2,
-			TradeFreqMax:   5,
+			TradeFreqMin:   1, // More frequent (down from 2)
+			TradeFreqMax:   4, // More frequent (down from 5)
 		})
 	}
 
@@ -280,6 +288,7 @@ func init() {
 			StartingApples: eth(0),
 			Collateral:     eth(200), // 200 ETH collateral
 			Leverage:       5,        // 5x = 1000 ETH notional max
+			StopOutPercent: -0.15,    // Stop trading if down 15% (tighter for leverage)
 		},
 		{
 			Index:          26,
@@ -288,6 +297,7 @@ func init() {
 			StartingApples: eth(0),
 			Collateral:     eth(100), // 100 ETH collateral
 			Leverage:       10,       // 10x = 1000 ETH notional max
+			StopOutPercent: -0.12,    // Stop trading if down 12% (tighter for higher leverage)
 		},
 		{
 			Index:          27,
@@ -296,6 +306,7 @@ func init() {
 			StartingApples: eth(0),
 			Collateral:     eth(40), // 40 ETH collateral
 			Leverage:       25,      // 25x = 1000 ETH notional max
+			StopOutPercent: -0.10,   // Stop trading if down 10% (tightest for highest leverage)
 		},
 	}...)
 

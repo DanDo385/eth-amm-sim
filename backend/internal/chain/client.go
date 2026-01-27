@@ -13,9 +13,9 @@ import (
 
 // Client wraps the go-ethereum client with helper methods
 type Client struct {
-	*ethclient.Client
-	rpcURL  string
-	chainID *big.Int
+	*ethclient.Client 
+	rpcURL  string // the RPC URL for the chain
+	chainID *big.Int // the chain ID
 }
 
 // NewClient creates a new chain client

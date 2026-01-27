@@ -7,10 +7,11 @@ import type { ImpactPoint } from '@/types';
 interface ImpactCurveProps {
   buyData: ImpactPoint[];
   sellData: ImpactPoint[];
+  currentPrice?: number; // Current spot price to center y-axis
   height?: number;
 }
 
-export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProps) {
+export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: ImpactCurveProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const buySeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -92,16 +93,23 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
 
   // Update data
   useEffect(() => {
-    if (!buySeriesRef.current || !sellSeriesRef.current || !chartRef.current || buyData.length === 0 || sellData.length === 0) return;
-
-    // Get current spot price (should be the same for all points)
-    const spotPrice = buyData[0]?.spotPrice || sellData[0]?.spotPrice || 1.0;
+    if (!buySeriesRef.current || !sellSeriesRef.current || !chartRef.current) return;
+    
+    // Use provided currentPrice, or fallback to data spot price, or default
+    const spotPrice = currentPrice || buyData[0]?.spotPrice || sellData[0]?.spotPrice || 1.0;
+    
+    // If no data, clear the chart but keep it visible
+    if (buyData.length === 0 && sellData.length === 0) {
+      buySeriesRef.current.setData([]);
+      sellSeriesRef.current.setData([]);
+      return;
+    }
     
     // Convert to chart format
     // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
     // Y-axis: Execution Price (ETH per APPL) - centered at spot price
     const buyChartData: LineData[] = buyData
-      .filter(p => p.tradeSize <= 200) // Only show up to +200
+      .filter(p => p.tradeSize > 0 && p.tradeSize <= 200 && p.executePrice > 0) // Only show valid data up to +200
       .map((p) => ({
         time: p.tradeSize as Time, // Positive for buys
         value: p.executePrice, // Execution price on y-axis
@@ -109,7 +117,7 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
       .sort((a, b) => Number(a.time) - Number(b.time)); // Ensure ascending order
 
     const sellChartData: LineData[] = sellData
-      .filter(p => p.tradeSize <= 250) // Only show up to 250 (will be negated)
+      .filter(p => p.tradeSize > 0 && p.tradeSize <= 250 && p.executePrice > 0) // Only show valid data up to 250
       .map((p) => ({
         time: -p.tradeSize as Time, // Negative for sells (centered at 0)
         value: p.executePrice, // Execution price on y-axis
@@ -117,20 +125,24 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
       .sort((a, b) => Number(a.time) - Number(b.time)); // Ensure ascending order (e.g., -250, -200, -100, -50, -1)
 
     // Calculate price range from all execution prices
-    const allPrices = [...buyChartData.map(d => d.value), ...sellChartData.map(d => d.value)];
-    const minPrice = Math.min(...allPrices);
-    const maxPrice = Math.max(...allPrices);
+    const allPrices = buyChartData.length > 0 || sellChartData.length > 0
+      ? [...buyChartData.map(d => d.value), ...sellChartData.map(d => d.value)]
+      : [spotPrice];
     
-    // Center the range around spot price
+    const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : spotPrice;
+    const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : spotPrice;
+    
+    // Center the range around spot price (current market price)
     // Calculate deviation from spot price
     const maxDeviation = Math.max(
       Math.abs(maxPrice - spotPrice),
       Math.abs(minPrice - spotPrice)
     );
     
-    // Set y-axis range centered at spot price with ±20% margin or actual deviation, whichever is larger
-    const margin = Math.max(maxDeviation * 1.2, spotPrice * 0.2); // At least 20% of spot price
-    const yAxisMin = Math.max(0, spotPrice - margin);
+    // Set y-axis range centered at spot price
+    // Use at least 10% margin on each side, or actual deviation + 20% padding, whichever is larger
+    const margin = Math.max(maxDeviation * 1.2, spotPrice * 0.1);
+    const yAxisMin = Math.max(0.01, spotPrice - margin); // Minimum 0.01 to avoid zero
     const yAxisMax = spotPrice + margin;
 
     // Ensure both series use the same price scale
@@ -194,16 +206,24 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
       }
     }
 
+    // Set data for both series
     buySeriesRef.current.setData(buyChartData);
     sellSeriesRef.current.setData(sellChartData);
     
-    // Update price scale centered at spot price
+    // Update price scale centered at spot price (current market price)
     if (chartRef.current) {
-      chartRef.current.priceScale('right').applyOptions({
-        autoScale: false,
-        minValue: yAxisMin,
-        maxValue: yAxisMax,
-      });
+      const priceScale = chartRef.current.priceScale('right');
+      if (priceScale) {
+        priceScale.applyOptions({
+          autoScale: false,
+          minValue: yAxisMin,
+          maxValue: yAxisMax,
+          scaleMargins: {
+            top: 0.1,
+            bottom: 0.1,
+          },
+        });
+      }
       
       // Always ensure x-axis range stays constant at -250 to +200
       const timeScale = chartRef.current.timeScale();
@@ -214,11 +234,11 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
             to: 200 as Time,
           });
         } catch (e) {
-          // Ignore errors if timeScale is not ready
+          // Ignore errors if timeScale is not ready - will retry on next update
         }
       }
     }
-  }, [buyData, sellData]);
+  }, [buyData, sellData, currentPrice]);
 
   return (
     <div className="bg-surface rounded-lg border border-border overflow-hidden">
@@ -237,7 +257,7 @@ export function ImpactCurve({ buyData, sellData, height = 200 }: ImpactCurveProp
       </div>
       <div ref={containerRef} />
       <div className="px-4 py-2 text-xs text-gray-400 text-center border-t border-border">
-        Price Impact: Execution Price (centered at spot) vs Trade Size (ETH)
+        Price Impact: Execution Price (centered at {currentPrice ? currentPrice.toFixed(4) : 'spot'} ETH/APPL) vs Trade Size (ETH)
       </div>
     </div>
   );
