@@ -47,18 +47,6 @@ func (r *RetailBot) Run(ctx context.Context) {
 			log.Printf("[%s] Retail bot stopped", r.Nickname())
 			return
 		default:
-			// Check if stopped out
-			if r.IsStoppedOut() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-r.stopCh:
-					return
-				case <-time.After(10 * time.Second):
-				}
-				continue
-			}
-			
 			// Wait random interval from config (2-5 seconds)
 			delay := r.RandomDelay()
 			select {

@@ -7,7 +7,7 @@ import type { ImpactPoint } from '@/types';
 interface ImpactCurveProps {
   buyData: ImpactPoint[];
   sellData: ImpactPoint[];
-  currentPrice?: number; // Current spot price to center y-axis
+  currentPrice?: number; // Current spot price from metrics
   height?: number;
 }
 
@@ -34,7 +34,7 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
       height,
       rightPriceScale: {
         borderColor: '#2d3748',
-        autoScale: true, // Auto-scale for y-axis (execution price)
+        autoScale: true,
         scaleMargins: {
           top: 0.1,
           bottom: 0.1,
@@ -44,14 +44,12 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
         visible: false,
       },
       timeScale: {
-        visible: true, // Make time scale visible for custom formatting
-        timeVisible: false, // Hide default time labels
+        visible: true,
+        timeVisible: false,
         secondsVisible: false,
         rightOffset: 10,
-        lockVisibleTimeRangeOnResize: true, // Keep range constant
-        // Custom formatter for x-axis to show trade sizes
-        tickMarkFormatter: (time: Time, tickMarkType: number, locale: string) => {
-          // 'time' here is our tradeSize (negative for sells, positive for buys)
+        lockVisibleTimeRangeOnResize: true,
+        tickMarkFormatter: (time: Time) => {
           const size = Number(time);
           return size >= 0 ? `+${size}` : `${size}`;
         },
@@ -74,8 +72,6 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
     buySeriesRef.current = buySeries;
     sellSeriesRef.current = sellSeries;
 
-    // Note: setVisibleRange will be called after data is loaded in the update effect
-
     // Handle resize
     const handleResize = () => {
       if (containerRef.current) {
@@ -95,10 +91,15 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
   useEffect(() => {
     if (!buySeriesRef.current || !sellSeriesRef.current || !chartRef.current) return;
     
-    // Use provided currentPrice, or fallback to data spot price, or default
-    const spotPrice = currentPrice || buyData[0]?.spotPrice || sellData[0]?.spotPrice || 1.0;
+    // Use currentPrice from metrics as the reference spot price
+    if (!currentPrice || currentPrice <= 0) {
+      // If no current price, clear chart
+      buySeriesRef.current.setData([]);
+      sellSeriesRef.current.setData([]);
+      return;
+    }
     
-    // If no data, clear the chart but keep it visible
+    // If no data, clear the chart
     if (buyData.length === 0 && sellData.length === 0) {
       buySeriesRef.current.setData([]);
       sellSeriesRef.current.setData([]);
@@ -107,43 +108,36 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
     
     // Convert to chart format
     // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
-    // Y-axis: Execution Price (ETH per APPL) - centered at spot price
+    // Y-axis: Execution Price (ETH per APPL) - absolute price
     const buyChartData: LineData[] = buyData
-      .filter(p => p.tradeSize > 0 && p.tradeSize <= 200 && p.executePrice > 0) // Only show valid data up to +200
+      .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
       .map((p) => ({
         time: p.tradeSize as Time, // Positive for buys
         value: p.executePrice, // Execution price on y-axis
       }))
-      .sort((a, b) => Number(a.time) - Number(b.time)); // Ensure ascending order
+      .sort((a, b) => Number(a.time) - Number(b.time));
 
     const sellChartData: LineData[] = sellData
-      .filter(p => p.tradeSize > 0 && p.tradeSize <= 250 && p.executePrice > 0) // Only show valid data up to 250
+      .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
       .map((p) => ({
-        time: -p.tradeSize as Time, // Negative for sells (centered at 0)
+        time: -p.tradeSize as Time, // Negative for sells
         value: p.executePrice, // Execution price on y-axis
       }))
-      .sort((a, b) => Number(a.time) - Number(b.time)); // Ensure ascending order (e.g., -250, -200, -100, -50, -1)
+      .sort((a, b) => Number(a.time) - Number(b.time));
 
     // Calculate price range from all execution prices
     const allPrices = buyChartData.length > 0 || sellChartData.length > 0
       ? [...buyChartData.map(d => d.value), ...sellChartData.map(d => d.value)]
-      : [spotPrice];
+      : [currentPrice];
     
-    const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : spotPrice;
-    const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : spotPrice;
+    const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : currentPrice;
+    const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : currentPrice;
     
-    // Center the range around spot price (current market price)
-    // Calculate deviation from spot price
-    const maxDeviation = Math.max(
-      Math.abs(maxPrice - spotPrice),
-      Math.abs(minPrice - spotPrice)
-    );
-    
-    // Set y-axis range centered at spot price
-    // Use at least 10% margin on each side, or actual deviation + 20% padding, whichever is larger
-    const margin = Math.max(maxDeviation * 1.2, spotPrice * 0.1);
-    const yAxisMin = Math.max(0.01, spotPrice - margin); // Minimum 0.01 to avoid zero
-    const yAxisMax = spotPrice + margin;
+    // Calculate y-axis range with padding
+    const priceRange = maxPrice - minPrice;
+    const padding = Math.max(priceRange * 0.1, currentPrice * 0.05); // 10% of range or 5% of current price
+    const yAxisMin = Math.max(0.01, minPrice - padding);
+    const yAxisMax = maxPrice + padding;
 
     // Ensure both series use the same price scale
     buySeriesRef.current.applyOptions({
@@ -154,52 +148,30 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
       priceScaleId: 'right',
     });
 
-    // Set y-axis scale centered at spot price
-    if (chartRef.current) {
-      const timeScale = chartRef.current.timeScale();
-      if (!timeScale) return; // Safety check
-      
-      // Always center y-axis at spot price with calculated range
-      chartRef.current.priceScale('right').applyOptions({
-        autoScale: false,
-        minValue: yAxisMin,
-        maxValue: yAxisMax,
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
-      });
-      
-      // Configure time scale to show trade sizes
+    // Set x-axis range to -500 to +500
+    const timeScale = chartRef.current.timeScale();
+    if (timeScale) {
       timeScale.applyOptions({
         visible: true,
-        timeVisible: false, // Hide default time labels
+        timeVisible: false,
         secondsVisible: false,
         rightOffset: 10,
-        lockVisibleTimeRangeOnResize: true, // Keep range constant
-        // Custom formatter for x-axis to show trade sizes
-        tickMarkFormatter: (time: Time, tickMarkType: number, locale: string) => {
-          // 'time' here is our tradeSize (negative for sells, positive for buys)
-          const size = Number(time);
-          return size >= 0 ? `+${size}` : `${size}`;
-        },
+        lockVisibleTimeRangeOnResize: true,
       });
-      
-      // Set x-axis to show -250 to +200 centered at 0 (current price)
-      // This must be set AFTER applyOptions and after data is set
+
       try {
         timeScale.setVisibleRange({
-          from: -250 as Time,
-          to: 200 as Time,
+          from: -500 as Time,
+          to: 500 as Time,
         });
       } catch (e) {
-        // If setVisibleRange fails, try again after a short delay
+        // Retry after short delay if timeScale is not ready
         setTimeout(() => {
           const ts = chartRef.current?.timeScale();
           if (ts) {
             ts.setVisibleRange({
-              from: -250 as Time,
-              to: 200 as Time,
+              from: -500 as Time,
+              to: 500 as Time,
             });
           }
         }, 100);
@@ -209,35 +181,6 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
     // Set data for both series
     buySeriesRef.current.setData(buyChartData);
     sellSeriesRef.current.setData(sellChartData);
-    
-    // Update price scale centered at spot price (current market price)
-    if (chartRef.current) {
-      const priceScale = chartRef.current.priceScale('right');
-      if (priceScale) {
-        priceScale.applyOptions({
-          autoScale: false,
-          minValue: yAxisMin,
-          maxValue: yAxisMax,
-          scaleMargins: {
-            top: 0.1,
-            bottom: 0.1,
-          },
-        });
-      }
-      
-      // Always ensure x-axis range stays constant at -250 to +200
-      const timeScale = chartRef.current.timeScale();
-      if (timeScale) {
-        try {
-          timeScale.setVisibleRange({
-            from: -250 as Time,
-            to: 200 as Time,
-          });
-        } catch (e) {
-          // Ignore errors if timeScale is not ready - will retry on next update
-        }
-      }
-    }
   }, [buyData, sellData, currentPrice]);
 
   return (
@@ -257,7 +200,7 @@ export function ImpactCurve({ buyData, sellData, currentPrice, height = 200 }: I
       </div>
       <div ref={containerRef} />
       <div className="px-4 py-2 text-xs text-gray-400 text-center border-t border-border">
-        Price Impact: Execution Price (centered at {currentPrice ? currentPrice.toFixed(4) : 'spot'} ETH/APPL) vs Trade Size (ETH)
+        Execution Price (ETH/APPL) vs Trade Size (ETH) | Reference: {currentPrice ? currentPrice.toFixed(4) : 'N/A'} ETH/APPL
       </div>
     </div>
   );

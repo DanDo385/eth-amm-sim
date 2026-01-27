@@ -5,12 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/store"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gorilla/mux"
 )
 
@@ -177,4 +181,200 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 	
 	events := s.store.GetRecentEvents(limit)
 	respondJSON(w, events)
+}
+
+// User trading handlers
+
+func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	
+	// Parse request body
+	var req struct {
+		EthAmount string `json:"ethAmount"` // Amount in ETH (will be converted to wei)
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	// Get user account (index 29)
+	userAccount := config.GetAccountByIndex(29)
+	if userAccount == nil {
+		respondError(w, http.StatusInternalServerError, "user account not found")
+		return
+	}
+	
+	// Parse ETH amount and convert to wei
+	ethAmountFloat, err := strconv.ParseFloat(strings.TrimSpace(req.EthAmount), 64)
+	if err != nil || ethAmountFloat <= 0 {
+		respondError(w, http.StatusBadRequest, "invalid ETH amount")
+		return
+	}
+	
+	// Convert ETH to wei (multiply by 1e18)
+	ethAmountWei := new(big.Float).SetFloat64(ethAmountFloat)
+	ethAmountWei.Mul(ethAmountWei, big.NewFloat(1e18))
+	ethAmount, _ := ethAmountWei.Int(nil)
+	
+	// Check balance
+	userAddr := userAccount.Address()
+	ethBalance, err := s.executor.GetETHBalance(ctx, userAddr)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get balance: %v", err))
+		return
+	}
+	
+	// Reserve some ETH for gas (0.01 ETH)
+	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1))
+	required := new(big.Int).Add(ethAmount, gasReserve)
+	
+	if ethBalance.Cmp(required) < 0 {
+		respondError(w, http.StatusBadRequest, "insufficient ETH balance")
+		return
+	}
+	
+	// Load private key
+	privateKeyHex := userAccount.PrivateKey()
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load private key")
+		return
+	}
+	
+	// Execute trade
+	txHash, err := s.executor.SwapETHForApples(ctx, privateKey, ethAmount)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("trade failed: %v", err))
+		return
+	}
+	
+	// Get updated balances
+	ethBalanceAfter, _ := s.executor.GetETHBalance(ctx, userAddr)
+	appleBalance, _ := s.executor.GetAPPLBalance(ctx, userAddr)
+	
+	respondJSON(w, map[string]interface{}{
+		"txHash":        txHash,
+		"ethAmount":     ethAmount.String(),
+		"ethBalance":    ethBalanceAfter.String(),
+		"appleBalance":  appleBalance.String(),
+		"status":        "success",
+	})
+}
+
+func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	
+	// Parse request body
+	var req struct {
+		AppleAmount string `json:"appleAmount"` // Amount in APPL (will be converted to wei)
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	// Get user account (index 29)
+	userAccount := config.GetAccountByIndex(29)
+	if userAccount == nil {
+		respondError(w, http.StatusInternalServerError, "user account not found")
+		return
+	}
+	
+	// Parse APPL amount and convert to wei
+	appleAmountFloat, err := strconv.ParseFloat(strings.TrimSpace(req.AppleAmount), 64)
+	if err != nil || appleAmountFloat <= 0 {
+		respondError(w, http.StatusBadRequest, "invalid APPL amount")
+		return
+	}
+	
+	// Convert APPL to wei (multiply by 1e18)
+	appleAmountWei := new(big.Float).SetFloat64(appleAmountFloat)
+	appleAmountWei.Mul(appleAmountWei, big.NewFloat(1e18))
+	appleAmount, _ := appleAmountWei.Int(nil)
+	
+	// Check balance
+	userAddr := userAccount.Address()
+	appleBalance, err := s.executor.GetAPPLBalance(ctx, userAddr)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get balance: %v", err))
+		return
+	}
+	
+	if appleBalance.Cmp(appleAmount) < 0 {
+		respondError(w, http.StatusBadRequest, "insufficient APPL balance")
+		return
+	}
+	
+	// Check ETH for gas
+	ethBalance, err := s.executor.GetETHBalance(ctx, userAddr)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get ETH balance: %v", err))
+		return
+	}
+	
+	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
+	if ethBalance.Cmp(gasReserve) < 0 {
+		respondError(w, http.StatusBadRequest, "insufficient ETH for gas")
+		return
+	}
+	
+	// Load private key
+	privateKeyHex := userAccount.PrivateKey()
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load private key")
+		return
+	}
+	
+	// Execute trade
+	txHash, err := s.executor.SwapApplesForETH(ctx, privateKey, appleAmount)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("trade failed: %v", err))
+		return
+	}
+	
+	// Get updated balances
+	ethBalanceAfter, _ := s.executor.GetETHBalance(ctx, userAddr)
+	appleBalanceAfter, _ := s.executor.GetAPPLBalance(ctx, userAddr)
+	
+	respondJSON(w, map[string]interface{}{
+		"txHash":        txHash,
+		"appleAmount":   appleAmount.String(),
+		"ethBalance":    ethBalanceAfter.String(),
+		"appleBalance":  appleBalanceAfter.String(),
+		"status":        "success",
+	})
+}
+
+func (s *Server) handleGetUserBalance(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	
+	// Get user account (index 29)
+	userAccount := config.GetAccountByIndex(29)
+	if userAccount == nil {
+		respondError(w, http.StatusInternalServerError, "user account not found")
+		return
+	}
+	
+	userAddr := userAccount.Address()
+	
+	// Get balances
+	ethBalance, err := s.executor.GetETHBalance(ctx, userAddr)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get ETH balance: %v", err))
+		return
+	}
+	
+	appleBalance, err := s.executor.GetAPPLBalance(ctx, userAddr)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get APPL balance: %v", err))
+		return
+	}
+	
+	respondJSON(w, map[string]interface{}{
+		"ethBalance":   ethBalance.String(),
+		"appleBalance": appleBalance.String(),
+	})
 }

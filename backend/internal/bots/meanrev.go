@@ -1,4 +1,5 @@
 // Package bots contains the mean reversion bot implementation
+// Refactored to use EWMA on liquidity-normalized log returns for AMM-correct mean reversion
 package bots
 
 import (
@@ -8,6 +9,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"sync"
 	"time"
 
 	"eth-amm-sim/internal/config"
@@ -17,17 +19,31 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// MeanRevBot fades extreme price moves
+// MeanRevBot implements AMM-correct mean reversion using EWMA on liquidity-normalized log returns
+// 
+// Key differences from price-level mean reversion:
+// - Uses log returns (r = ln(priceAfter/priceBefore)) for stationarity
+// - Normalizes by trade flow (q = dX/reserveX) to account for AMM price impact
+// - Uses EWMA instead of rolling windows for adaptive statistics
+// - Observes all trades except own trades (external market flow only)
 type MeanRevBot struct {
 	*BaseBot
 	privateKey   *ecdsa.PrivateKey
 	priceProvider metrics.PriceProvider
-	lastSignalPrice float64 // Track last price when signal fired
-	lastCheckedPrice float64 // Track last price we checked for signals
+	store        *store.MemoryStore
+	
+	// EWMA state for liquidity-normalized returns
+	ewmaState *metrics.EWMAState
+	
+	// Trading state
 	tradedLevels map[float64]bool // Track which sigma levels we've traded at (key is abs(zScore))
+	lastZ        float64           // Last z-score (for zero-crossing detection)
+	lastRTilde   float64           // Most recent rTilde (for recalculating z-score)
+	
+	mu sync.RWMutex // Mutex for thread-safe access to trading state
 }
 
-// NewMeanRevBot creates a new mean reversion bot
+// NewMeanRevBot creates a new mean reversion bot with EWMA
 func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *MeanRevBot {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
@@ -35,25 +51,75 @@ func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, pricePr
 		panic("invalid private key for " + cfg.Nickname)
 	}
 
-	return &MeanRevBot{
+	// Initialize EWMA state with configured half-life
+	halfLifeTrades := cfg.HalfLifeTrades
+	if halfLifeTrades <= 0 {
+		halfLifeTrades = 50 // Default half-life
+	}
+	ewmaState := metrics.NewEWMAState(halfLifeTrades)
+
+	bot := &MeanRevBot{
 		BaseBot:      NewBaseBot(cfg, executor, store),
 		privateKey:   privateKey,
 		priceProvider: priceProvider,
+		store:        store,
+		ewmaState:    ewmaState,
 		tradedLevels: make(map[float64]bool),
+		lastZ:        0,
 	}
+	
+	// Subscribe to trade flow events (will receive all trades except own)
+	tradeFlowTracker := store.GetTradeFlowTracker()
+	tradeFlowTracker.Subscribe(bot)
+	
+	return bot
+}
+
+// GetNickname returns the bot's nickname (required for TradeFlowSubscriber interface)
+func (m *MeanRevBot) GetNickname() string {
+	return m.Nickname()
+}
+
+// OnTradeFlow is called when an external trade occurs (not this bot's own trade)
+// This is where we update EWMA statistics and check for trading signals
+func (m *MeanRevBot) OnTradeFlow(event metrics.TradeFlowEvent) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	// Update EWMA statistics with new rTilde observation
+	m.ewmaState.UpdateEWMA(event.RTilde)
+	
+	// Store most recent rTilde for z-score recalculation
+	m.lastRTilde = event.RTilde
+	
+	// Calculate z-score: z = (rTilde - mu) / sigma
+	zScore := m.ewmaState.GetZScore(event.RTilde)
+	
+	// Check for zero-crossing (for MeanRev2/3 reset logic)
+	// Reset traded levels when z-score crosses zero (sign change)
+	if m.lastZ != 0 {
+		if (m.lastZ > 0 && zScore <= 0) || (m.lastZ < 0 && zScore >= 0) {
+			// Zero crossing detected - reset traded levels
+			m.tradedLevels = make(map[float64]bool)
+		}
+	}
+	m.lastZ = zScore
+	
+	// Check if we should trade based on z-score thresholds
+	// This will be checked in the Run loop
 }
 
 // Run starts the mean reversion bot trading loop
 func (m *MeanRevBot) Run(ctx context.Context) {
-	// Log trigger levels if available, otherwise fallback to TriggerSigma
+	// Log configuration
 	var levelStr string
 	if len(m.config.TriggerLevels) > 0 {
 		levelStr = fmt.Sprintf("levels: %v", m.config.TriggerLevels)
 	} else {
 		levelStr = fmt.Sprintf("sigma: %.2f", m.config.TriggerSigma)
 	}
-	log.Printf("[%s] MeanRev bot started (lookback: %d, %s)", 
-		m.Nickname(), m.config.LookbackBlocks, levelStr)
+	log.Printf("[%s] MeanRev bot started (EWMA half-life: %d trades, %s)", 
+		m.Nickname(), m.config.HalfLifeTrades, levelStr)
 
 	for {
 		select {
@@ -64,19 +130,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 			log.Printf("[%s] MeanRev bot stopped", m.Nickname())
 			return
 		default:
-			// Check if stopped out
-			if m.IsStoppedOut() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-m.stopCh:
-					return
-				case <-time.After(10 * time.Second):
-				}
-				continue
-			}
-			
-			// Check price every few seconds
+			// Check for trading signals periodically
 			delay := m.RandomDelay()
 			select {
 			case <-ctx.Done():
@@ -86,49 +140,21 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 			case <-time.After(delay):
 			}
 
-			// Get current price first
-			currentPrice := m.priceProvider.GetCurrentPrice()
-			if currentPrice == 0 {
-				continue // No price data yet
-			}
-
-			// Skip signal checking if price hasn't changed since last check
-			// This prevents flooding logs with repeated signal detections
-			if currentPrice == m.lastCheckedPrice {
-				continue
-			}
-			m.lastCheckedPrice = currentPrice
-
-			// Check if we should trade based on mean reversion signal
+			// Check if we should trade based on current EWMA z-score
 			side, size := m.checkMeanReversionSignal()
 			if side != nil && size != nil && size.Sign() > 0 {
-				// Only execute if price has changed since last signal
-				if currentPrice != m.lastSignalPrice {
-					// Check balance before attempting trade
-					if m.hasSufficientBalance(ctx, *side, size) {
-						m.executeTrade(ctx, *side, size)
-						m.lastSignalPrice = currentPrice
-					}
-				}
-			} else {
-				// If no signal, check if price has moved back toward mean
-				// Reset traded levels if price crosses back through mean (allows re-trading)
-				// This allows the bot to trade again if price moves away from mean again
-				prices := m.priceProvider.GetRecentPrices(m.config.LookbackBlocks)
-				if len(prices) >= 5 {
-					mean := 0.0
-					for _, p := range prices {
-						mean += p
-					}
-					mean /= float64(len(prices))
+				// Check balance before attempting trade
+				if m.hasSufficientBalance(ctx, *side, size) {
+					m.executeTrade(ctx, *side, size)
 					
-					// If price crosses back through mean (changes sign of deviation), reset traded levels
-					// This allows the bot to trade at levels again if price moves away in opposite direction
-					prevDeviation := m.lastSignalPrice - mean
-					currentDeviation := currentPrice - mean
-					if (prevDeviation > 0 && currentDeviation <= 0) || (prevDeviation < 0 && currentDeviation >= 0) {
-						// Price crossed mean - reset traded levels to allow trading again
+					// MeanRev1: Reset EWMA after each executed trade (fast reset)
+					// MeanRev2/3: Keep EWMA, only reset traded levels (already done on zero-crossing)
+					if m.config.HalfLifeTrades <= 60 { // MeanRev1 threshold
+						m.ewmaState.ResetEWMA()
+						m.mu.Lock()
 						m.tradedLevels = make(map[float64]bool)
+						m.lastZ = 0
+						m.mu.Unlock()
 					}
 				}
 			}
@@ -136,56 +162,31 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 	}
 }
 
-// checkMeanReversionSignal checks if price has deviated significantly from mean
+// checkMeanReversionSignal checks if z-score has crossed a trigger level
 // Returns (side, size) if signal detected, (nil, nil) otherwise
 func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
-	// Get price history - use requested lookback or available data
-	prices := m.priceProvider.GetRecentPrices(m.config.LookbackBlocks)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	
-	// Require minimum 5 price points to calculate meaningful statistics
-	// This allows bots to start trading much sooner (~10 seconds instead of 40+)
-	minRequired := 5
-	if len(prices) < minRequired {
+	// Recalculate z-score using most recent rTilde and current EWMA state
+	// This ensures z-score is always relative to current statistics
+	zScore := m.ewmaState.GetZScore(m.lastRTilde)
+	absZScore := math.Abs(zScore)
+	
+	// Require minimum trades observed before trading
+	// This ensures EWMA statistics are meaningful
+	if m.ewmaState.GetTradeCount() < 5 {
 		return nil, nil
 	}
 	
-	// Use available prices (may be less than requested lookback)
-	// This makes bots more responsive and allows earlier trading
-
-	currentPrice := prices[len(prices)-1]
-	
-	// Calculate mean and standard deviation
-	mean := 0.0
-	for _, p := range prices {
-		mean += p
-	}
-	mean /= float64(len(prices))
-
-	// Calculate standard deviation
-	variance := 0.0
-	for _, p := range prices {
-		variance += math.Pow(p-mean, 2)
-	}
-	variance /= float64(len(prices))
-	stdDev := math.Sqrt(variance)
-
-	if stdDev == 0 {
-		return nil, nil // No volatility
-	}
-
-	// Calculate z-score (how many standard deviations from mean)
-	zScore := (currentPrice - mean) / stdDev
-	absZScore := math.Abs(zScore)
-
-	// Get trigger levels - use TriggerLevels if available, otherwise fallback to TriggerSigma
+	// Get trigger levels
 	var triggerLevels []float64
 	if len(m.config.TriggerLevels) > 0 {
 		triggerLevels = m.config.TriggerLevels
 	} else if m.config.TriggerSigma > 0 {
-		// Fallback to single TriggerSigma for backward compatibility
 		triggerLevels = []float64{m.config.TriggerSigma}
 	} else {
-		return nil, nil // No trigger levels configured
+		return nil, nil
 	}
 
 	// Check each trigger level to see if we should trade
@@ -194,7 +195,6 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	for _, level := range triggerLevels {
 		if absZScore >= level {
 			// Check if we've already traded at this level
-			// Use a small tolerance (0.1 std) to account for price movement
 			levelKey := math.Floor(level * 10) / 10 // Round to 0.1 precision
 			if !m.tradedLevels[levelKey] {
 				if level > bestLevel {
@@ -208,27 +208,26 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	if bestLevel > 0 {
 		var side engine.TradeSide
 		if zScore > 0 {
-			// Price is above mean - sell (fade the move)
+			// Positive z-score: price moved up (rTilde > mu) - sell (fade the move)
 			side = engine.SELL
 		} else {
-			// Price is below mean - buy (fade the move)
+			// Negative z-score: price moved down (rTilde < mu) - buy (fade the move)
 			side = engine.BUY
 		}
 
-		// Trade size scales with level - more extreme levels get larger trades
-		// Base size at lowest level, scales up for higher levels
-		baseLevel := triggerLevels[0]
-		levelMultiplier := 1.0 + (bestLevel - baseLevel) * 0.3 // 30% increase per level
-		sizeMultiplier := math.Min(levelMultiplier, 2.5) // Cap at 2.5x
-		size := new(big.Int).Mul(m.config.MaxTradeSize, big.NewInt(int64(sizeMultiplier * 100)))
-		size.Div(size, big.NewInt(100))
-
+		// Trade size: use MaxTradeSize (fixed size, not percentage-based)
+		// For BUY: size is in ETH
+		// For SELL: we'll convert to APPL in executeTrade
+		size := new(big.Int).Set(m.config.MaxTradeSize)
+		
 		// Mark this level as traded
 		levelKey := math.Floor(bestLevel * 10) / 10
 		m.tradedLevels[levelKey] = true
 
-		log.Printf("[%s] MeanRev signal: z-score=%.2f, price=%.6f, mean=%.6f, level=%.2f std, side=%s", 
-			m.Nickname(), zScore, currentPrice, mean, bestLevel, side)
+		mu := m.ewmaState.GetMu()
+		sigma := m.ewmaState.GetSigma()
+		log.Printf("[%s] MeanRev signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, side=%s", 
+			m.Nickname(), zScore, mu, sigma, bestLevel, side)
 
 		return &side, size
 	}
@@ -237,7 +236,6 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 }
 
 // hasSufficientBalance checks if the bot has enough balance for the trade
-// Note: For SELL trades, we don't check APPL balance - bots can build short positions over time
 func (m *MeanRevBot) hasSufficientBalance(ctx context.Context, side engine.TradeSide, size *big.Int) bool {
 	addr := crypto.PubkeyToAddress(m.privateKey.PublicKey)
 	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
@@ -250,12 +248,25 @@ func (m *MeanRevBot) hasSufficientBalance(ctx context.Context, side engine.Trade
 		required := new(big.Int).Add(size, gasReserve)
 		return ethBalance.Cmp(required) >= 0
 	} else {
-		// For SELL: Only check ETH for gas (allow short positions)
+		// For SELL: Check APPL balance
+		appleBalance, err := m.executor.GetAPPLBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
 		ethBalance, err := m.executor.GetETHBalance(ctx, addr)
 		if err != nil {
 			return false
 		}
-		return ethBalance.Cmp(gasReserve) >= 0
+		// Convert ETH size to APPL equivalent for balance check
+		currentPrice := m.priceProvider.GetCurrentPrice()
+		if currentPrice == 0 {
+			return false
+		}
+		sizeFloat := new(big.Float).SetInt(size)
+		priceFloat := big.NewFloat(currentPrice)
+		appleNeeded := new(big.Float).Quo(sizeFloat, priceFloat)
+		appleNeededInt, _ := appleNeeded.Int(nil)
+		return appleBalance.Cmp(appleNeededInt) >= 0 && ethBalance.Cmp(gasReserve) >= 0
 	}
 }
 
@@ -267,7 +278,19 @@ func (m *MeanRevBot) executeTrade(ctx context.Context, side engine.TradeSide, si
 	if side == engine.BUY {
 		txHash, err = m.executor.SwapETHForApples(ctx, m.privateKey, size)
 	} else {
-		txHash, err = m.executor.SwapApplesForETH(ctx, m.privateKey, size)
+		// For SELL: size is already in APPL (MaxTradeSize represents APPL for SELL)
+		// But we need to convert MaxTradeSize (ETH) to APPL equivalent
+		currentPrice := m.priceProvider.GetCurrentPrice()
+		if currentPrice == 0 {
+			log.Printf("[%s] Cannot execute SELL: no price data", m.Nickname())
+			return
+		}
+		// Convert ETH size to APPL: appleAmount = ethAmount / price
+		sizeFloat := new(big.Float).SetInt(size)
+		priceFloat := big.NewFloat(currentPrice)
+		appleAmount := new(big.Float).Quo(sizeFloat, priceFloat)
+		appleAmountInt, _ := appleAmount.Int(nil)
+		txHash, err = m.executor.SwapApplesForETH(ctx, m.privateKey, appleAmountInt)
 	}
 
 	if err != nil {
@@ -276,5 +299,15 @@ func (m *MeanRevBot) executeTrade(ctx context.Context, side engine.TradeSide, si
 	}
 
 	log.Printf("[%s] ✓ MeanRev trade executed: %s (%s, size: %s)", 
-		m.Nickname(), txHash[:10]+"...", side, formatEther(size))
+		m.Nickname(), txHash[:10]+"...", side, formatEtherMeanRev(size))
+}
+
+// formatEtherMeanRev formats a big.Int as ETH with 4 decimal places
+func formatEtherMeanRev(wei *big.Int) string {
+	if wei == nil {
+		return "0.0000"
+	}
+	eth := new(big.Float).SetInt(wei)
+	eth.Quo(eth, big.NewFloat(1e18))
+	return fmt.Sprintf("%.4f", eth)
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"log"
 	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Bot interface for all trading bots (defined here to avoid import cycles)
@@ -17,7 +19,8 @@ type Bot interface {
 // Orchestrator manages all bot goroutines
 type Orchestrator struct {
 	bots      []Bot
-	wg        sync.WaitGroup
+	eg        *errgroup.Group
+	egCtx     context.Context
 	cancel    context.CancelFunc
 	isRunning bool
 	mu        sync.RWMutex
@@ -43,13 +46,18 @@ func (o *Orchestrator) Start(ctx context.Context) {
 	}
 	
 	// Wait for any previous goroutines to finish
-	o.mu.Unlock()
-	o.wg.Wait()
-	o.mu.Lock()
+	if o.eg != nil {
+		o.mu.Unlock()
+		o.eg.Wait() // Wait for previous errgroup to finish
+		o.mu.Lock()
+	}
 	
 	o.isRunning = true
 	sessionCtx, cancel := context.WithCancel(ctx)
 	o.cancel = cancel
+	
+	// Create new errgroup with session context
+	o.eg, o.egCtx = errgroup.WithContext(sessionCtx)
 	
 	bots := make([]Bot, len(o.bots))
 	copy(bots, o.bots)
@@ -58,11 +66,17 @@ func (o *Orchestrator) Start(ctx context.Context) {
 	log.Printf("Orchestrator starting %d bots", len(bots))
 
 	for _, bot := range bots {
-		o.wg.Add(1)
-		go func(b Bot) {
-			defer o.wg.Done()
-			b.Run(sessionCtx)
-		}(bot)
+		bot := bot // Capture loop variable
+		o.eg.Go(func() error {
+			// Bot.Run doesn't return an error, but we can detect panics
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[%s] Bot panicked: %v", bot.Nickname(), r)
+				}
+			}()
+			bot.Run(o.egCtx)
+			return nil // Bots don't return errors, they run until context cancelled
+		})
 	}
 }
 
@@ -84,6 +98,7 @@ func (o *Orchestrator) Stop() {
 
 	bots := make([]Bot, len(o.bots))
 	copy(bots, o.bots)
+	eg := o.eg
 	o.mu.Unlock()
 
 	// Stop all bots
@@ -92,7 +107,11 @@ func (o *Orchestrator) Stop() {
 	}
 
 	// Wait for all goroutines to finish
-	o.wg.Wait()
+	if eg != nil {
+		if err := eg.Wait(); err != nil {
+			log.Printf("Error waiting for bots: %v", err)
+		}
+	}
 	log.Println("All bots stopped")
 }
 

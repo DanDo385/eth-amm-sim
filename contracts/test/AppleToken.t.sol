@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/AppleToken.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title AppleToken Tests
@@ -51,7 +52,7 @@ contract AppleTokenTest is Test {
     
     function test_MintOnlyOwner() public {
         vm.prank(alice);
-        vm.expectRevert("AppleToken: caller is not the owner");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
         token.mint(alice, 100 ether);
     }
     
@@ -71,7 +72,7 @@ contract AppleTokenTest is Test {
         assertEq(token.owner(), alice);
         
         // Old owner can't mint
-        vm.expectRevert("AppleToken: caller is not the owner");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
         token.mint(bob, 100 ether);
         
         // New owner can mint
@@ -81,7 +82,7 @@ contract AppleTokenTest is Test {
     }
     
     function test_TransferOwnershipZeroAddress() public {
-        vm.expectRevert("AppleToken: new owner is the zero address");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         token.transferOwnership(address(0));
     }
 }

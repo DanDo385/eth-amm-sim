@@ -37,17 +37,16 @@ type AccountConfig struct {
 	TradeFreqMax int      // Maximum seconds between trades
 
 	// Strategy-specific parameters
-	LookbackBlocks int       // For meanrev: blocks to look back
+	LookbackBlocks int       // For meanrev: blocks to look back (deprecated, replaced by EWMA)
 	TriggerSigma   float64   // For meanrev: standard deviations to trigger (deprecated, use TriggerLevels)
-	TriggerLevels  []float64 // For meanrev: multiple sigma levels to trade at (e.g., [1.0, 1.5, 2.0])
+	TriggerLevels  []float64 // For meanrev: multiple sigma levels to trade at (e.g., [0.75, 1.0, 1.25])
 	TriggerPercent float64   // Deprecated: was used for momentum bots
+	HalfLifeTrades int       // For meanrev: EWMA half-life in trades (decay parameter, e.g., 50 = weight decays to 50% after 50 trades)
 
 	// Leverage parameters (Phase 2)
-	Leverage   int      // Leverage multiplier (5, 10, 25)
-	Collateral *big.Int // ETH collateral for leveraged positions
-
-	// Risk management
-	StopOutPercent float64 // Stop trading if PnL reaches this % of initial capital (e.g., -0.20 = -20%, 0 = disabled)
+	Leverage          int      // Leverage multiplier (5, 10, 25)
+	Collateral        *big.Int // ETH collateral for leveraged positions
+	LiquidationThreshold float64 // Liquidation threshold (e.g., 0.8 = liquidate at 80% of collateral)
 }
 
 // Anvil's deterministic addresses from default mnemonic:
@@ -128,9 +127,12 @@ func eth(n int64) *big.Int {
 var Accounts []AccountConfig
 
 // Pool configuration
+// Deep, highly liquid pool: 1M ETH / 10K APPL
+// Initial price = 100 ETH/APPL
+// Pool depth ensures price movement driven by aggregate flow rather than individual trades
 var (
-	PoolApples = eth(1000) // LP deposits 1000 APPLES
-	PoolETH    = eth(1000) // LP deposits 1000 ETH
+	PoolApples = eth(10000)  // LP deposits 10,000 APPLES
+	PoolETH    = eth(1000000) // LP deposits 1,000,000 ETH
 )
 
 func init() {
@@ -143,7 +145,7 @@ func init() {
 			Index:          0,
 			Nickname:       "LP",
 			Type:           BotTypeLP,
-			StartingApples: eth(2000), // 1000 for pool + 1000 extra
+			StartingApples: eth(10000), // 10,000 for pool (owns the AMM reserves)
 			// LP doesn't trade, so no trading params needed
 		},
 
@@ -165,7 +167,7 @@ func init() {
 			Index:          2,
 			Nickname:       "Whale2",
 			Type:           BotTypeWhale,
-			StartingApples: eth(0),   // Flat, tends to buy
+			StartingApples: eth(700), // Enough APPL to sell (was 0)
 			MaxTradeSize:   eth(600), // Increased from 500
 			MaxPosition:    eth(2000),
 			TradeFreqMin:   12, // More frequent (down from 15)
@@ -184,39 +186,42 @@ func init() {
 
 		// ═══════════════════════════════════════════════════════════════
 		// MEAN REVERSION (Index 4-6)
-		// Fade extreme price moves, different volatility thresholds
-		// Lower sigma = more sensitive, trades more frequently with smaller sizes
-		// Shorter lookback windows allow faster startup and more responsive trading
+		// AMM-correct mean reversion using EWMA on liquidity-normalized log returns
+		// Each bot maintains independent EWMA state and trades on z-score thresholds
+		// 
+		// MeanRev1: Fast (50 trades half-life), resets EWMA after each trade
+		// MeanRev2: Medium (100 trades half-life), resets levels when z crosses zero
+		// MeanRev3: Large (175 trades half-life), resets levels when z crosses zero
 		// ═══════════════════════════════════════════════════════════════
 		{
 			Index:          4,
 			Nickname:       "MeanRev1",
 			Type:           BotTypeMeanRev,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(50), // Increased from 40 - scales with level
+			StartingApples: eth(100), // 100 APPL for selling
+			MaxTradeSize:   eth(50),  // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(300),
-			LookbackBlocks: 10,                       // Shorter window for faster startup (~20 seconds)
-			TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Multiple levels: trades at 1.0, 1.5, and 2.0 std deviations
+			TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
+			HalfLifeTrades: 50,                          // Fast decay: 50 trades half-life
 		},
 		{
 			Index:          5,
 			Nickname:       "MeanRev2",
 			Type:           BotTypeMeanRev,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(75), // Increased from 60 - scales with level
+			StartingApples: eth(250), // 250 APPL for selling
+			MaxTradeSize:   eth(75),  // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(400),
-			LookbackBlocks: 10,                          // Shorter window for faster startup
-			TriggerLevels:  []float64{1.25, 1.75, 2.25}, // Multiple levels: trades at 1.25, 1.75, and 2.25 std deviations
+			TriggerLevels:  []float64{1.25, 1.75, 2.25}, // Medium: trades at moderate z-score thresholds
+			HalfLifeTrades: 100,                         // Medium decay: 100 trades half-life
 		},
 		{
 			Index:          6,
 			Nickname:       "MeanRev3",
 			Type:           BotTypeMeanRev,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(100), // Increased from 80 - scales with level
+			StartingApples: eth(500), // 500 APPL for selling
+			MaxTradeSize:   eth(100), // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(500),
-			LookbackBlocks: 10,                       // Shorter window for faster startup
-			TriggerLevels:  []float64{1.5, 2.0, 2.5}, // Multiple levels: trades at 1.5, 2.0, and 2.5 std deviations
+			TriggerLevels:  []float64{2.5, 3.0}, // Large: trades at higher z-score thresholds
+			HalfLifeTrades: 175,                  // Slow decay: 175 trades half-life
 		},
 	}
 
@@ -229,7 +234,7 @@ func init() {
 			Index:          10 + i,
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
-			StartingApples: eth(20),
+			StartingApples: eth(40), // Increased from 20 - enough for multiple sell trades
 			MaxTradeSize:   eth(15), // Increased from 10
 			MaxPosition:    eth(100),
 			TradeFreqMin:   1, // More frequent (down from 2)
@@ -243,31 +248,31 @@ func init() {
 	// ═══════════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, []AccountConfig{
 		{
-			Index:          25,
-			Nickname:       "Lev5x",
-			Type:           BotTypeLeverage,
-			StartingApples: eth(0),
-			Collateral:     eth(200), // 200 ETH collateral
-			Leverage:       5,        // 5x = 1000 ETH notional max
-			StopOutPercent: -0.15,    // Stop trading if down 15% (tighter for leverage)
+			Index:               25,
+			Nickname:            "Lev5x",
+			Type:                BotTypeLeverage,
+			StartingApples:      eth(250), // Enough APPL to sell (was 0)
+			Collateral:          eth(50),  // Reduced from 200 - 50 ETH collateral
+			Leverage:            5,        // 5x = 250 ETH notional max
+			LiquidationThreshold: 0.8,      // Liquidate when equity < 80% of collateral (40 ETH)
 		},
 		{
-			Index:          26,
-			Nickname:       "Lev10x",
-			Type:           BotTypeLeverage,
-			StartingApples: eth(0),
-			Collateral:     eth(100), // 100 ETH collateral
-			Leverage:       10,       // 10x = 1000 ETH notional max
-			StopOutPercent: -0.12,    // Stop trading if down 12% (tighter for higher leverage)
+			Index:               26,
+			Nickname:            "Lev10x",
+			Type:                BotTypeLeverage,
+			StartingApples:      eth(250), // Enough APPL to sell (was 0)
+			Collateral:          eth(30),  // Reduced from 100 - 30 ETH collateral
+			Leverage:            10,       // 10x = 300 ETH notional max
+			LiquidationThreshold: 0.8,     // Liquidate when equity < 80% of collateral (24 ETH)
 		},
 		{
-			Index:          27,
-			Nickname:       "Lev25x",
-			Type:           BotTypeLeverage,
-			StartingApples: eth(0),
-			Collateral:     eth(40), // 40 ETH collateral
-			Leverage:       25,      // 25x = 1000 ETH notional max
-			StopOutPercent: -0.10,   // Stop trading if down 10% (tightest for highest leverage)
+			Index:               27,
+			Nickname:            "Lev25x",
+			Type:                BotTypeLeverage,
+			StartingApples:      eth(250), // Enough APPL to sell (was 0)
+			Collateral:          eth(20),  // Reduced from 40 - 20 ETH collateral
+			Leverage:            25,       // 25x = 500 ETH notional max
+			LiquidationThreshold: 0.8,     // Liquidate when equity < 80% of collateral (16 ETH)
 		},
 	}...)
 
@@ -280,6 +285,18 @@ func init() {
 		Type:           BotTypeLiquidator,
 		StartingApples: eth(0),
 		// LiqBot needs ETH (from Anvil default) to execute liquidations
+	})
+
+	// ═══════════════════════════════════════════════════════════════════
+	// USER ACCOUNT (Index 29)
+	// Demo account for user trading via frontend
+	// ═══════════════════════════════════════════════════════════════════
+	Accounts = append(Accounts, AccountConfig{
+		Index:          29,
+		Nickname:       "User",
+		Type:           BotTypeRetail, // Use retail type for compatibility, but won't be used as a bot
+		StartingApples: eth(750), // 5x suggested amount - enough for multiple sell trades
+		// User account gets default Anvil balance (10000 ETH)
 	})
 }
 

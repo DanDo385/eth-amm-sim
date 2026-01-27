@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"math"
 	"math/big"
 	"sync"
 	"time"
@@ -30,6 +31,12 @@ type Trade struct {
 	Fee       *big.Int       `json:"fee"`
 	Timestamp time.Time      `json:"timestamp"`
 	BlockNum  uint64         `json:"blockNum"`
+	
+	// Trade flow tracking fields (for EWMA mean reversion)
+	PriceBefore     *big.Int `json:"priceBefore"`     // Price before trade (ETH per APPL, scaled by 1e18)
+	PriceAfter      *big.Int `json:"priceAfter"`       // Price after trade (ETH per APPL, scaled by 1e18)
+	ReservesBeforeETH *big.Int `json:"reservesBeforeETH"` // ETH reserve before trade
+	ReservesBeforeAPPL *big.Int `json:"reservesBeforeAPPL"` // APPL reserve before trade
 }
 
 // TradeCallback is called when a trade is executed
@@ -148,8 +155,8 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 	}
 	
 	// Calculate amount out and price using constant product formula
-	// Get reserves before the trade
-	appleReserve, ethReserve, err := e.GetReserves(ctx)
+	// Get reserves BEFORE the trade (for trade flow tracking)
+	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
 	if err != nil {
 		// If we can't get reserves, still record trade without amounts
 		trade := &Trade{
@@ -164,14 +171,34 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		return signedTx.Hash().Hex(), nil
 	}
 	
+	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)
+	var priceBefore *big.Int
+	if appleReserveBefore.Sign() > 0 {
+		priceBefore = new(big.Int).Div(new(big.Int).Mul(ethReserveBefore, big.NewInt(1e18)), appleReserveBefore)
+	} else {
+		priceBefore = big.NewInt(0)
+	}
+	
 	// Calculate fee (0.30% = 30/10000)
 	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(30)), big.NewInt(10000))
 	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
 	
 	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
-	numerator := new(big.Int).Mul(amountInAfterFee, appleReserve)
-	denominator := new(big.Int).Add(ethReserve, amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, appleReserveBefore)
+	denominator := new(big.Int).Add(ethReserveBefore, amountInAfterFee)
 	appleAmountOut := new(big.Int).Div(numerator, denominator)
+	
+	// Calculate reserves AFTER trade (for price after calculation)
+	ethReserveAfter := new(big.Int).Add(ethReserveBefore, ethAmount) // Full amount including fee
+	appleReserveAfter := new(big.Int).Sub(appleReserveBefore, appleAmountOut)
+	
+	// Calculate price AFTER trade
+	var priceAfter *big.Int
+	if appleReserveAfter.Sign() > 0 {
+		priceAfter = new(big.Int).Div(new(big.Int).Mul(ethReserveAfter, big.NewInt(1e18)), appleReserveAfter)
+	} else {
+		priceAfter = priceBefore
+	}
 	
 	// Calculate execution price: ETH spent / APPL received (scaled by 1e18)
 	var price *big.Int
@@ -182,16 +209,23 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		price = big.NewInt(0)
 	}
 	
+	// Store price before/after and reserves before for trade flow tracking
+	// These will be used by the trade callback to emit flow events
+	
 	trade := &Trade{
-		TxHash:    signedTx.Hash().Hex(),
-		Trader:    addr,
-		Nickname:  e.GetNickname(addr),
-		IsBuy:     true,
-		AmountIn:  ethAmount,
-		AmountOut: appleAmountOut,
-		Price:     price,
-		Fee:       fee,
-		Timestamp: time.Now(),
+		TxHash:            signedTx.Hash().Hex(),
+		Trader:            addr,
+		Nickname:          e.GetNickname(addr),
+		IsBuy:             true,
+		AmountIn:          ethAmount,
+		AmountOut:         appleAmountOut,
+		Price:             price,
+		Fee:               fee,
+		Timestamp:         time.Now(),
+		PriceBefore:       priceBefore,
+		PriceAfter:        priceAfter,
+		ReservesBeforeETH: ethReserveBefore,
+		ReservesBeforeAPPL: appleReserveBefore,
 	}
 	e.emitTrade(trade)
 	
@@ -243,8 +277,8 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 	}
 	
 	// Calculate amount out and price using constant product formula
-	// Get reserves before the trade
-	appleReserve, ethReserve, err := e.GetReserves(ctx)
+	// Get reserves BEFORE the trade (for trade flow tracking)
+	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
 	if err != nil {
 		// If we can't get reserves, still record trade without amounts
 		trade := &Trade{
@@ -259,14 +293,34 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		return signedTx.Hash().Hex(), nil
 	}
 	
+	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)
+	var priceBefore *big.Int
+	if appleReserveBefore.Sign() > 0 {
+		priceBefore = new(big.Int).Div(new(big.Int).Mul(ethReserveBefore, big.NewInt(1e18)), appleReserveBefore)
+	} else {
+		priceBefore = big.NewInt(0)
+	}
+	
 	// Calculate fee (0.30% = 30/10000)
 	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(30)), big.NewInt(10000))
 	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
 	
 	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
-	numerator := new(big.Int).Mul(amountInAfterFee, ethReserve)
-	denominator := new(big.Int).Add(appleReserve, amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, ethReserveBefore)
+	denominator := new(big.Int).Add(appleReserveBefore, amountInAfterFee)
 	ethAmountOut := new(big.Int).Div(numerator, denominator)
+	
+	// Calculate reserves AFTER trade
+	appleReserveAfter := new(big.Int).Add(appleReserveBefore, appleAmount) // Full amount including fee
+	ethReserveAfter := new(big.Int).Sub(ethReserveBefore, ethAmountOut)
+	
+	// Calculate price AFTER trade
+	var priceAfter *big.Int
+	if appleReserveAfter.Sign() > 0 {
+		priceAfter = new(big.Int).Div(new(big.Int).Mul(ethReserveAfter, big.NewInt(1e18)), appleReserveAfter)
+	} else {
+		priceAfter = priceBefore
+	}
 	
 	// Calculate execution price: ETH received / APPL sold (scaled by 1e18)
 	var price *big.Int
@@ -278,15 +332,19 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 	}
 	
 	trade := &Trade{
-		TxHash:    signedTx.Hash().Hex(),
-		Trader:    addr,
-		Nickname:  e.GetNickname(addr),
-		IsBuy:     false,
-		AmountIn:  appleAmount,
-		AmountOut: ethAmountOut,
-		Price:     price,
-		Fee:       fee,
-		Timestamp: time.Now(),
+		TxHash:            signedTx.Hash().Hex(),
+		Trader:            addr,
+		Nickname:          e.GetNickname(addr),
+		IsBuy:             false,
+		AmountIn:          appleAmount,
+		AmountOut:         ethAmountOut,
+		Price:             price,
+		Fee:               fee,
+		Timestamp:         time.Now(),
+		PriceBefore:       priceBefore,
+		PriceAfter:        priceAfter,
+		ReservesBeforeETH: ethReserveBefore,
+		ReservesBeforeAPPL: appleReserveBefore,
 	}
 	e.emitTrade(trade)
 	
@@ -442,6 +500,36 @@ func packGetSpotPrice() []byte {
 	return []byte{0xdc, 0x76, 0xfa, 0xbc}
 }
 
+// Pack position operation functions
+func packOpenLeveragedPosition(leverage, minApples *big.Int) []byte {
+	// openLeveragedPosition(uint256 leverage, uint256 minApples)
+	// selector: 0xc08f9984
+	selector := []byte{0xc0, 0x8f, 0x99, 0x84}
+	data := append(selector, common.LeftPadBytes(leverage.Bytes(), 32)...)
+	return append(data, common.LeftPadBytes(minApples.Bytes(), 32)...)
+}
+
+func packLiquidate(trader common.Address) []byte {
+	// liquidate(address trader)
+	// selector: 0x2f865568
+	selector := []byte{0x2f, 0x86, 0x55, 0x68}
+	return append(selector, common.LeftPadBytes(trader.Bytes(), 32)...)
+}
+
+func packIsLiquidatable(trader common.Address) []byte {
+	// isLiquidatable(address trader)
+	// selector: 0x042e02cf
+	selector := []byte{0x04, 0x2e, 0x02, 0xcf}
+	return append(selector, common.LeftPadBytes(trader.Bytes(), 32)...)
+}
+
+func packGetTraderPosition(trader common.Address) []byte {
+	// getPosition(address trader)
+	// selector: keccak256("getPosition(address)")[:4] = 0x16c19739
+	selector := []byte{0x16, 0xc1, 0x97, 0x39}
+	return append(selector, common.LeftPadBytes(trader.Bytes(), 32)...)
+}
+
 // GetTotalFees returns total fees collected by the AMM
 func (e *Executor) GetTotalFees(ctx context.Context) (appleFees, ethFees *big.Int, err error) {
 	data := packGetTotalFees()
@@ -505,4 +593,257 @@ func packBalanceOf(owner common.Address) []byte {
 	// selector: keccak256("balanceOf(address)")[:4] = 0x70a08231
 	selector := []byte{0x70, 0xa0, 0x82, 0x31}
 	return append(selector, common.LeftPadBytes(owner.Bytes(), 32)...)
+}
+
+// OpenLeveragedPosition opens a leveraged long position
+func (e *Executor) OpenLeveragedPosition(ctx context.Context, privateKey *ecdsa.PrivateKey, collateral *big.Int, leverage int64) (string, error) {
+	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
+	
+	// Get nonce
+	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
+	if err != nil {
+		return "", fmt.Errorf("failed to get nonce: %w", err)
+	}
+	
+	// Build transaction options
+	auth, err := e.accountMgr.GetTransactOptsWithValue(privateKey, collateral)
+	if err != nil {
+		return "", fmt.Errorf("failed to create tx opts: %w", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Context = ctx
+	
+	// Pack function call: openLeveragedPosition(uint256 leverage, uint256 minApples)
+	// Use 0 for minApples (no slippage protection in simulation)
+	data := packOpenLeveragedPosition(big.NewInt(leverage), big.NewInt(0))
+	
+	tx := types.NewTransaction(
+		nonce,
+		e.ammAddress,
+		collateral,
+		auth.GasLimit,
+		auth.GasPrice,
+		data,
+	)
+	
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign tx: %w", err)
+	}
+	
+	err = e.client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to send tx: %w", err)
+	}
+	
+	return signedTx.Hash().Hex(), nil
+}
+
+// LiquidatePosition liquidates an underwater position
+func (e *Executor) LiquidatePosition(ctx context.Context, privateKey *ecdsa.PrivateKey, trader common.Address) (string, error) {
+	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
+	
+	// Get nonce
+	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
+	if err != nil {
+		return "", fmt.Errorf("failed to get nonce: %w", err)
+	}
+	
+	// Build transaction options
+	auth, err := e.accountMgr.GetTransactOpts(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create tx opts: %w", err)
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Context = ctx
+	
+	// Pack function call: liquidate(address trader)
+	data := packLiquidate(trader)
+	
+	tx := types.NewTransaction(
+		nonce,
+		e.ammAddress,
+		big.NewInt(0), // No ETH sent
+		auth.GasLimit,
+		auth.GasPrice,
+		data,
+	)
+	
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign tx: %w", err)
+	}
+	
+	err = e.client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to send tx: %w", err)
+	}
+	
+	return signedTx.Hash().Hex(), nil
+}
+
+// Position represents a leveraged position
+type Position struct {
+	Trader     common.Address
+	IsLong     bool
+	Collateral *big.Int
+	Size       *big.Int // APPL amount for long positions
+	EntryPrice *big.Int
+	Leverage   *big.Int
+	Timestamp  *big.Int
+}
+
+// GetTraderPosition returns position data for a trader
+func (e *Executor) GetTraderPosition(ctx context.Context, trader common.Address) (*Position, error) {
+	data := packGetTraderPosition(trader)
+	
+	msg := ethereum.CallMsg{
+		To:   &e.ammAddress,
+		Data: data,
+	}
+	
+	result, err := e.client.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Position struct: (address trader, bool isLong, uint256 collateral, uint256 size, uint256 entryPrice, uint256 leverage, uint256 timestamp)
+	// Each field is 32 bytes
+	if len(result) < 224 { // 7 fields * 32 bytes
+		return nil, fmt.Errorf("invalid position response: got %d bytes, expected at least 224", len(result))
+	}
+	
+	pos := &Position{
+		Trader:     common.BytesToAddress(result[12:32]), // address (last 20 bytes of first 32 bytes)
+		IsLong:     result[63] != 0,                       // bool (last byte of second 32 bytes)
+		Collateral: new(big.Int).SetBytes(result[32:64]),
+		Size:       new(big.Int).SetBytes(result[64:96]),
+		EntryPrice: new(big.Int).SetBytes(result[96:128]),
+		Leverage:   new(big.Int).SetBytes(result[128:160]),
+		Timestamp:  new(big.Int).SetBytes(result[160:192]),
+	}
+	
+	return pos, nil
+}
+
+// PriceDataStore interface to avoid import cycle
+type PriceDataStore interface {
+	GetTWAP() float64
+}
+
+// GetHybridPrice returns TWAP if spot deviates >threshold% from TWAP, otherwise spot
+// This prevents false liquidations from temporary price manipulation
+func (e *Executor) GetHybridPrice(ctx context.Context, priceStore PriceDataStore, deviationThreshold float64) (float64, string, error) {
+	// Get spot price
+	spotPriceBig, err := e.GetSpotPrice(ctx)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to get spot price: %w", err)
+	}
+	spotPrice := toEtherFloat(spotPriceBig)
+	
+	// Get TWAP
+	twap := priceStore.GetTWAP()
+	if twap == 0 {
+		// No TWAP data yet, use spot
+		return spotPrice, "spot (no TWAP)", nil
+	}
+	
+	// Calculate deviation: |spot - twap| / twap
+	deviation := math.Abs(spotPrice-twap) / twap
+	
+	if deviation > deviationThreshold {
+		// Significant deviation - use TWAP (more stable)
+		return twap, fmt.Sprintf("TWAP (deviation: %.2f%%)", deviation*100), nil
+	}
+	
+	// Normal conditions - use spot (faster)
+	return spotPrice, "spot", nil
+}
+
+// IsLiquidatableHybrid checks liquidation using hybrid price (TWAP if deviated, spot otherwise)
+// Returns (liquidatable, priceUsed, priceSource, marginRatio, error)
+func (e *Executor) IsLiquidatableHybrid(
+	ctx context.Context,
+	trader common.Address,
+	priceStore PriceDataStore,
+	deviationThreshold float64,
+) (bool, float64, string, float64, error) {
+	// Get hybrid price
+	hybridPrice, priceSource, err := e.GetHybridPrice(ctx, priceStore, deviationThreshold)
+	if err != nil {
+		return false, 0, "", 0, err
+	}
+	
+	// Get position from contract
+	pos, err := e.GetTraderPosition(ctx, trader)
+	if err != nil {
+		return false, 0, "", 0, fmt.Errorf("failed to get position: %w", err)
+	}
+	
+	if pos.Collateral == nil || pos.Collateral.Sign() == 0 {
+		return false, hybridPrice, priceSource, 0, nil
+	}
+	
+	// Calculate position value using hybrid price
+	// Convert hybridPrice (float64) to *big.Int scaled by 1e18
+	hybridPriceFloat := big.NewFloat(hybridPrice)
+	hybridPriceFloat.Mul(hybridPriceFloat, big.NewFloat(1e18))
+	hybridPriceBig, _ := hybridPriceFloat.Int(nil)
+	
+	// Calculate position value: APPL_amount * hybrid_price
+	applValue := new(big.Int).Mul(pos.Size, hybridPriceBig)
+	applValue.Div(applValue, big.NewInt(1e18))
+	
+	// Calculate leveraged cost
+	leveragedCost := new(big.Int).Mul(pos.Collateral, pos.Leverage)
+	
+	// Calculate margin ratio (in basis points)
+	if leveragedCost.Sign() == 0 {
+		return false, hybridPrice, priceSource, 0, nil
+	}
+	
+	marginRatioBig := new(big.Int).Mul(applValue, big.NewInt(10000))
+	marginRatioBig.Div(marginRatioBig, leveragedCost)
+	marginRatio := float64(marginRatioBig.Uint64()) / 10000.0
+	
+	// Check if liquidatable (margin ratio < 10%)
+	liquidatable := marginRatio < 0.10
+	
+	return liquidatable, hybridPrice, priceSource, marginRatio, nil
+}
+
+// IsLiquidatable checks if a position is liquidatable
+func (e *Executor) IsLiquidatable(ctx context.Context, trader common.Address) (bool, error) {
+	data := packIsLiquidatable(trader)
+	
+	msg := ethereum.CallMsg{
+		To:   &e.ammAddress,
+		Data: data,
+	}
+	
+	result, err := e.client.CallContract(ctx, msg, nil)
+	if err != nil {
+		return false, err
+	}
+	
+	// Returns (bool liquidatable, uint256 marginRatio)
+	if len(result) < 32 {
+		return false, fmt.Errorf("invalid response")
+	}
+	
+	// First 32 bytes is the bool (padded to 32 bytes)
+	liquidatable := result[31] != 0
+	
+	return liquidatable, nil
+}
+
+// Helper function to convert big.Int to float64 (ETH)
+func toEtherFloat(wei *big.Int) float64 {
+	if wei == nil {
+		return 0
+	}
+	weiFloat := new(big.Float).SetInt(wei)
+	ethFloat := new(big.Float).Quo(weiFloat, big.NewFloat(1e18))
+	result, _ := ethFloat.Float64()
+	return result
 }

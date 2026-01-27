@@ -118,3 +118,18 @@ export interface WSMessage {
   type: 'trade' | 'price' | 'lp_metrics' | 'account_update' | 'key_event' | 'session_state' | 'candles' | 'trades' | 'events';
   data: unknown;
 }
+
+// User trading types
+export interface UserBalance {
+  ethBalance: string;
+  appleBalance: string;
+}
+
+export interface TradeResponse {
+  txHash: string;
+  ethAmount?: string;
+  appleAmount?: string;
+  ethBalance: string;
+  appleBalance: string;
+  status: string;
+}

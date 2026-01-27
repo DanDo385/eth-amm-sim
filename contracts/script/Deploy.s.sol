@@ -11,14 +11,14 @@ import "../src/AppleAMM.sol";
  * @notice Deploys AppleToken and AppleAMM, then seeds with initial liquidity
  * 
  * Account allocation (Anvil accounts 0-29):
- * 0: Deployer/LP - Seeds pool with 1000 APPL + 1000 ETH
- * 1-3: Whales - 500-1000 APPL each
- * 4-6: Mean reversion bots - 100 APPL each
- * 7-9: Momentum bots - 100 APPL each
- * 10-24: Retail traders - 20 APPL each
- * 25-27: Leveraged traders - 0 APPL (use ETH collateral)
+ * 0: Deployer/LP - Seeds pool with 10,000 APPL + 1,000,000 ETH (initial price: 100 ETH/APPL)
+ * 1-3: Whales - 500-1000 APPL each (Whale2: 700 APPL)
+ * 4-6: Mean reversion bots - 100/250/500 APPL (EWMA-based strategy)
+ * 7-9: Unused (reserved for future use)
+ * 10-24: Retail traders - 40 APPL each
+ * 25-27: Leveraged traders - 250 APPL each
  * 28: Liquidator bot - 0 APPL
- * 29: Reserved
+ * 29: User account - 750 APPL
  */
 contract DeployScript is Script {
     // Anvil default private keys (DO NOT use in production!)
@@ -71,9 +71,9 @@ contract DeployScript is Script {
         accounts[4] = 0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65;  // MeanRev1
         accounts[5] = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;  // MeanRev2
         accounts[6] = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;  // MeanRev3
-        accounts[7] = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;  // Momentum1
-        accounts[8] = 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f;  // Momentum2
-        accounts[9] = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;  // Momentum3
+        accounts[7] = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;  // Unused (reserved)
+        accounts[8] = 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f;  // Unused (reserved)
+        accounts[9] = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;  // Unused (reserved)
         
         // Retail accounts (10-24)
         accounts[10] = 0xBcd4042DE499D14e55001CcbB24a551F3b954096;
@@ -107,40 +107,46 @@ contract DeployScript is Script {
     }
     
     function mintTokens(address[] memory accounts) internal {
-        // LP gets extra for seeding pool
-        token.mint(accounts[0], 2000 * APPLES_DECIMALS);
+        // LP gets tokens for seeding pool
+        token.mint(accounts[0], 10000 * APPLES_DECIMALS);
         
         // Whales
         token.mint(accounts[1], 1000 * APPLES_DECIMALS);  // Whale1 - already long
-        token.mint(accounts[2], 0);                        // Whale2 - looking to buy
-        token.mint(accounts[3], 500 * APPLES_DECIMALS);   // Whale3 - partial position
+        token.mint(accounts[2], 700 * APPLES_DECIMALS);  // Whale2 - enough to sell (was 0)
+        token.mint(accounts[3], 500 * APPLES_DECIMALS);  // Whale3 - partial position
         
-        // Mean reversion bots
-        for (uint i = 4; i <= 6; i++) {
-            token.mint(accounts[i], 100 * APPLES_DECIMALS);
-        }
+        // Mean reversion bots (EWMA-based strategy)
+        token.mint(accounts[4], 100 * APPLES_DECIMALS);  // MeanRev1: 100 APPL
+        token.mint(accounts[5], 250 * APPLES_DECIMALS); // MeanRev2: 250 APPL
+        token.mint(accounts[6], 500 * APPLES_DECIMALS); // MeanRev3: 500 APPL
         
-        // Momentum bots
-        for (uint i = 7; i <= 9; i++) {
-            token.mint(accounts[i], 100 * APPLES_DECIMALS);
-        }
+        // Accounts 7-9: Unused (reserved for future use)
         
         // Retail traders
         for (uint i = 10; i <= 24; i++) {
-            token.mint(accounts[i], 20 * APPLES_DECIMALS);
+            token.mint(accounts[i], 40 * APPLES_DECIMALS); // Increased from 20
         }
         
-        // Leveraged traders and liquidator get 0 APPL (use ETH)
+        // Leveraged traders
+        token.mint(accounts[25], 250 * APPLES_DECIMALS); // Lev5x - enough to sell (was 0)
+        token.mint(accounts[26], 250 * APPLES_DECIMALS); // Lev10x - enough to sell (was 0)
+        token.mint(accounts[27], 250 * APPLES_DECIMALS); // Lev25x - enough to sell (was 0)
+        
+        // User account (29)
+        token.mint(accounts[29], 750 * APPLES_DECIMALS); // User - 5x suggested amount
+        
+        // Liquidator gets 0 APPL (use ETH)
         
         console.log("Tokens minted to all accounts");
     }
     
     function seedLiquidity() internal {
-        // LP seeds pool with 1000 APPL + 1000 ETH
-        token.approve(address(amm), 1000 * APPLES_DECIMALS);
-        amm.addLiquidity{value: 1000 ether}(1000 * APPLES_DECIMALS);
+        // LP seeds pool with 10,000 APPL + 1,000,000 ETH
+        // Initial price = 100 ETH/APPL
+        token.approve(address(amm), 10000 * APPLES_DECIMALS);
+        amm.addLiquidity{value: 1000000 ether}(10000 * APPLES_DECIMALS);
         
-        console.log("Pool seeded with 1000 APPL + 1000 ETH");
+        console.log("Pool seeded with 10,000 APPL + 1,000,000 ETH (initial price: 100 ETH/APPL)");
     }
     
     function logState() internal view {

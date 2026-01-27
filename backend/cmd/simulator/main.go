@@ -23,18 +23,19 @@ import (
 	"eth-amm-sim/internal/store"
 
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
 	log.Println("=== ETH-AMM-SIM Backend Starting ===")
-	
+
 	// Load configuration
 	cfg := config.DefaultConfig()
-	
+
 	// Get contract addresses from environment or use defaults
 	tokenAddr := os.Getenv("TOKEN_ADDRESS")
 	ammAddr := os.Getenv("AMM_ADDRESS")
-	
+
 	if tokenAddr == "" || ammAddr == "" {
 		log.Println("Warning: TOKEN_ADDRESS and AMM_ADDRESS not set")
 		log.Println("Using placeholder addresses - deploy contracts first!")
@@ -42,40 +43,40 @@ func main() {
 		tokenAddr = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 		ammAddr = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 	}
-	
+
 	cfg.TokenAddress = common.HexToAddress(tokenAddr)
 	cfg.AMMAddress = common.HexToAddress(ammAddr)
-	
+
 	log.Printf("Token Address: %s", cfg.TokenAddress.Hex())
 	log.Printf("AMM Address: %s", cfg.AMMAddress.Hex())
-	
+
 	// Connect to Anvil
 	client, err := chain.NewClient(cfg.RPCURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to chain: %v", err)
 	}
 	log.Printf("Connected to chain (ID: %s)", client.ChainID().String())
-	
+
 	// Initialize components
 	nonceManager := chain.NewNonceManager(client)
 	executor := engine.NewExecutor(client, nonceManager, cfg.AMMAddress, cfg.TokenAddress)
-	
+
 	// Verify contracts are deployed and initialized
 	ctx := context.Background()
 	log.Println("Verifying contracts...")
-	
+
 	// Check if we can read from the AMM contract
 	apples, eth, err := executor.GetReserves(ctx)
 	if err != nil {
 		log.Fatalf("Failed to read AMM reserves. Make sure contracts are deployed and pool is initialized. Error: %v", err)
 	}
-	
+
 	if apples.Sign() == 0 || eth.Sign() == 0 {
 		log.Fatalf("AMM pool is empty! Reserves: APPL=%s, ETH=%s. Deploy contracts and seed liquidity first.", apples.String(), eth.String())
 	}
-	
+
 	log.Printf("✓ Contracts verified. Pool reserves: APPL=%s, ETH=%s", apples.String(), eth.String())
-	
+
 	// Get initial spot price
 	spotPrice, err := executor.GetSpotPrice(ctx)
 	if err != nil {
@@ -83,42 +84,54 @@ func main() {
 	} else {
 		log.Printf("✓ Initial spot price: %.6f ETH per APPL", toEther(spotPrice))
 	}
-	
+
 	// Set up nicknames using new config system
 	for _, acc := range config.Accounts {
 		executor.SetNickname(acc.Address(), acc.Nickname)
 	}
-	
+
 	orchestrator := engine.NewOrchestrator()
 	session := engine.NewSession(orchestrator)
 	memStore := store.NewMemoryStore()
-	
+
 	// Create price provider for strategy bots
 	priceProvider := metrics.NewPriceProvider(memStore)
-	
+
 	// Create bots using config-driven approach
 	createBots(executor, orchestrator, priceProvider, memStore)
-	
+
 	// Initialize account metrics
 	initializeAccountMetrics(memStore)
-	
+
 	// Initialize LP metrics with initial pool state and fees
 	initLPMetrics(ctx, executor, memStore)
-	
+
 	// Create server
 	srv := server.NewServer(session, memStore, executor)
-	
+
 	// Set up trade callback to record trades and broadcast
 	executor.OnTrade(func(trade *engine.Trade) {
 		memStore.RecordTrade(*trade)
-		log.Printf("[Trade] %s %s %.4f", 
-			trade.Nickname, 
-			directionStr(trade.IsBuy), 
+		log.Printf("[Trade] %s %s %.4f",
+			trade.Nickname,
+			directionStr(trade.IsBuy),
 			toEther(trade.AmountIn))
-		
+
+		// Record trade flow event for EWMA mean reversion (if price/reserves data available)
+		if trade.PriceBefore != nil && trade.PriceAfter != nil &&
+			trade.ReservesBeforeETH != nil && trade.ReservesBeforeAPPL != nil {
+			priceBefore := toEtherFloat(trade.PriceBefore)
+			priceAfter := toEtherFloat(trade.PriceAfter)
+			reservesBeforeETH := toEtherFloat(trade.ReservesBeforeETH)
+			reservesBeforeAPPL := toEtherFloat(trade.ReservesBeforeAPPL)
+
+			// Emit trade flow event (will notify MeanRev bots)
+			memStore.RecordTradeFlow(priceBefore, priceAfter, trade, reservesBeforeETH, reservesBeforeAPPL)
+		}
+
 		// Broadcast trade to WebSocket clients
 		srv.BroadcastTrade(trade)
-		
+
 		// Record key events for large trades
 		amountInETH := toEther(trade.AmountIn)
 		if amountInETH >= 100.0 { // Large trade threshold
@@ -135,104 +148,95 @@ func main() {
 			memStore.RecordEvent(event.Type, event.Description, event.Severity)
 			srv.BroadcastEvent(event)
 		}
-		
+
 		// Broadcast account update
 		srv.BroadcastAccountUpdate(trade.Nickname)
 	})
-	
-	// Start price polling (for demo) with cancellation context
-	pollCtx, pollCancel := context.WithCancel(context.Background())
-	defer pollCancel()
-	go pollPrices(pollCtx, client, executor, memStore, srv)
-	
+
 	// Handle graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	
-	// Start HTTP server in a goroutine so we can handle shutdown signals
+
+	// Create main context and errgroup for coordinating services
+	mainCtx, mainCancel := context.WithCancel(context.Background())
+	defer mainCancel()
+
+	eg, egCtx := errgroup.WithContext(mainCtx)
+
+	// Start price polling
+	eg.Go(func() error {
+		return pollPricesWithError(egCtx, executor, memStore, srv)
+	})
+
+	// Start HTTP server
 	addr := ":8080"
 	if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port
 	}
-	
-	serverErrCh := make(chan error, 1)
-	shuttingDown := make(chan struct{})
-	
-	go func() {
+
+	eg.Go(func() error {
 		log.Printf("Starting server on %s", addr)
 		err := srv.Start(addr)
-		
-		// Check if we're shutting down first - if so, ignore all errors
-		select {
-		case <-shuttingDown:
-			// We're shutting down, ignore all errors (including ErrServerClosed)
-			return
-		default:
-		}
-		
-		// Only send error if it's not the expected shutdown error and we're not shutting down
+
+		// Ignore ErrServerClosed as it's expected during graceful shutdown
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			select {
-			case serverErrCh <- err:
-			case <-shuttingDown:
-				// We started shutting down while trying to send error, ignore it
-				return
-			}
+			return fmt.Errorf("server error: %w", err)
 		}
-	}()
-	
+		return nil
+	})
+
 	log.Println("Server running. Press Ctrl+C to stop gracefully...")
-	
-	// Wait for shutdown signal or server error
-	select {
-	case <-sigCh:
-		close(shuttingDown) // Signal that we're shutting down
-		
+
+	// Wait for shutdown signal or service error
+	go func() {
+		<-sigCh
 		log.Println("\n=== Shutting down gracefully ===")
-		log.Println("Stopping active sessions...")
-		
-		// Stop any running sessions
-		if session.IsRunning() {
-			if err := session.Stop(); err != nil {
-				log.Printf("Error stopping session: %v", err)
-			}
-			// Give bots a moment to finish
-			time.Sleep(500 * time.Millisecond)
+		mainCancel() // Cancel context to stop all services
+	}()
+
+	// Wait for errgroup (will return first error or nil if context cancelled)
+	serviceErr := eg.Wait()
+
+	// Perform graceful shutdown
+	log.Println("Stopping active sessions...")
+	if session.IsRunning() {
+		if stopErr := session.Stop(); stopErr != nil {
+			log.Printf("Error stopping session: %v", stopErr)
 		}
-		
-		// Stop price polling
-		log.Println("Stopping price polling...")
-		pollCancel()
-		
-		// Stop server with timeout
-		log.Println("Stopping HTTP server...")
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		
-		if err := srv.Stop(shutdownCtx); err != nil {
-			log.Printf("Error shutting down server: %v", err)
-		} else {
-			log.Println("✓ Server stopped gracefully")
-		}
-		
-		log.Println("=== Shutdown complete ===")
-		
-		// Exit with code 0 to indicate successful shutdown
-		// Give goroutines a moment to finish, then exit cleanly
-		time.Sleep(200 * time.Millisecond)
-		
-		// Explicitly exit with code 0
-		os.Exit(0)
-		
-	case err := <-serverErrCh:
-		// This is an actual server error (not graceful shutdown)
-		log.Fatalf("Server error: %v", err)
+		// Give bots a moment to finish
+		time.Sleep(500 * time.Millisecond)
 	}
+
+	// Stop server with timeout
+	log.Println("Stopping HTTP server...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if stopErr := srv.Stop(shutdownCtx); stopErr != nil {
+		log.Printf("Error shutting down server: %v", stopErr)
+	} else {
+		log.Println("✓ Server stopped gracefully")
+	}
+
+	log.Println("=== Shutdown complete ===")
+
+	// If there was an error from services, exit with error
+	if serviceErr != nil && !errors.Is(serviceErr, context.Canceled) {
+		log.Fatalf("Service error: %v", serviceErr)
+	}
+
+	// Exit cleanly
+	os.Exit(0)
 }
 
 // createBots creates all trading bots based on config
 func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, priceProvider metrics.PriceProvider, store *store.MemoryStore) {
 	for _, acc := range config.Accounts {
+		// Skip user account (not a bot)
+		if acc.Nickname == "User" {
+			continue
+		}
+
 		var bot bots.Bot
 
 		switch acc.Type {
@@ -253,9 +257,7 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 			bot = bots.NewLeverageBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeLiquidator:
-			// Phase 2 - not yet implemented
-			log.Printf("Liquidator bot not yet implemented: %s", acc.Nickname)
-			continue
+			bot = bots.NewLiquidatorBot(&acc, executor, priceProvider, store)
 
 		default:
 			log.Printf("Unknown bot type for %s: %s", acc.Nickname, acc.Type)
@@ -278,11 +280,12 @@ func initializeAccountMetrics(memStore *store.MemoryStore) {
 
 // initLPMetrics initializes LP metrics with pool state
 func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
-	// Initial pool: 1000 APPL + 1000 ETH (from config.PoolApples and config.PoolETH)
+	// Initial pool: 10,000 APPL + 1,000,000 ETH (from config.PoolApples and config.PoolETH)
+	// Initial price: 100 ETH/APPL
 	ether := func(n int64) *big.Int {
 		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
 	}
-	
+
 	// Get initial fees from contract (should be 0 at start, but track for accuracy)
 	initialFeesApple, initialFeesETH, err := executor.GetTotalFees(ctx)
 	if err != nil {
@@ -290,20 +293,30 @@ func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *sto
 		initialFeesApple = big.NewInt(0)
 		initialFeesETH = big.NewInt(0)
 	}
-	
+
 	memStore.GetLPMetrics().SetInitialState(ether(1000), ether(1000))
 	memStore.GetLPMetrics().SetInitialFees(initialFeesApple, initialFeesETH)
 	memStore.GetImpactCurve().UpdateReserves(ether(1000), ether(1000))
 }
 
 // pollPrices periodically fetches price and updates metrics
-func pollPrices(ctx context.Context, client *chain.Client, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) {
+// pollPricesWithError wraps pollPrices to return an error for errgroup
+func pollPricesWithError(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) error {
+	pollPrices(ctx, executor, memStore, srv)
+	// Return nil on context cancellation (expected shutdown)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil
+	}
+	return ctx.Err()
+}
+
+func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	
+
 	var lastPrice float64
 	var priceInitialized bool
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -311,19 +324,19 @@ func pollPrices(ctx context.Context, client *chain.Client, executor *engine.Exec
 			return
 		case <-ticker.C:
 		}
-		ctx := context.Background()
-		
+		pollCtx := context.Background()
+
 		// Get current price
-		price, err := executor.GetSpotPrice(ctx)
+		price, err := executor.GetSpotPrice(pollCtx)
 		if err != nil {
 			log.Printf("Error getting spot price: %v", err)
 			continue
 		}
-		
+
 		// Convert from wei to float
 		priceFloat := toEtherFloat(price)
 		memStore.RecordPrice(priceFloat)
-		
+
 		// Track price movements for key events
 		if !priceInitialized {
 			lastPrice = priceFloat
@@ -353,29 +366,29 @@ func pollPrices(ctx context.Context, client *chain.Client, executor *engine.Exec
 				lastPrice = priceFloat
 			}
 		}
-		
+
 		// Get reserves
-		apples, eth, err := executor.GetReserves(ctx)
+		apples, eth, err := executor.GetReserves(pollCtx)
 		if err != nil {
 			continue
 		}
-		
+
 		// Get total fees collected
-		feesApple, feesETH, err := executor.GetTotalFees(ctx)
+		feesApple, feesETH, err := executor.GetTotalFees(pollCtx)
 		if err != nil {
 			log.Printf("Error getting total fees: %v", err)
 			// Continue with zero fees if we can't read them
 			feesApple = big.NewInt(0)
 			feesETH = big.NewInt(0)
 		}
-		
+
 		// Update LP metrics with actual fees
 		memStore.GetLPMetrics().UpdateState(apples, eth, feesApple, feesETH)
 		memStore.GetImpactCurve().UpdateReserves(apples, eth)
-		
+
 		// Broadcast updates
 		srv.BroadcastLPMetrics()
-		
+
 		candles := memStore.GetCandles()
 		if len(candles) > 0 {
 			srv.BroadcastPrice(candles[len(candles)-1])

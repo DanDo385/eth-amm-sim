@@ -156,7 +156,7 @@ contract AppleAMMTest is Test {
         uint256 minApples = 100 ether;  // Unrealistic minimum
         
         vm.prank(trader);
-        vm.expectRevert("AppleAMM: slippage exceeded");
+        vm.expectRevert(AppleAMM.SlippageExceeded.selector);
         amm.swapETHForApples{value: ethIn}(minApples);
     }
     
@@ -278,7 +278,7 @@ contract AppleAMMTest is Test {
         AppleAMM emptyAmm = new AppleAMM(address(token));
         
         vm.prank(trader);
-        vm.expectRevert("AppleAMM: pool is empty");
+        vm.expectRevert(AppleAMM.PoolEmpty.selector);
         emptyAmm.swapETHForApples{value: 1 ether}(0);
     }
     

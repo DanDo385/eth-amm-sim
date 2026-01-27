@@ -77,6 +77,11 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/impact-curve", s.handleGetImpactCurve).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/events", s.handleGetEvents).Methods("GET", "OPTIONS")
 	
+	// User trading endpoints
+	s.router.HandleFunc("/trade/buy", s.handleTradeBuy).Methods("POST", "OPTIONS")
+	s.router.HandleFunc("/trade/sell", s.handleTradeSell).Methods("POST", "OPTIONS")
+	s.router.HandleFunc("/user/balance", s.handleGetUserBalance).Methods("GET", "OPTIONS")
+	
 	// WebSocket
 	s.router.HandleFunc("/stream", s.handleWebSocket)
 }

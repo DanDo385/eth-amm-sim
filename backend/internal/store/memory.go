@@ -14,23 +14,26 @@ import (
 
 // MemoryStore holds all simulation state in memory
 type MemoryStore struct {
-	mu sync.RWMutex 
-	
+	mu sync.RWMutex
+
 	// Price metrics
 	priceMetrics *metrics.PriceMetrics
-	
+
 	// LP metrics
 	lpMetrics *metrics.LPMetrics
-	
+
 	// Account metrics
 	accountMetrics *metrics.AccountMetricsManager
-	
+
 	// Impact curve
 	impactCurve *metrics.ImpactCurve
-	
+
+	// Trade flow tracker (for EWMA mean reversion)
+	tradeFlowTracker *metrics.TradeFlowTracker
+
 	// Trade blotter
 	trades []engine.Trade
-	
+
 	// Key events
 	events []KeyEvent
 }
@@ -46,12 +49,13 @@ type KeyEvent struct {
 // NewMemoryStore creates a new in-memory store
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		priceMetrics:   metrics.NewPriceMetrics(5*time.Second, 60*time.Second),
-		lpMetrics:      metrics.NewLPMetrics(),
-		accountMetrics: metrics.NewAccountMetricsManager(),
-		impactCurve:    metrics.NewImpactCurve(),
-		trades:         make([]engine.Trade, 0),
-		events:         make([]KeyEvent, 0),
+		priceMetrics:     metrics.NewPriceMetrics(5*time.Second, 60*time.Second),
+		lpMetrics:        metrics.NewLPMetrics(),
+		accountMetrics:   metrics.NewAccountMetricsManager(),
+		impactCurve:      metrics.NewImpactCurve(),
+		tradeFlowTracker: metrics.NewTradeFlowTracker(),
+		trades:           make([]engine.Trade, 0),
+		events:           make([]KeyEvent, 0),
 	}
 }
 
@@ -130,22 +134,22 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.trades = append(s.trades, trade)
-	
+
 	// Update account metrics for this trade
 	// Get or create account metrics
 	am := s.accountMetrics.GetOrCreate(trade.Nickname, trade.Trader, 10000) // Initial equity 10000 ETH
-	
+
 	// Convert trade amounts to float64
 	// For BUY: amountIn is ETH (wei), amountOut is APPL (wei)
 	// For SELL: amountIn is APPL (wei), amountOut is ETH (wei)
 	amountInFloat := new(big.Float).SetInt(trade.AmountIn)
 	amountInFloat.Quo(amountInFloat, big.NewFloat(1e18))
 	amountIn, _ := amountInFloat.Float64()
-	
+
 	amountOutFloat := new(big.Float).SetInt(trade.AmountOut)
 	amountOutFloat.Quo(amountOutFloat, big.NewFloat(1e18))
 	amountOut, _ := amountOutFloat.Float64()
-	
+
 	// Get current spot price for mark-to-market valuation
 	// Use the most recent price from price metrics
 	var currentSpotPrice float64
@@ -158,7 +162,7 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 		priceFloat.Quo(priceFloat, big.NewFloat(1e18))
 		currentSpotPrice, _ = priceFloat.Float64()
 	}
-	
+
 	// Record trade with actual amounts and current spot price
 	// RecordTrade will update balances and calculate equity using mark-to-market
 	if trade.IsBuy {
@@ -181,13 +185,13 @@ func (s *MemoryStore) GetTrades() []engine.Trade {
 func (s *MemoryStore) GetRecentTrades(n int) []engine.Trade {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if n >= len(s.trades) {
 		result := make([]engine.Trade, len(s.trades))
 		copy(result, s.trades)
 		return result
 	}
-	
+
 	result := make([]engine.Trade, n)
 	copy(result, s.trades[len(s.trades)-n:])
 	return result
@@ -198,7 +202,7 @@ func (s *MemoryStore) GetRecentTrades(n int) []engine.Trade {
 func (s *MemoryStore) RecordEvent(eventType, description, severity string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.events = append(s.events, KeyEvent{
 		Timestamp:   time.Now(),
 		Type:        eventType,
@@ -218,16 +222,36 @@ func (s *MemoryStore) GetEvents() []KeyEvent {
 func (s *MemoryStore) GetRecentEvents(n int) []KeyEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if n >= len(s.events) {
 		result := make([]KeyEvent, len(s.events))
 		copy(result, s.events)
 		return result
 	}
-	
+
 	result := make([]KeyEvent, n)
 	copy(result, s.events[len(s.events)-n:])
 	return result
+}
+
+// Trade flow methods
+
+func (s *MemoryStore) GetTradeFlowTracker() *metrics.TradeFlowTracker {
+	return s.tradeFlowTracker
+}
+
+// RecordTradeFlow records a trade flow event (called after trade execution)
+// This captures price changes and calculates log returns and normalized flow
+func (s *MemoryStore) RecordTradeFlow(
+	priceBefore, priceAfter float64,
+	trade *engine.Trade,
+	reservesBeforeETH, reservesBeforeAPPL float64,
+) {
+	s.tradeFlowTracker.RecordTrade(
+		priceBefore, priceAfter,
+		trade,
+		&reservesBeforeETH, &reservesBeforeAPPL,
+	)
 }
 
 // Reset clears stored data but preserves account metrics
@@ -235,10 +259,13 @@ func (s *MemoryStore) GetRecentEvents(n int) []KeyEvent {
 func (s *MemoryStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.priceMetrics.Reset()
 	s.lpMetrics.Reset()
 	// Note: We don't reset accountMetrics here - they persist across sessions
 	s.trades = make([]engine.Trade, 0)
 	s.events = make([]KeyEvent, 0) // Clear Key Events on reset
 }
+
+// Compile-time assertion that MemoryStore implements metrics.PriceDataStore
+var _ metrics.PriceDataStore = (*MemoryStore)(nil)

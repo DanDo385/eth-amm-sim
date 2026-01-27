@@ -72,3 +72,22 @@ export async function getEvents(limit?: number) {
   const query = limit ? `?limit=${limit}` : '';
   return fetchAPI<import('@/types').KeyEvent[]>(`/events${query}`);
 }
+
+// User trading API
+export async function tradeBuy(ethAmount: string) {
+  return fetchAPI<import('@/types').TradeResponse>('/trade/buy', {
+    method: 'POST',
+    body: JSON.stringify({ ethAmount }),
+  });
+}
+
+export async function tradeSell(appleAmount: string) {
+  return fetchAPI<import('@/types').TradeResponse>('/trade/sell', {
+    method: 'POST',
+    body: JSON.stringify({ appleAmount }),
+  });
+}
+
+export async function getUserBalance() {
+  return fetchAPI<import('@/types').UserBalance>('/user/balance');
+}

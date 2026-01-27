@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
+import { TradingPanel } from '@/components/TradingPanel';
 import { PriceChart } from '@/components/PriceChart';
+import { TWAPChart } from '@/components/TWAPChart';
 import { Blotter } from '@/components/Blotter';
 import { LPStats } from '@/components/LPStats';
 import { KeyEvents } from '@/components/KeyEvents';
@@ -130,6 +132,7 @@ export default function Dashboard() {
             onStop={stop}
             onReset={reset}
           />
+          <TradingPanel />
           <LPStats metrics={lpMetrics} />
           <AccountMetrics />
         </div>
@@ -137,6 +140,7 @@ export default function Dashboard() {
         {/* Center Column - Charts */}
         <div className="col-span-12 lg:col-span-6 space-y-6">
           <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
+          <TWAPChart candles={candles} trades={sessionTrades} session={session} height={200} />
           <ImpactCurve 
             buyData={impactData.buy} 
             sellData={impactData.sell} 

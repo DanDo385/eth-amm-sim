@@ -47,19 +47,6 @@ func (w *WhaleBot) Run(ctx context.Context) {
 			log.Printf("[%s] Whale bot stopped", w.Nickname())
 			return
 		default:
-			// Check if stopped out
-			if w.IsStoppedOut() {
-				// Sleep longer when stopped out, but keep checking
-				select {
-				case <-ctx.Done():
-					return
-				case <-w.stopCh:
-					return
-				case <-time.After(10 * time.Second):
-				}
-				continue
-			}
-			
 			// Wait random interval from config
 			delay := w.RandomDelay()
 			select {

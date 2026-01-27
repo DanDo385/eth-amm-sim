@@ -4,8 +4,11 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // SessionStatus represents the current session state
@@ -78,9 +81,28 @@ func (s *Session) emitState() {
 	copy(callbacks, s.stateCallbacks)
 	s.mu.RUnlock()
 	
+	// Use errgroup to handle callback errors gracefully
+	eg, _ := errgroup.WithContext(context.Background())
+	
 	for _, cb := range callbacks {
-		go cb(state)
+		cb := cb // Capture loop variable
+		eg.Go(func() error {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Session state callback panicked: %v", r)
+				}
+			}()
+			cb(state)
+			return nil
+		})
 	}
+	
+	// Wait for all callbacks, but don't block on errors (fire-and-forget)
+	go func() {
+		if err := eg.Wait(); err != nil {
+			log.Printf("Error in session state callbacks: %v", err)
+		}
+	}()
 }
 
 // GetState returns the current session state
