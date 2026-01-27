@@ -249,9 +249,6 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 		case config.BotTypeMeanRev:
 			bot = bots.NewMeanRevBot(&acc, executor, priceProvider, store)
 
-		case config.BotTypeMomentum:
-			bot = bots.NewMomentumBot(&acc, executor, priceProvider, store)
-
 		case config.BotTypeLeverage:
 			bot = bots.NewLeverageBot(&acc, executor, priceProvider, store)
 

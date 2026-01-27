@@ -15,7 +15,6 @@ const (
 	BotTypeLP         BotType = "lp"
 	BotTypeWhale      BotType = "whale"
 	BotTypeMeanRev    BotType = "meanrev"
-	BotTypeMomentum   BotType = "momentum"
 	BotTypeRetail     BotType = "retail"
 	BotTypeLeverage   BotType = "leverage"
 	BotTypeLiquidator BotType = "liquidator"
@@ -38,10 +37,10 @@ type AccountConfig struct {
 	TradeFreqMax int      // Maximum seconds between trades
 
 	// Strategy-specific parameters
-	LookbackBlocks int       // For meanrev/momentum: blocks to look back
+	LookbackBlocks int       // For meanrev: blocks to look back
 	TriggerSigma   float64   // For meanrev: standard deviations to trigger (deprecated, use TriggerLevels)
 	TriggerLevels  []float64 // For meanrev: multiple sigma levels to trade at (e.g., [1.0, 1.5, 2.0])
-	TriggerPercent float64   // For momentum: percent move to trigger (0.03 = 3%)
+	TriggerPercent float64   // Deprecated: was used for momentum bots
 
 	// Leverage parameters (Phase 2)
 	Leverage   int      // Leverage multiplier (5, 10, 25)
@@ -218,44 +217,6 @@ func init() {
 			MaxPosition:    eth(500),
 			LookbackBlocks: 10,                       // Shorter window for faster startup
 			TriggerLevels:  []float64{1.5, 2.0, 2.5}, // Multiple levels: trades at 1.5, 2.0, and 2.5 std deviations
-		},
-
-		// ═══════════════════════════════════════════════════════════════
-		// MOMENTUM (Index 7-9)
-		// Chase trends, different sensitivities
-		// ═══════════════════════════════════════════════════════════════
-		{
-			Index:          7,
-			Nickname:       "Momentum1",
-			Type:           BotTypeMomentum,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(65), // Increased from 50
-			MaxPosition:    eth(300),
-			LookbackBlocks: 10,
-			TriggerPercent: 0.03,  // 3% move triggers
-			StopOutPercent: -0.20, // Stop trading if down 20%
-		},
-		{
-			Index:          8,
-			Nickname:       "Momentum2",
-			Type:           BotTypeMomentum,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(95), // Increased from 75
-			MaxPosition:    eth(400),
-			LookbackBlocks: 20,
-			TriggerPercent: 0.05,  // 5% move triggers
-			StopOutPercent: -0.25, // Stop trading if down 25%
-		},
-		{
-			Index:          9,
-			Nickname:       "Momentum3",
-			Type:           BotTypeMomentum,
-			StartingApples: eth(100),
-			MaxTradeSize:   eth(125), // Increased from 100
-			MaxPosition:    eth(500),
-			LookbackBlocks: 30,
-			TriggerPercent: 0.07,  // 7% move triggers
-			StopOutPercent: -0.30, // Stop trading if down 30%
 		},
 	}
 
