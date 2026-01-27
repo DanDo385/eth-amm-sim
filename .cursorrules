@@ -29,6 +29,8 @@
 - Solidity contracts:
   - Must be simple, explicit, and heavily commented.
   - Prefer clarity over gas micro-optimizations.
+  - Use OpenZeppelin's ReentrancyGuard for state-changing functions.
+  - Use Address.sendValue() for ETH transfers (never use .call{value:}).
   - No upgradeability patterns.
   - No proxy contracts.
   - No governance systems.
@@ -45,6 +47,8 @@
   - TradingView Lightweight Charts for price/equity curves.
   - No state management libraries (Redux, Zustand, etc.).
   - Keep components dumb; logic lives in hooks.
+  - Chart components should handle their own data transformation.
+  - Use useMemo for expensive calculations (TWAP, rolling std dev).
 
 # ------------------------------------------------------------
 # METRICS & FINANCE RULES (IMPORTANT)

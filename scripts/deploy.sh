@@ -19,10 +19,10 @@
 #           |
 #           v
 #   2. deploy.sh (THIS)        Deploys contracts, mints tokens, seeds pool
-#           |
+#           |                  Addresses saved to broadcast/ JSON files
 #           v
-#   3. Backend reads           TOKEN_ADDRESS and AMM_ADDRESS from .env
-#           |                  or uses addresses from broadcast/ output
+#   3. Backend reads           Contract addresses from broadcast/ JSON
+#           |                  (or env vars, or defaults)
 #           v
 #   4. Simulator runs          Bots trade against the deployed contracts
 #
@@ -35,6 +35,8 @@
 # 1. DEPLOY CONTRACTS
 #    - AppleToken: ERC20 token contract (the "APPL" token)
 #    - AppleAMM: The AMM contract for swapping ETH <-> APPL
+#      * Includes leveraged positions and liquidation mechanics
+#      * Uses ReentrancyGuard and Address.sendValue() for security
 #
 # 2. MINT TOKENS to all Anvil accounts based on their role:
 #    - Account 0 (LP):      2000 APPL (1000 for pool, 1000 reserve)
@@ -58,11 +60,9 @@
 # - AppleToken address (e.g., 0x5FbDB2315678afecb367f032d93F642f64180aa3)
 # - AppleAMM address (e.g., 0xe7f1725E7734CE288F8367e1bb143E90bb3F0512)
 #
-# The backend reads these addresses from environment variables:
-#   TOKEN_ADDRESS=0x5FbDB...
-#   AMM_ADDRESS=0xe7f17...
-#
-# Or uses default addresses if not set (see backend/cmd/simulator/main.go)
+# The backend automatically reads these addresses from the broadcast JSON file.
+# No .env file needed - addresses are extracted directly from deployment output.
+# See backend/internal/config/config.go for details
 #
 # ==============================================================================
 # REDEPLOYMENT SCENARIOS
@@ -116,22 +116,57 @@ echo "Deployment complete!"
 echo "Contract addresses are saved in contracts/broadcast/"
 
 # ==============================================================================
+# Show deployed contract addresses
+# ==============================================================================
+
+# Find the latest broadcast file
+BROADCAST_DIR="broadcast/Deploy.s.sol/31337"
+LATEST_BROADCAST=""
+
+# Check for run-latest.json first (symlink to most recent)
+if [ -f "$BROADCAST_DIR/run-latest.json" ]; then
+    LATEST_BROADCAST="$BROADCAST_DIR/run-latest.json"
+else
+    # Find the most recent run-*.json file
+    LATEST_BROADCAST=$(ls -t "$BROADCAST_DIR"/run-*.json 2>/dev/null | head -1)
+fi
+
+if [ -n "$LATEST_BROADCAST" ] && [ -f "$LATEST_BROADCAST" ]; then
+    echo ""
+    echo "Deployed contract addresses:"
+    
+    # Check if jq is available for pretty output
+    if command -v jq &> /dev/null; then
+        TOKEN_ADDR=$(jq -r '.transactions[] | select(.contractName=="AppleToken") | .contractAddress' "$LATEST_BROADCAST" | head -1)
+        AMM_ADDR=$(jq -r '.transactions[] | select(.contractName=="AppleAMM") | .contractAddress' "$LATEST_BROADCAST" | head -1)
+        
+        if [ -n "$TOKEN_ADDR" ] && [ -n "$AMM_ADDR" ] && [ "$TOKEN_ADDR" != "null" ] && [ "$AMM_ADDR" != "null" ]; then
+            echo "  AppleToken: $TOKEN_ADDR"
+            echo "  AppleAMM:   $AMM_ADDR"
+            echo ""
+            echo "✓ Backend will automatically read these addresses from broadcast output"
+        fi
+    else
+        echo "  (Install jq for address extraction: brew install jq)"
+        echo "  Addresses saved in: $LATEST_BROADCAST"
+    fi
+fi
+
+# ==============================================================================
 # NEXT STEPS
 # ==============================================================================
 #
 # After successful deployment:
 #
-# 1. Note the contract addresses from the output (or check broadcast/run-latest.json)
+# 1. Contract addresses are saved in broadcast/ JSON files
+#    The backend automatically reads them - no .env file needed!
 #
-# 2. Update .env if needed:
-#    TOKEN_ADDRESS=<AppleToken address>
-#    AMM_ADDRESS=<AppleAMM address>
-#
-# 3. Start the simulator:
+# 2. Start the simulator:
 #    cd backend && go run cmd/simulator/main.go
-#    Or: make run
+#    Or: make backend
 #
-# 4. Open the frontend to visualize trades:
+# 3. Open the frontend to visualize trades:
 #    cd frontend && npm run dev
+#    Or: make frontend
 #
 # ==============================================================================

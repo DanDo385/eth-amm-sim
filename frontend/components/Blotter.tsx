@@ -6,9 +6,10 @@ import type { Trade } from '@/types';
 interface BlotterProps {
   trades: Trade[];
   maxRows?: number; // Optional limit, undefined means show all trades
+  height?: number; // Height in pixels (defaults to 350 to match PriceChart)
 }
 
-export function Blotter({ trades, maxRows }: BlotterProps) {
+export function Blotter({ trades, maxRows, height = 350 }: BlotterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   
@@ -72,7 +73,8 @@ export function Blotter({ trades, maxRows }: BlotterProps) {
       </div>
       <div 
         ref={containerRef}
-        className="overflow-auto max-h-64"
+        className="overflow-auto"
+        style={{ height: `${height}px` }}
       >
         <table className="w-full text-sm">
           <thead className="text-gray-400 text-xs uppercase bg-surface-light sticky top-0">

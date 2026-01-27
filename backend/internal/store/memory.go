@@ -114,6 +114,10 @@ func (s *MemoryStore) GetAccountPerformance(nickname string) *metrics.Performanc
 	return &perf
 }
 
+func (s *MemoryStore) GetAccountMetricsManager() *metrics.AccountMetricsManager {
+	return s.accountMetrics
+}
+
 // Impact curve methods
 
 func (s *MemoryStore) GetImpactCurve() *metrics.ImpactCurve {

@@ -203,6 +203,9 @@ func (s *Session) Reset() error {
 		return fmt.Errorf("cannot reset running session")
 	}
 	
+	// Ensure orchestrator is fully stopped (in case any bots are lingering)
+	s.orchestrator.Stop()
+	
 	s.status = StatusIdle
 	s.startedAt = nil
 	s.endedAt = nil

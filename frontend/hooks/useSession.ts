@@ -53,11 +53,11 @@ export function useSession() {
   }, [refresh]);
 
   // Reset session
-  const reset = useCallback(async () => {
+  const reset = useCallback(async (hardReset: boolean = false) => {
     setIsLoading(true);
     setError(null);
     try {
-      await api.resetSession();
+      await api.resetSession(hardReset);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to reset session');

@@ -8,7 +8,7 @@ interface SessionControlsProps {
   isLoading: boolean;
   onStart: (duration: number) => void;
   onStop: () => void;
-  onReset: () => void;
+  onReset: (hardReset?: boolean) => void;
 }
 
 export function SessionControls({ session, isLoading, onStart, onStop, onReset }: SessionControlsProps) {
@@ -79,11 +79,12 @@ export function SessionControls({ session, isLoading, onStart, onStop, onReset }
             >
               {isLoading ? 'Starting...' : 'Start'}
             </button>
-            {isCompleted && (
+            {(isCompleted || session.status === 'idle') && (
               <button
-                onClick={onReset}
+                onClick={() => onReset(true)}
                 disabled={isLoading}
                 className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+                title="Hard reset: Clears all data including account metrics"
               >
                 Reset
               </button>

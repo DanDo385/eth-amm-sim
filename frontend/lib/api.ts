@@ -32,8 +32,9 @@ export async function stopSession() {
   return fetchAPI('/session/stop', { method: 'POST' });
 }
 
-export async function resetSession() {
-  return fetchAPI('/session/reset', { method: 'POST' });
+export async function resetSession(hardReset: boolean = false) {
+  const url = hardReset ? '/session/reset?hard=true' : '/session/reset';
+  return fetchAPI(url, { method: 'POST' });
 }
 
 export async function getSessionState() {

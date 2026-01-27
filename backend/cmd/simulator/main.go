@@ -32,16 +32,25 @@ func main() {
 	// Load configuration
 	cfg := config.DefaultConfig()
 
-	// Get contract addresses from environment or use defaults
+	// Get contract addresses (priority: env vars > broadcast JSON > defaults)
 	tokenAddr := os.Getenv("TOKEN_ADDRESS")
 	ammAddr := os.Getenv("AMM_ADDRESS")
 
 	if tokenAddr == "" || ammAddr == "" {
-		log.Println("Warning: TOKEN_ADDRESS and AMM_ADDRESS not set")
-		log.Println("Using placeholder addresses - deploy contracts first!")
-		// These will be replaced after deployment
-		tokenAddr = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-		ammAddr = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+		// Try to load from broadcast JSON
+		broadcastToken, broadcastAMM, err := config.LoadAddressesFromBroadcast()
+		if err == nil {
+			tokenAddr = broadcastToken
+			ammAddr = broadcastAMM
+			log.Println("✓ Loaded contract addresses from broadcast output")
+		} else {
+			log.Printf("Note: Could not load from broadcast (%v), using defaults", err)
+			// Use default addresses (Anvil's deterministic addresses)
+			tokenAddr = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+			ammAddr = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+		}
+	} else {
+		log.Println("✓ Using contract addresses from environment variables")
 	}
 
 	cfg.TokenAddress = common.HexToAddress(tokenAddr)

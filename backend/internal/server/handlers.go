@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -82,6 +83,9 @@ func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
+	// Check for hard reset parameter (clears account metrics too)
+	hardReset := r.URL.Query().Get("hard") == "true"
+	
 	if err := s.session.Reset(); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -89,6 +93,16 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	
 	// Reset store (clears trades, events, price metrics, LP metrics)
 	s.store.Reset()
+	
+	// If hard reset, also clear account metrics
+	if hardReset {
+		// Get account metrics manager and reset all accounts
+		accountMgr := s.store.GetAccountMetricsManager()
+		if accountMgr != nil {
+			accountMgr.Reset()
+			log.Println("Hard reset: Account metrics cleared")
+		}
+	}
 	
 	// Re-initialize LP metrics with current pool state
 	ctx := context.Background()
@@ -103,7 +117,16 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 		Data: s.store.GetRecentEvents(0), // Empty events array
 	})
 	
-	respondJSON(w, map[string]string{"status": "reset"})
+	// Broadcast empty trades to clear frontend
+	s.Broadcast(WSMessage{
+		Type: "trades",
+		Data: []interface{}{}, // Empty trades array
+	})
+	
+	respondJSON(w, map[string]interface{}{
+		"status":    "reset",
+		"hardReset": hardReset,
+	})
 }
 
 func (s *Server) handleSessionState(w http.ResponseWriter, r *http.Request) {

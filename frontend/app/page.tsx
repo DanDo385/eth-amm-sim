@@ -150,7 +150,7 @@ export default function Dashboard() {
 
         {/* Right Column - Blotter & Events */}
         <div className="col-span-12 lg:col-span-3 space-y-6">
-          <Blotter trades={sessionTrades} />
+          <Blotter trades={sessionTrades} height={350} />
           <KeyEvents events={events} />
         </div>
       </div>
