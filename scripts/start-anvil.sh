@@ -56,9 +56,10 @@
 #   Account 2: 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC (Whale2)
 #   ... etc (see backend/internal/config/accounts.go for full list)
 #
-# --balance 10000
-#   Each account starts with 10,000 ETH
-#   This is enough for trading simulation but can be increased
+# --balance 15000
+#   Each account starts with 15,000 ETH
+#   The deploy script uses vm.deal to redistribute: account 0 gets 15k, others get 1k each
+#   Account 0 needs 15k ETH total (10k for liquidity + 5k for loans/gas)
 #
 # ==============================================================================
 # NETWORK DETAILS
@@ -111,7 +112,8 @@
 
 echo "Starting Anvil local Ethereum node..."
 echo "Accounts: 30"
-echo "Balance per account: 10,000 ETH"
+echo "Balance per account: 15,000 ETH"
+echo "Note: ETH will be redistributed during deployment (LP gets 15k, others get 1k each)"
 echo ""
 
 # ==============================================================================
@@ -129,7 +131,7 @@ echo ""
 # - Chain ID (31337)
 # - Block mining logs as transactions come in
 
-anvil --accounts 30 --balance 10000
+anvil --accounts 30 --balance 15000
 
 # ==============================================================================
 # TROUBLESHOOTING

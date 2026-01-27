@@ -71,6 +71,9 @@ contract AppleAMM is ReentrancyGuard {
     uint256 public totalFeesApple;
     uint256 public totalFeesETH;
     
+    // Track total ETH lent out for leveraged positions
+    uint256 public totalLentETH;
+    
     // ============================================================
     // LEVERAGED POSITIONS
     // ============================================================
@@ -82,6 +85,7 @@ contract AppleAMM is ReentrancyGuard {
         uint256 size;             // Position size in APPL (for long positions)
         uint256 entryPrice;       // Entry price (ETH per APPL, scaled by 1e18)
         uint256 leverage;         // Leverage multiplier (5x, 10x, 25x)
+        uint256 loanAmount;       // ETH amount lent from contract reserves
         uint256 timestamp;        // Position opened timestamp
     }
     
@@ -90,9 +94,15 @@ contract AppleAMM is ReentrancyGuard {
     // Margin requirements (in basis points, 10000 = 100%)
     uint256 public constant INITIAL_MARGIN_BPS = 5000;      // 50% initial margin
     uint256 public constant MAINTENANCE_MARGIN_BPS = 2000;   // 20% maintenance margin
-    uint256 public constant LIQUIDATION_THRESHOLD_BPS = 1000; // 10% liquidation threshold
+    uint256 public constant LIQUIDATION_THRESHOLD_BPS = 1000; // 10% liquidation threshold (default, overridden by leverage-specific)
     uint256 public constant LIQUIDATION_FEE_BPS = 500;       // 5% liquidation fee
     uint256 private constant BASIS_POINTS = 10000;
+    
+    // Leverage-specific liquidation thresholds (in basis points)
+    // Higher leverage = higher threshold = liquidates sooner
+    uint256 private constant LIQUIDATION_THRESHOLD_5X_BPS = 5000;  // 50% threshold for 5x leverage
+    uint256 private constant LIQUIDATION_THRESHOLD_10X_BPS = 7500; // 75% threshold for 10x leverage
+    uint256 private constant LIQUIDATION_THRESHOLD_25X_BPS = 9000; // 90% threshold for 25x leverage
     
     // ============================================================
     // EVENTS
@@ -380,11 +390,12 @@ contract AppleAMM is ReentrancyGuard {
         // Validate inputs
         _validateLeverageInputs(leverage, msg.value);
         
-        // Execute leveraged swap
-        applesOut = _executeLeveragedSwap(msg.value, minApples);
+        // Execute leveraged swap (calculates loan and swaps collateral * leverage)
+        uint256 loanAmount;
+        (applesOut, loanAmount) = _executeLeveragedSwap(msg.value, minApples, leverage);
         
         // Create position
-        _createPosition(msg.value, applesOut, leverage);
+        _createPosition(msg.value, applesOut, leverage, loanAmount);
         
         return applesOut;
     }
@@ -415,17 +426,25 @@ contract AppleAMM is ReentrancyGuard {
         ethReserve -= ethOut;
         totalFeesApple += fee;
         
-        // Calculate PnL
-        uint256 leveragedCost = pos.collateral * pos.leverage;
-        int256 pnl = int256(ethOut) - int256(leveragedCost);
+        // Repay the loan first
+        uint256 loanRepayment = pos.loanAmount;
+        totalLentETH -= loanRepayment;
         
-        // Return ETH to trader
-        Address.sendValue(payable(msg.sender), ethOut);
+        // Calculate remaining ETH after loan repayment
+        uint256 remainingETH = ethOut > loanRepayment ? ethOut - loanRepayment : 0;
+        
+        // Calculate PnL (based on what trader receives after loan repayment)
+        int256 pnl = int256(remainingETH) - int256(pos.collateral);
+        
+        // Return remaining ETH to trader (after loan repayment)
+        if (remainingETH > 0) {
+            Address.sendValue(payable(msg.sender), remainingETH);
+        }
         
         // Clear position
         delete positions[msg.sender];
         
-        emit PositionClosed(msg.sender, ethOut, uint256(pnl));
+        emit PositionClosed(msg.sender, remainingETH, uint256(pnl));
         
         // Also emit swap event
         emit LogSwap(
@@ -459,9 +478,12 @@ contract AppleAMM is ReentrancyGuard {
         // Calculate current position value (uses current spot price internally)
         uint256 currentValue = getPositionValue(trader);
         
-        // Calculate margin ratio
-        marginRatio = _calculateMarginRatio(currentValue, pos.collateral, pos.leverage);
-        liquidatable = marginRatio < LIQUIDATION_THRESHOLD_BPS;
+        // Calculate margin ratio using equity-based approach
+        marginRatio = _calculateMarginRatio(currentValue, pos.collateral, pos.loanAmount);
+        
+        // Get leverage-specific liquidation threshold
+        uint256 threshold = _getLiquidationThreshold(pos.leverage);
+        liquidatable = marginRatio < threshold;
         
         return (liquidatable, marginRatio);
     }
@@ -535,8 +557,8 @@ contract AppleAMM is ReentrancyGuard {
         // Execute liquidation swap
         uint256 ethOut = _executeLiquidationSwap(trader, pos);
         
-        // Distribute liquidation proceeds
-        _distributeLiquidationProceeds(trader, ethOut, pos.collateral);
+        // Distribute liquidation proceeds (repays loan, pays liquidator fee, returns remainder)
+        _distributeLiquidationProceeds(trader, ethOut, pos);
         
         // Clear position
         delete positions[trader];
@@ -630,43 +652,66 @@ contract AppleAMM is ReentrancyGuard {
     }
     
     /**
-     * @notice Execute leveraged swap (buy APPL with collateral)
-     * @param tradeAmount ETH amount to trade
+     * @notice Execute leveraged swap (buy APPL with collateral + loan)
+     * @param collateral ETH collateral deposited by trader
      * @param minApples Minimum APPL to receive
+     * @param leverage Leverage multiplier
      * @return applesOut Amount of APPL received
+     * @return loanAmount Amount of ETH lent from contract reserves
+     * 
+     * @dev Calculates total trade amount = collateral * leverage
+     *      Lends (leverage - 1) * collateral from contract reserves
+     *      Swaps total amount to get leveraged position size
      */
-    function _executeLeveragedSwap(uint256 tradeAmount, uint256 minApples) internal returns (uint256 applesOut) {
+    function _executeLeveragedSwap(uint256 collateral, uint256 minApples, uint256 leverage) internal returns (uint256 applesOut, uint256 loanAmount) {
         _validatePoolNotEmpty();
         
-        // Calculate fee and amount after fee
-        (uint256 fee, uint256 amountInWithFee) = _calculateSwapFee(tradeAmount);
+        // Calculate total trade amount (collateral * leverage)
+        uint256 totalTradeAmount = collateral * leverage;
         
-        // Calculate output amount
+        // Calculate loan amount (additional ETH needed from contract)
+        loanAmount = totalTradeAmount - collateral;
+        
+        // Ensure contract has enough ETH to lend (using accumulated fees and reserves)
+        // For demo: we use contract's total balance (reserves + fees)
+        // In production, this would need a dedicated lending pool
+        uint256 availableETH = address(this).balance - ethReserve;
+        if (availableETH < loanAmount) {
+            revert InsufficientLiquidity(); // Not enough ETH available for lending
+        }
+        
+        // Calculate fee and amount after fee (on total trade amount)
+        (uint256 fee, uint256 amountInWithFee) = _calculateSwapFee(totalTradeAmount);
+        
+        // Calculate output amount using total trade amount
         applesOut = getAmountOut(amountInWithFee, ethReserve, appleReserve);
         if (applesOut < minApples) revert SlippageExceeded();
         if (applesOut >= appleReserve) revert InsufficientAPPLLiquidity();
         
-        // Update reserves
-        ethReserve += tradeAmount;
+        // Update reserves (add total trade amount, remove APPL)
+        ethReserve += totalTradeAmount;
         appleReserve -= applesOut;
         totalFeesETH += fee;
+        
+        // Track the loan
+        totalLentETH += loanAmount;
         
         // Transfer APPL to trader
         appleToken.safeTransfer(msg.sender, applesOut);
         
-        // Emit swap event
+        // Emit swap event (using total trade amount)
         uint256 entryPrice = getSpotPrice();
         emit LogSwap(
             msg.sender,
             true,
-            tradeAmount,
+            totalTradeAmount,
             applesOut,
             entryPrice,
             fee,
             block.timestamp
         );
         
-        return applesOut;
+        return (applesOut, loanAmount);
     }
     
     /**
@@ -674,8 +719,9 @@ contract AppleAMM is ReentrancyGuard {
      * @param collateral Collateral amount
      * @param applesOut APPL received
      * @param leverage Leverage multiplier
+     * @param loanAmount ETH amount lent from contract reserves
      */
-    function _createPosition(uint256 collateral, uint256 applesOut, uint256 leverage) internal {
+    function _createPosition(uint256 collateral, uint256 applesOut, uint256 leverage, uint256 loanAmount) internal {
         uint256 entryPrice = getSpotPrice();
         positions[msg.sender] = Position({
             trader: msg.sender,
@@ -684,6 +730,7 @@ contract AppleAMM is ReentrancyGuard {
             size: applesOut,
             entryPrice: entryPrice,
             leverage: leverage,
+            loanAmount: loanAmount,
             timestamp: block.timestamp
         });
         
@@ -725,25 +772,34 @@ contract AppleAMM is ReentrancyGuard {
     }
     
     /**
-     * @notice Distribute liquidation proceeds (fee to liquidator, remainder to trader)
+     * @notice Distribute liquidation proceeds (repay loan, fee to liquidator, remainder to trader)
      * @param trader Address of trader being liquidated
      * @param ethOut ETH received from liquidation swap
-     * @param collateral Original collateral amount
+     * @param pos Position being liquidated
      */
-    function _distributeLiquidationProceeds(address trader, uint256 ethOut, uint256 collateral) internal {
+    function _distributeLiquidationProceeds(address trader, uint256 ethOut, Position memory pos) internal {
+        // Repay the loan first
+        uint256 loanRepayment = pos.loanAmount;
+        totalLentETH -= loanRepayment;
+        
+        // Calculate proceeds after loan repayment
+        uint256 proceedsAfterLoan = ethOut > loanRepayment ? ethOut - loanRepayment : 0;
+        
         // Calculate liquidation fee (5% of collateral)
-        uint256 liquidationFee = _calculateLiquidationFee(collateral);
-        uint256 remainingCollateral = ethOut > liquidationFee ? ethOut - liquidationFee : 0;
+        uint256 liquidationFee = _calculateLiquidationFee(pos.collateral);
+        uint256 remainingCollateral = proceedsAfterLoan > liquidationFee ? proceedsAfterLoan - liquidationFee : 0;
         
         // Pay liquidator fee
-        Address.sendValue(payable(msg.sender), liquidationFee);
+        if (liquidationFee > 0) {
+            Address.sendValue(payable(msg.sender), liquidationFee);
+        }
         
         // Return remaining collateral to trader (if any)
         if (remainingCollateral > 0) {
             Address.sendValue(payable(trader), remainingCollateral);
         }
         
-        emit PositionLiquidated(trader, msg.sender, collateral, liquidationFee, remainingCollateral);
+        emit PositionLiquidated(trader, msg.sender, pos.collateral, liquidationFee, remainingCollateral);
     }
     
     /**
@@ -756,18 +812,47 @@ contract AppleAMM is ReentrancyGuard {
     }
     
     /**
-     * @notice Calculate margin ratio
+     * @notice Calculate margin ratio using equity-based approach
      * @param currentValue Current position value
      * @param collateral Collateral amount
-     * @param leverage Leverage multiplier
-     * @return marginRatio Margin ratio in basis points
+     * @param loanAmount Amount of ETH loaned from contract
+     * @return marginRatio Margin ratio in basis points (equity / collateral)
+     * 
+     * @dev Equity = currentValue - loanAmount
+     *      Margin ratio = (equity / collateral) * 10000
+     *      If equity is negative or zero, returns 0 (position is underwater)
      */
-    function _calculateMarginRatio(uint256 currentValue, uint256 collateral, uint256 leverage) internal pure returns (uint256) {
-        uint256 leveragedCost = collateral * leverage;
-        if (leveragedCost == 0) {
+    function _calculateMarginRatio(uint256 currentValue, uint256 collateral, uint256 loanAmount) internal pure returns (uint256) {
+        if (collateral == 0) {
             return 0;
         }
-        return (currentValue * BASIS_POINTS) / leveragedCost;
+        
+        // Calculate equity (can be negative, but we handle it as 0)
+        if (currentValue <= loanAmount) {
+            return 0; // Position is underwater (equity <= 0)
+        }
+        
+        uint256 equity = currentValue - loanAmount;
+        
+        // Margin ratio = (equity / collateral) * 10000
+        return (equity * BASIS_POINTS) / collateral;
+    }
+    
+    /**
+     * @notice Get leverage-specific liquidation threshold
+     * @param leverage Leverage multiplier (5, 10, or 25)
+     * @return threshold Liquidation threshold in basis points
+     */
+    function _getLiquidationThreshold(uint256 leverage) internal pure returns (uint256) {
+        if (leverage == 5) {
+            return LIQUIDATION_THRESHOLD_5X_BPS;  // 50% threshold
+        } else if (leverage == 10) {
+            return LIQUIDATION_THRESHOLD_10X_BPS; // 75% threshold
+        } else if (leverage == 25) {
+            return LIQUIDATION_THRESHOLD_25X_BPS; // 90% threshold
+        }
+        // Default to standard threshold for other leverage levels
+        return LIQUIDATION_THRESHOLD_BPS;
     }
     
     /**

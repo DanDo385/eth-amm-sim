@@ -1,8 +1,9 @@
 .PHONY: anvil deploy bindings backend frontend clean test-contracts
 
 # Start local Anvil chain with 30 accounts
+# LP account (0) needs 15k ETH, others need 1k ETH each
 anvil:
-	anvil --accounts 30 --balance 10000
+	anvil --accounts 30 --balance 15000
 
 # Deploy contracts to Anvil
 deploy:
