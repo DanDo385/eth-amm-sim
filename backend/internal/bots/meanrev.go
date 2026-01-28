@@ -7,9 +7,10 @@
 // selling when above.
 //
 // Three variants with different sensitivities:
-//   MeanRev1: Fast (50-trade half-life), low thresholds → trades frequently
-//   MeanRev2: Medium (100-trade half-life), moderate thresholds
-//   MeanRev3: Slow (175-trade half-life), high thresholds → trades rarely
+//
+//	MeanRev1: Fast (50-trade half-life), low thresholds → trades frequently
+//	MeanRev2: Medium (100-trade half-life), moderate thresholds
+//	MeanRev3: Slow (175-trade half-life), high thresholds → trades rarely
 //
 // CONNECTIONS:
 //   - Subscribes to: metrics/trade_flow.go TradeFlowTracker for trade events
@@ -33,11 +34,12 @@ import (
 	"eth-amm-sim/internal/engine"
 	"eth-amm-sim/internal/metrics"
 	"eth-amm-sim/internal/store"
+
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // MeanRevBot implements AMM-correct mean reversion using EWMA on liquidity-normalized log returns
-// 
+//
 // Key differences from price-level mean reversion:
 // - Uses log returns (r = ln(priceAfter/priceBefore)) for stationarity
 // - Normalizes by trade flow (q = dX/reserveX) to account for AMM price impact
@@ -45,18 +47,19 @@ import (
 // - Observes all trades except own trades (external market flow only)
 type MeanRevBot struct {
 	*BaseBot
-	privateKey   *ecdsa.PrivateKey
+	privateKey    *ecdsa.PrivateKey
 	priceProvider metrics.PriceProvider
-	store        *store.MemoryStore
-	
+	store         *store.MemoryStore
+
 	// EWMA state for liquidity-normalized returns
 	ewmaState *metrics.EWMAState
-	
+
 	// Trading state
-	tradedLevels map[float64]bool // Track which sigma levels we've traded at (key is abs(zScore))
-	lastZ        float64           // Last z-score (for zero-crossing detection)
-	lastRTilde   float64           // Most recent rTilde (for recalculating z-score)
-	
+	tradedLevels     map[float64]bool // Track which sigma levels we've traded at (key is abs(zScore))
+	lastZ            float64          // Last z-score (for zero-crossing detection)
+	lastRTilde       float64          // Most recent rTilde (for recalculating z-score)
+	tradesSinceTrade int              // Number of trades observed since last executed trade
+
 	mu sync.RWMutex // Mutex for thread-safe access to trading state
 }
 
@@ -76,19 +79,20 @@ func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, pricePr
 	ewmaState := metrics.NewEWMAState(halfLifeTrades)
 
 	bot := &MeanRevBot{
-		BaseBot:      NewBaseBot(cfg, executor, store),
-		privateKey:   privateKey,
-		priceProvider: priceProvider,
-		store:        store,
-		ewmaState:    ewmaState,
-		tradedLevels: make(map[float64]bool),
-		lastZ:        0,
+		BaseBot:          NewBaseBot(cfg, executor, store),
+		privateKey:       privateKey,
+		priceProvider:    priceProvider,
+		store:            store,
+		ewmaState:        ewmaState,
+		tradedLevels:     make(map[float64]bool),
+		lastZ:            0,
+		tradesSinceTrade: 0, // Start at 0, need half-life trades before first trade
 	}
-	
+
 	// Subscribe to trade flow events (will receive all trades except own)
 	tradeFlowTracker := store.GetTradeFlowTracker()
 	tradeFlowTracker.Subscribe(bot)
-	
+
 	return bot, nil
 }
 
@@ -102,16 +106,19 @@ func (m *MeanRevBot) GetNickname() string {
 func (m *MeanRevBot) OnTradeFlow(event metrics.TradeFlowEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Update EWMA statistics with new rTilde observation
 	m.ewmaState.UpdateEWMA(event.RTilde)
-	
+
+	// Increment trades since last trade (for half-life requirement)
+	m.tradesSinceTrade++
+
 	// Store most recent rTilde for z-score recalculation
 	m.lastRTilde = event.RTilde
-	
+
 	// Calculate z-score: z = (rTilde - mu) / sigma
 	zScore := m.ewmaState.GetZScore(event.RTilde)
-	
+
 	// Check for zero-crossing (for MeanRev2/3 reset logic)
 	// Reset traded levels when z-score crosses zero (sign change)
 	if m.lastZ != 0 {
@@ -121,7 +128,7 @@ func (m *MeanRevBot) OnTradeFlow(event metrics.TradeFlowEvent) {
 		}
 	}
 	m.lastZ = zScore
-	
+
 	// Check if we should trade based on z-score thresholds
 	// This will be checked in the Run loop
 }
@@ -135,7 +142,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 	} else {
 		levelStr = "no trigger levels configured"
 	}
-	log.Printf("[%s] MeanRev bot started (EWMA half-life: %d trades, %s)", 
+	log.Printf("[%s] MeanRev bot started (EWMA half-life: %d trades, %s)",
 		m.Nickname(), m.config.HalfLifeTrades, levelStr)
 
 	for {
@@ -163,7 +170,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 				// Check balance before attempting trade
 				if m.hasSufficientBalance(ctx, *side, size) {
 					m.executeTrade(ctx, *side, size)
-					
+
 					// MeanRev1: Reset EWMA after each executed trade (fast reset)
 					// MeanRev2/3: Keep EWMA, only reset traded levels (already done on zero-crossing)
 					if m.config.HalfLifeTrades <= 60 { // MeanRev1 threshold
@@ -173,6 +180,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 						m.lastZ = 0
 						m.mu.Unlock()
 					}
+					// Note: tradesSinceTrade is reset in executeTrade()
 				}
 			}
 		}
@@ -184,18 +192,26 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
+	// Require half-life trades observed since last trade before trading again
+	halfLife := m.config.HalfLifeTrades
+	if halfLife <= 0 {
+		halfLife = 50 // Default
+	}
+	if m.tradesSinceTrade < halfLife {
+		return nil, nil
+	}
+
 	// Recalculate z-score using most recent rTilde and current EWMA state
 	// This ensures z-score is always relative to current statistics
 	zScore := m.ewmaState.GetZScore(m.lastRTilde)
 	absZScore := math.Abs(zScore)
-	
-	// Require minimum trades observed before trading
-	// This ensures EWMA statistics are meaningful
-	if m.ewmaState.GetTradeCount() < 5 {
+
+	// Require non-zero sigma for meaningful z-score
+	if m.ewmaState.GetSigma() == 0 {
 		return nil, nil
 	}
-	
+
 	// Get trigger levels
 	var triggerLevels []float64
 	if len(m.config.TriggerLevels) > 0 {
@@ -210,7 +226,7 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	for _, level := range triggerLevels {
 		if absZScore >= level {
 			// Check if we've already traded at this level
-			levelKey := math.Floor(level * 10) / 10 // Round to 0.1 precision
+			levelKey := math.Floor(level*10) / 10 // Round to 0.1 precision
 			if !m.tradedLevels[levelKey] {
 				if level > bestLevel {
 					bestLevel = level
@@ -234,15 +250,15 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 		// For BUY: size is in ETH
 		// For SELL: we'll convert to APPL in executeTrade
 		size := new(big.Int).Set(m.config.MaxTradeSize)
-		
+
 		// Mark this level as traded
-		levelKey := math.Floor(bestLevel * 10) / 10
+		levelKey := math.Floor(bestLevel*10) / 10
 		m.tradedLevels[levelKey] = true
 
 		mu := m.ewmaState.GetMu()
 		sigma := m.ewmaState.GetSigma()
-		log.Printf("[%s] MeanRev signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, side=%s", 
-			m.Nickname(), zScore, mu, sigma, bestLevel, side)
+		log.Printf("[%s] MeanRev signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, side=%s, tradesSinceTrade=%d/%d",
+			m.Nickname(), zScore, mu, sigma, bestLevel, side, m.tradesSinceTrade, halfLife)
 
 		return &side, size
 	}
@@ -254,7 +270,7 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 func (m *MeanRevBot) hasSufficientBalance(ctx context.Context, side engine.TradeSide, size *big.Int) bool {
 	addr := crypto.PubkeyToAddress(m.privateKey.PublicKey)
 	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
-	
+
 	if side == engine.BUY {
 		ethBalance, err := m.executor.GetETHBalance(ctx, addr)
 		if err != nil {
@@ -313,8 +329,13 @@ func (m *MeanRevBot) executeTrade(ctx context.Context, side engine.TradeSide, si
 		return
 	}
 
-	log.Printf("[%s] ✓ MeanRev trade executed: %s (%s, size: %s)", 
+	log.Printf("[%s] ✓ MeanRev trade executed: %s (%s, size: %s)",
 		m.Nickname(), txHash[:10]+"...", side, formatEtherMeanRev(size))
+
+	// Reset trades since last trade counter after executing trade
+	m.mu.Lock()
+	m.tradesSinceTrade = 0 // Reset counter - need another half-life before next trade
+	m.mu.Unlock()
 }
 
 // formatEtherMeanRev formats a big.Int as ETH with 4 decimal places

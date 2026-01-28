@@ -55,9 +55,10 @@ type LeverageBot struct {
 	ewmaState *metrics.EWMAState
 
 	// Trading state
-	tradedLevels map[float64]bool // Track which sigma levels we've traded at
-	lastZ        float64          // Last z-score (for zero-crossing detection)
-	lastRTilde   float64          // Most recent rTilde (for recalculating z-score)
+	tradedLevels     map[float64]bool // Track which sigma levels we've traded at
+	lastZ            float64          // Last z-score (for zero-crossing detection)
+	lastRTilde       float64          // Most recent rTilde (for recalculating z-score)
+	tradesSinceTrade int              // Number of trades observed since last executed trade
 
 	mu sync.RWMutex // Mutex for thread-safe access to trading state
 }
@@ -78,12 +79,13 @@ func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 	ewmaState := metrics.NewEWMAState(halfLifeTrades)
 
 	bot := &LeverageBot{
-		BaseBot:      NewBaseBot(cfg, executor, store),
-		privateKey:   privateKey,
-		store:        store,
-		ewmaState:    ewmaState,
-		tradedLevels: make(map[float64]bool),
-		lastZ:        0,
+		BaseBot:          NewBaseBot(cfg, executor, store),
+		privateKey:       privateKey,
+		store:            store,
+		ewmaState:        ewmaState,
+		tradedLevels:     make(map[float64]bool),
+		lastZ:            0,
+		tradesSinceTrade: 0, // Start at 0, need half-life trades before first trade
 	}
 
 	// Subscribe to trade flow events (will receive all trades except own)
@@ -121,6 +123,9 @@ func (l *LeverageBot) OnTradeFlow(event metrics.TradeFlowEvent) {
 
 	// Update EWMA statistics with new rTilde observation
 	l.ewmaState.UpdateEWMA(event.RTilde)
+
+	// Increment trades since last trade (for half-life requirement)
+	l.tradesSinceTrade++
 
 	// Store most recent rTilde for z-score recalculation
 	l.lastRTilde = event.RTilde
@@ -203,14 +208,27 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	// Recalculate z-score using most recent rTilde and current EWMA state
-	zScore := l.ewmaState.GetZScore(l.lastRTilde)
-	absZScore := math.Abs(zScore)
-
-	// Require minimum trades observed before trading
-	if l.ewmaState.GetTradeCount() < 5 {
+	// Require half-life trades observed since last trade before trading again
+	halfLife := calculateLeverageHalfLife(l.config.Leverage)
+	if l.tradesSinceTrade < halfLife {
 		return nil, nil
 	}
+
+	// Require non-zero sigma (variance) for meaningful z-score
+	sigma := l.ewmaState.GetSigma()
+	if sigma == 0 {
+		return nil, nil
+	}
+
+	// Recalculate z-score using most recent rTilde and current EWMA state
+	// If lastRTilde is 0 (no trades received yet), skip
+	if l.lastRTilde == 0 {
+		return nil, nil
+	}
+
+	zScore := l.ewmaState.GetZScore(l.lastRTilde)
+	absZScore := math.Abs(zScore)
+	mu := l.ewmaState.GetMu()
 
 	// Use trigger levels similar to meanrev but trade WITH momentum
 	// Lower thresholds for leverage bots (more aggressive)
@@ -235,9 +253,6 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 		// Trade WITH momentum (opposite of meanrev):
 		// - z-score > 0 (price moving up) → BUY (buy strength) - open leveraged long
 		// - z-score < 0 (price moving down) → SELL (sell weakness) - sell APPL for ETH
-		sigma := l.ewmaState.GetSigma()
-		mu := l.ewmaState.GetMu()
-
 		if zScore > 0 {
 			// BUY: Open leveraged long position
 			// Get base collateral from config
@@ -262,8 +277,8 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 			scaledCollateral.Mul(scaledCollateral, big.NewFloat(volatilityMultiplier))
 			collateral, _ := scaledCollateral.Int(nil)
 
-			log.Printf("[%s] Momentum BUY signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, collateral=%s (volatility scaled: %.2fx)",
-				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(collateral), volatilityMultiplier)
+			log.Printf("[%s] Momentum BUY signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, collateral=%s (volatility scaled: %.2fx), tradesSinceTrade=%d/%d",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(collateral), volatilityMultiplier, l.tradesSinceTrade, halfLife)
 
 			// Mark this level as traded
 			levelKey := math.Floor(bestLevel*10) / 10
@@ -294,8 +309,8 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 			scaledSize.Mul(scaledSize, big.NewFloat(volatilityMultiplier))
 			size, _ := scaledSize.Int(nil)
 
-			log.Printf("[%s] Momentum SELL signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, size=%s APPL (volatility scaled: %.2fx)",
-				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(size), volatilityMultiplier)
+			log.Printf("[%s] Momentum SELL signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, size=%s APPL (volatility scaled: %.2fx), tradesSinceTrade=%d/%d",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(size), volatilityMultiplier, l.tradesSinceTrade, halfLife)
 
 			// Mark this level as traded
 			levelKey := math.Floor(bestLevel*10) / 10
@@ -354,6 +369,11 @@ func (l *LeverageBot) openLeveragedPosition(ctx context.Context, collateral *big
 
 	log.Printf("[%s] ✓ Leveraged position opened: %s (collateral: %s, leverage: %dx)",
 		l.Nickname(), txHash[:10]+"...", formatEther(collateral), leverage)
+
+	// Reset trades since last trade counter after executing trade
+	l.mu.Lock()
+	l.tradesSinceTrade = 0 // Reset counter - need another half-life before next trade
+	l.mu.Unlock()
 }
 
 // executeSell sells APPL for ETH (sell into weakness)
@@ -366,6 +386,11 @@ func (l *LeverageBot) executeSell(ctx context.Context, appleAmount *big.Int) {
 
 	log.Printf("[%s] ✓ Sold APPL: %s (amount: %s)",
 		l.Nickname(), txHash[:10]+"...", formatEther(appleAmount))
+
+	// Reset trades since last trade counter after executing trade
+	l.mu.Lock()
+	l.tradesSinceTrade = 0 // Reset counter - need another half-life before next trade
+	l.mu.Unlock()
 }
 
 // hasOpenPosition checks if the bot already has an open position
