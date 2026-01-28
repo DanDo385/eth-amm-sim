@@ -42,7 +42,21 @@ const (
 	BotTypeLiquidator BotType = "liquidator"
 
 	// UserAccountIndex is the Anvil account index for the User account (manual trading from frontend)
-	UserAccountIndex = 29
+	//
+	// IMPORTANT:
+	// We intentionally map the User account to index 19 (one of the default
+	// Anvil accounts with a known private key). Earlier versions pointed the
+	// User at index 29, but the private key list only contained deterministic
+	// keys for indices 0–19. That mismatch meant the backend was signing
+	// trades with an unfunded key while the frontend was displaying balances
+	// for a different address, causing "Insufficient funds for gas * price +
+	// value" on every manual trade.
+	//
+	// By using index 19 here, the backend and deploy script stay aligned:
+	// - Deploy.s.sol already mints 1,000 APPL and 1,000 ETH to account 19
+	// - Anvil gives account 19 a funded, deterministic private key
+	// - Bots skip the "User" nickname, so this account is reserved for the UI
+	UserAccountIndex = 19
 )
 
 // AccountConfig defines an account's initial state and trading parameters
@@ -232,8 +246,9 @@ func init() {
 			StartingApples: eth(250), // 250 APPL for selling
 			MaxTradeSize:   eth(75),  // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(400),
-			TriggerLevels:  []float64{1.25, 1.75, 2.25}, // Medium: trades at moderate z-score thresholds
-			HalfLifeTrades: 50,                          // Medium decay: 50 trades half-life (halved from 100)
+			// Slightly lower z-score triggers than original to increase activity without shortening lookback
+			TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate-but-more-frequent thresholds
+			HalfLifeTrades: 50,                       // Medium decay: 50 trades half-life (halved from 100)
 		},
 		{
 			Index:          6,
@@ -242,7 +257,8 @@ func init() {
 			StartingApples: eth(500), // 500 APPL for selling
 			MaxTradeSize:   eth(100), // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(500),
-			TriggerLevels:  []float64{2.5, 3.0}, // Large: trades at higher z-score thresholds
+			// Lower extreme thresholds a bit so slow bot still represents large deviations but trades in demos
+			TriggerLevels:  []float64{2.0, 2.5}, // Large: still focuses on big moves, but slightly more active
 			HalfLifeTrades: 87,                  // Slow decay: 87 trades half-life (halved from 175)
 		},
 	}
@@ -252,8 +268,17 @@ func init() {
 	// Generate 15 retail accounts programmatically
 	// ═══════════════════════════════════════════════════════════════════
 	for i := 0; i < 15; i++ {
+		index := 10 + i
+
+		// Reserve one funded account for the manual User trader.
+		// We skip creating a Retail bot for UserAccountIndex here and add it
+		// explicitly at the end of Accounts with Nickname "User".
+		if index == UserAccountIndex {
+			continue
+		}
+
 		Accounts = append(Accounts, AccountConfig{
-			Index:          10 + i,
+			Index:          index,
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
 			StartingApples: eth(40), // Increased from 20 - enough for multiple sell trades
@@ -314,11 +339,16 @@ func init() {
 	// Demo account for user trading via frontend
 	// ═══════════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, AccountConfig{
-		Index:          29,
-		Nickname:       "User",
-		Type:           BotTypeRetail, // Use retail type for compatibility, but won't be used as a bot
-		StartingApples: eth(750),      // 5x suggested amount - enough for multiple sell trades
-		// User account gets default Anvil balance (10000 ETH)
+		Index:    UserAccountIndex,
+		Nickname: "User",
+		// Mark as retail for strategy-compatibility, but createBots in
+		// cmd/simulator/main.go explicitly skips Nickname == "User" so this
+		// account never runs a bot and is reserved for manual trades.
+		Type:           BotTypeRetail,
+		StartingApples: eth(750), // Enough APPL for multiple sell trades
+		// User account starts from the Anvil default ETH allocation (set via
+		// vm.deal in Deploy.s.sol) and is topped up there, so no ETH value
+		// needs to be specified here.
 	})
 }
 

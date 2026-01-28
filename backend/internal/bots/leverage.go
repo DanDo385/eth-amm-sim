@@ -186,6 +186,7 @@ func (l *LeverageBot) Run(ctx context.Context) {
 					hasPosition, err := l.hasOpenPosition(ctx, addr)
 					if err == nil && hasPosition {
 						// Already have a leveraged position, skip opening new one
+						log.Printf("[%s] Skipping leveraged BUY: existing position detected for %s", l.Nickname(), addr.Hex())
 						continue
 					}
 				}
@@ -199,6 +200,9 @@ func (l *LeverageBot) Run(ctx context.Context) {
 						// Sell APPL for ETH (sell into weakness)
 						l.executeSell(ctx, size)
 					}
+				} else {
+					log.Printf("[%s] Signal present but insufficient balance for %s trade (size=%s)",
+						l.Nickname(), tradeSideToString(*side), formatEther(size))
 				}
 			}
 		}
@@ -213,13 +217,18 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 
 	halfLife := calculateLeverageHalfLife(l.config.Leverage)
 
-	// For first trade: reduce requirement to 1/3 of half-life (allows faster entry)
-	// After first trade: require full half-life
-	requiredTrades := halfLife
+	// Warm-up / gating logic:
+	// - First trade: require only a small fraction of half-life (ensures at least one trade early)
+	// - Subsequent trades: require ~half of half-life between trades (still conservative but active)
+	requiredTrades := halfLife / 2
+	if requiredTrades < 2 {
+		requiredTrades = 2
+	}
 	if !l.hasTradedOnce {
-		requiredTrades = (halfLife + 2) / 3 // At least 1, but typically 2-7 trades
-		if requiredTrades < 1 {
-			requiredTrades = 1
+		// First trade: be more permissive – use quarter half-life but never less than 2 trades
+		requiredTrades = halfLife / 4
+		if requiredTrades < 2 {
+			requiredTrades = 2
 		}
 	}
 
@@ -249,9 +258,9 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 	absZScore := math.Abs(zScore)
 	mu := l.ewmaState.GetMu()
 
-	// Use same trigger levels as MeanRev1 (fastest meanrev bot)
-	// This ensures leverage bots use identical logic to meanrev, just trading WITH momentum
-	triggerLevels := []float64{0.75, 1.0, 1.25} // Same as MeanRev1
+	// Trigger levels: slightly looser than MeanRev1 so leverage bots see more signals
+	// while still requiring meaningful deviations
+	triggerLevels := []float64{0.5, 0.75, 1.0}
 
 	// Check each trigger level to see if we should trade
 	var bestLevel float64 = -1
@@ -377,6 +386,14 @@ func (l *LeverageBot) hasSufficientBalance(ctx context.Context, side engine.Trad
 
 		return appleBalance.Cmp(size) >= 0 && ethBalance.Cmp(gasReserve) >= 0
 	}
+}
+
+// tradeSideToString is a small helper for logging
+func tradeSideToString(side engine.TradeSide) string {
+	if side == engine.BUY {
+		return "BUY"
+	}
+	return "SELL"
 }
 
 // openLeveragedPosition opens a leveraged position through the contract

@@ -196,16 +196,17 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Require fewer trades observed since last trade (reduced from full half-life to 30% for more frequent trading)
+	// Require fewer trades observed since last trade (fraction of half-life for more frequent trading)
 	halfLife := m.config.HalfLifeTrades
 	if halfLife <= 0 {
 		halfLife = 50 // Default
 	}
-	// Use 30% of half-life as minimum requirement (allows trading 3x more frequently)
+	// Use 30% of half-life as minimum requirement (allows trading ~3x more frequently than full half-life)
 	minTradesRequired := int(float64(halfLife) * 0.3)
 	if minTradesRequired < 5 {
 		minTradesRequired = 5 // Minimum of 5 trades to ensure some observation
 	}
+
 	if m.tradesSinceTrade < minTradesRequired {
 		return nil, nil
 	}
