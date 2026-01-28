@@ -89,6 +89,9 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
     
     if (prices.length < windowSize) return [];
     
+    // Use a Map to deduplicate timestamps (keep last value for each timestamp)
+    const timeValueMap = new Map<number, number>();
+    
     // Calculate rolling std dev
     for (let i = windowSize - 1; i < prices.length; i++) {
       const window = prices.slice(i - windowSize + 1, i + 1);
@@ -104,14 +107,42 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
       
       const trade = sessionTrades[i];
       if (trade) {
-        data.push({
-          time: (new Date(trade.timestamp).getTime() / 1000) as Time,
-          value: stdDev,
-        });
+        const time = new Date(trade.timestamp).getTime() / 1000;
+        // Store in map (will overwrite if duplicate timestamp exists)
+        timeValueMap.set(time, stdDev);
       }
     }
     
-    return data;
+    // Convert map to array and sort by time
+    const sortedData = Array.from(timeValueMap.entries())
+      .map(([time, value]) => ({
+        time: time as Time,
+        value,
+      }))
+      .sort((a, b) => Number(a.time) - Number(b.time));
+    
+    // If there are still duplicates (same second), add small increments
+    const deduplicatedData: LineData[] = [];
+    let increment = 0;
+    let lastTime = -Infinity;
+    
+    for (const point of sortedData) {
+      let time = Number(point.time);
+      if (time === lastTime) {
+        // Add small increment to make timestamp unique
+        increment += 0.001;
+        time += increment;
+      } else {
+        increment = 0; // Reset increment when time changes
+      }
+      deduplicatedData.push({
+        time: time as Time,
+        value: point.value,
+      });
+      lastTime = time;
+    }
+    
+    return deduplicatedData;
   }, [sessionTrades]);
 
   // Reset chart when session changes

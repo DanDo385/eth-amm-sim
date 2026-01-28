@@ -59,6 +59,7 @@ type LeverageBot struct {
 	lastZ            float64          // Last z-score (for zero-crossing detection)
 	lastRTilde       float64          // Most recent rTilde (for recalculating z-score)
 	tradesSinceTrade int              // Number of trades observed since last executed trade
+	hasTradedOnce    bool             // Track if bot has executed at least one trade (for warm-up bypass)
 
 	mu sync.RWMutex // Mutex for thread-safe access to trading state
 }
@@ -85,7 +86,8 @@ func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 		ewmaState:        ewmaState,
 		tradedLevels:     make(map[float64]bool),
 		lastZ:            0,
-		tradesSinceTrade: 0, // Start at 0, need half-life trades before first trade
+		tradesSinceTrade: 0, // Start at 0, but first trade bypasses half-life requirement
+		hasTradedOnce:    false,
 	}
 
 	// Subscribe to trade flow events (will receive all trades except own)
@@ -96,17 +98,18 @@ func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 }
 
 // calculateLeverageHalfLife returns 1/4th of the corresponding meanrev half-life
+// Updated to match halved meanrev half-lives: MeanRev1=25, MeanRev2=50, MeanRev3=87
 func calculateLeverageHalfLife(leverage int) int {
 	// Map leverage to meanrev half-life, then divide by 4
 	switch leverage {
 	case 5:
-		return 12 // MeanRev1: 50 / 4 = 12.5 → 12
+		return 6 // MeanRev1: 25 / 4 = 6.25 → 6
 	case 10:
-		return 25 // MeanRev2: 100 / 4 = 25
+		return 12 // MeanRev2: 50 / 4 = 12.5 → 12
 	case 25:
-		return 44 // MeanRev3: 175 / 4 = 43.75 → 44
+		return 22 // MeanRev3: 87 / 4 = 21.75 → 22
 	default:
-		return 12 // Default to Lev5x half-life
+		return 6 // Default to Lev5x half-life
 	}
 }
 
@@ -208,21 +211,37 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	// Require half-life trades observed since last trade before trading again
 	halfLife := calculateLeverageHalfLife(l.config.Leverage)
-	if l.tradesSinceTrade < halfLife {
+
+	// For first trade: reduce requirement to 1/3 of half-life (allows faster entry)
+	// After first trade: require full half-life
+	requiredTrades := halfLife
+	if !l.hasTradedOnce {
+		requiredTrades = (halfLife + 2) / 3 // At least 1, but typically 2-7 trades
+		if requiredTrades < 1 {
+			requiredTrades = 1
+		}
+	}
+
+	if l.tradesSinceTrade < requiredTrades {
+		log.Printf("[%s] Signal check skipped: tradesSinceTrade=%d < required=%d (halfLife=%d, hasTradedOnce=%v)",
+			l.Nickname(), l.tradesSinceTrade, requiredTrades, halfLife, l.hasTradedOnce)
 		return nil, nil
 	}
 
 	// Require non-zero sigma (variance) for meaningful z-score
 	sigma := l.ewmaState.GetSigma()
 	if sigma == 0 {
+		log.Printf("[%s] Signal check skipped: sigma=0 (EWMA not warmed up yet, tradesSinceTrade=%d)",
+			l.Nickname(), l.tradesSinceTrade)
 		return nil, nil
 	}
 
 	// Recalculate z-score using most recent rTilde and current EWMA state
 	// If lastRTilde is 0 (no trades received yet), skip
 	if l.lastRTilde == 0 {
+		log.Printf("[%s] Signal check skipped: lastRTilde=0 (no trade flow events received yet)",
+			l.Nickname())
 		return nil, nil
 	}
 
@@ -230,9 +249,9 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 	absZScore := math.Abs(zScore)
 	mu := l.ewmaState.GetMu()
 
-	// Use trigger levels similar to meanrev but trade WITH momentum
-	// Lower thresholds for leverage bots (more aggressive)
-	triggerLevels := []float64{0.5, 0.75, 1.0} // Lower than meanrev for more frequent trading
+	// Use same trigger levels as MeanRev1 (fastest meanrev bot)
+	// This ensures leverage bots use identical logic to meanrev, just trading WITH momentum
+	triggerLevels := []float64{0.75, 1.0, 1.25} // Same as MeanRev1
 
 	// Check each trigger level to see if we should trade
 	var bestLevel float64 = -1
@@ -250,6 +269,9 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 
 	// If we found a level to trade at
 	if bestLevel > 0 {
+		log.Printf("[%s] ✓ Signal detected: z-score=%.2f, level=%.2f std, mu=%.6f, sigma=%.6f, tradesSinceTrade=%d/%d",
+			l.Nickname(), zScore, bestLevel, mu, sigma, l.tradesSinceTrade, requiredTrades)
+
 		// Trade WITH momentum (opposite of meanrev):
 		// - z-score > 0 (price moving up) → BUY (buy strength) - open leveraged long
 		// - z-score < 0 (price moving down) → SELL (sell weakness) - sell APPL for ETH
@@ -321,6 +343,9 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 		}
 	}
 
+	// No signal detected
+	log.Printf("[%s] Signal check: no trigger level reached (z-score=%.2f, absZScore=%.2f, mu=%.6f, sigma=%.6f)",
+		l.Nickname(), zScore, absZScore, mu, sigma)
 	return nil, nil
 }
 
@@ -373,6 +398,7 @@ func (l *LeverageBot) openLeveragedPosition(ctx context.Context, collateral *big
 	// Reset trades since last trade counter after executing trade
 	l.mu.Lock()
 	l.tradesSinceTrade = 0 // Reset counter - need another half-life before next trade
+	l.hasTradedOnce = true // Mark that we've executed at least one trade
 	l.mu.Unlock()
 }
 
@@ -390,6 +416,7 @@ func (l *LeverageBot) executeSell(ctx context.Context, appleAmount *big.Int) {
 	// Reset trades since last trade counter after executing trade
 	l.mu.Lock()
 	l.tradesSinceTrade = 0 // Reset counter - need another half-life before next trade
+	l.hasTradedOnce = true // Mark that we've executed at least one trade
 	l.mu.Unlock()
 }
 

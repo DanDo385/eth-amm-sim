@@ -15,6 +15,7 @@ import type { KeyEvent } from '@/types';
 
 interface KeyEventsProps {
   events: KeyEvent[];
+  height?: number; // Height in pixels (defaults to 200 to match TWAPChart)
 }
 
 const eventIcons: Record<string, string> = {
@@ -29,7 +30,7 @@ const severityColors: Record<string, string> = {
   critical: 'text-red-400',
 };
 
-export function KeyEvents({ events }: KeyEventsProps) {
+export function KeyEvents({ events, height = 200 }: KeyEventsProps) {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString();
@@ -40,7 +41,10 @@ export function KeyEvents({ events }: KeyEventsProps) {
       <div className="px-4 py-3 border-b border-border">
         <h3 className="text-sm font-medium text-white">Key Events</h3>
       </div>
-      <div className="overflow-auto max-h-48">
+      <div 
+        className="overflow-auto"
+        style={{ height: `${height}px` }}
+      >
         {events.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             No events yet

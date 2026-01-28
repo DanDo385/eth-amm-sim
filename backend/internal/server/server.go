@@ -114,7 +114,14 @@ func (s *Server) Start(addr string) error {
 	}
 	
 	// Start broadcast goroutine
-	go s.runBroadcast()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Broadcast loop panicked: %v", r)
+			}
+		}()
+		s.runBroadcast()
+	}()
 	
 	// Register session state callback
 	s.session.OnStateChange(func(state engine.SessionState) {

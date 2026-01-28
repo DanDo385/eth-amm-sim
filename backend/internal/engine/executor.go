@@ -6,11 +6,12 @@
 // account's private key, and sends them to Anvil via chain/client.go.
 //
 // TRADE LIFECYCLE:
-//   Bot decides to trade → calls Executor.SwapETHForApples or SwapApplesForETH
-//   → NonceManager assigns nonce → transaction signed and sent to Anvil
-//   → Executor calculates amountOut/price from constant product formula
-//   → Trade struct emitted via callbacks → main.go records in MemoryStore
-//     and broadcasts via WebSocket → frontend Blotter and PriceChart update
+//
+//	Bot decides to trade → calls Executor.SwapETHForApples or SwapApplesForETH
+//	→ NonceManager assigns nonce → transaction signed and sent to Anvil
+//	→ Executor calculates amountOut/price from constant product formula
+//	→ Trade struct emitted via callbacks → main.go records in MemoryStore
+//	  and broadcasts via WebSocket → frontend Blotter and PriceChart update
 //
 // CONNECTIONS:
 //   - Contract ABI: Manually packed (packSwapETHForApples, etc.) to match
@@ -24,6 +25,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
 	"sync"
@@ -52,11 +54,11 @@ type Trade struct {
 	Fee       *big.Int       `json:"fee"`
 	Timestamp time.Time      `json:"timestamp"`
 	BlockNum  uint64         `json:"blockNum"`
-	
+
 	// Trade flow tracking fields (for EWMA mean reversion)
-	PriceBefore     *big.Int `json:"priceBefore"`     // Price before trade (ETH per APPL, scaled by 1e18)
-	PriceAfter      *big.Int `json:"priceAfter"`       // Price after trade (ETH per APPL, scaled by 1e18)
-	ReservesBeforeETH *big.Int `json:"reservesBeforeETH"` // ETH reserve before trade
+	PriceBefore        *big.Int `json:"priceBefore"`        // Price before trade (ETH per APPL, scaled by 1e18)
+	PriceAfter         *big.Int `json:"priceAfter"`         // Price after trade (ETH per APPL, scaled by 1e18)
+	ReservesBeforeETH  *big.Int `json:"reservesBeforeETH"`  // ETH reserve before trade
 	ReservesBeforeAPPL *big.Int `json:"reservesBeforeAPPL"` // APPL reserve before trade
 }
 
@@ -65,21 +67,21 @@ type TradeCallback func(trade *Trade)
 
 // Executor handles trade execution against the AMM
 type Executor struct {
-	client        *chain.Client
-	nonceManager  *chain.NonceManager
-	accountMgr    *chain.AccountManager
-	
+	client       *chain.Client
+	nonceManager *chain.NonceManager
+	accountMgr   *chain.AccountManager
+
 	ammAddress   common.Address
 	tokenAddress common.Address
-	
+
 	// Contract bindings
 	ammContract   *contracts.AppleAMM
 	tokenContract *contracts.AppleToken
-	
+
 	// Callbacks for trade events
 	tradeCallbacks []TradeCallback
 	callbackMu     sync.RWMutex
-	
+
 	// Nickname lookup
 	nicknames   map[common.Address]string
 	nicknamesMu sync.RWMutex
@@ -95,7 +97,7 @@ func NewExecutor(
 	// Create contract bindings
 	ammContract, _ := contracts.NewAppleAMM(ammAddress, client.Client)
 	tokenContract, _ := contracts.NewAppleToken(tokenAddress, client.Client)
-	
+
 	return &Executor{
 		client:        client,
 		nonceManager:  nonceManager,
@@ -138,22 +140,30 @@ func (e *Executor) emitTrade(trade *Trade) {
 	callbacks := make([]TradeCallback, len(e.tradeCallbacks))
 	copy(callbacks, e.tradeCallbacks)
 	e.callbackMu.RUnlock()
-	
+
 	for _, cb := range callbacks {
-		go cb(trade)
+		cb := cb // Capture loop variable
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Trade callback panicked: %v", r)
+				}
+			}()
+			cb(trade)
+		}()
 	}
 }
 
 // SwapETHForApples swaps ETH for APPL tokens
 func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.PrivateKey, ethAmount *big.Int) (string, error) {
 	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	
+
 	// Get nonce
 	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
-	
+
 	// Build transaction options
 	auth, err := e.accountMgr.GetTransactOptsWithValue(privateKey, ethAmount)
 	if err != nil {
@@ -161,11 +171,11 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Context = ctx
-	
+
 	// ABI for swapETHForApples(uint256 minApples)
 	// We use 0 for minApples in simulation (no slippage protection)
 	data := packSwapETHForApples(big.NewInt(0))
-	
+
 	tx := types.NewTransaction(
 		nonce,
 		e.ammAddress,
@@ -174,17 +184,17 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		auth.GasPrice,
 		data,
 	)
-	
+
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
-	
+
 	err = e.client.SendTransaction(ctx, signedTx)
 	if err != nil {
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
-	
+
 	// Calculate amount out and price using constant product formula
 	// Get reserves BEFORE the trade (for trade flow tracking)
 	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
@@ -201,7 +211,7 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		e.emitTrade(trade)
 		return signedTx.Hash().Hex(), nil
 	}
-	
+
 	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)
 	var priceBefore *big.Int
 	if appleReserveBefore.Sign() > 0 {
@@ -209,20 +219,20 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		priceBefore = big.NewInt(0)
 	}
-	
+
 	// Calculate fee using config constants
 	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
-	
+
 	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
 	numerator := new(big.Int).Mul(amountInAfterFee, appleReserveBefore)
 	denominator := new(big.Int).Add(ethReserveBefore, amountInAfterFee)
 	appleAmountOut := new(big.Int).Div(numerator, denominator)
-	
+
 	// Calculate reserves AFTER trade (for price after calculation)
 	ethReserveAfter := new(big.Int).Add(ethReserveBefore, ethAmount) // Full amount including fee
 	appleReserveAfter := new(big.Int).Sub(appleReserveBefore, appleAmountOut)
-	
+
 	// Calculate price AFTER trade
 	var priceAfter *big.Int
 	if appleReserveAfter.Sign() > 0 {
@@ -230,7 +240,7 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		priceAfter = priceBefore
 	}
-	
+
 	// Calculate execution price: ETH spent / APPL received (scaled by 1e18)
 	var price *big.Int
 	if appleAmountOut.Sign() > 0 {
@@ -239,55 +249,55 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		price = big.NewInt(0)
 	}
-	
+
 	// Store price before/after and reserves before for trade flow tracking
 	// These will be used by the trade callback to emit flow events
-	
+
 	trade := &Trade{
-		TxHash:            signedTx.Hash().Hex(),
-		Trader:            addr,
-		Nickname:          e.GetNickname(addr),
-		IsBuy:             true,
-		AmountIn:          ethAmount,
-		AmountOut:         appleAmountOut,
-		Price:             price,
-		Fee:               fee,
-		Timestamp:         time.Now(),
-		PriceBefore:       priceBefore,
-		PriceAfter:        priceAfter,
-		ReservesBeforeETH: ethReserveBefore,
+		TxHash:             signedTx.Hash().Hex(),
+		Trader:             addr,
+		Nickname:           e.GetNickname(addr),
+		IsBuy:              true,
+		AmountIn:           ethAmount,
+		AmountOut:          appleAmountOut,
+		Price:              price,
+		Fee:                fee,
+		Timestamp:          time.Now(),
+		PriceBefore:        priceBefore,
+		PriceAfter:         priceAfter,
+		ReservesBeforeETH:  ethReserveBefore,
 		ReservesBeforeAPPL: appleReserveBefore,
 	}
 	e.emitTrade(trade)
-	
+
 	return signedTx.Hash().Hex(), nil
 }
 
 // SwapApplesForETH swaps APPL tokens for ETH
 func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.PrivateKey, appleAmount *big.Int) (string, error) {
 	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	
+
 	// First, ensure token approval if needed
 	if err := e.ensureApproval(ctx, privateKey, appleAmount); err != nil {
 		return "", fmt.Errorf("failed to ensure approval: %w", err)
 	}
-	
+
 	// Get nonce
 	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
-	
+
 	auth, err := e.accountMgr.GetTransactOpts(privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create tx opts: %w", err)
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Context = ctx
-	
+
 	// ABI for swapApplesForETH(uint256 appleAmount, uint256 minETH)
 	data := packSwapApplesForETH(appleAmount, big.NewInt(0))
-	
+
 	tx := types.NewTransaction(
 		nonce,
 		e.ammAddress,
@@ -296,17 +306,17 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		auth.GasPrice,
 		data,
 	)
-	
+
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
-	
+
 	err = e.client.SendTransaction(ctx, signedTx)
 	if err != nil {
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
-	
+
 	// Calculate amount out and price using constant product formula
 	// Get reserves BEFORE the trade (for trade flow tracking)
 	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
@@ -323,7 +333,7 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		e.emitTrade(trade)
 		return signedTx.Hash().Hex(), nil
 	}
-	
+
 	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)
 	var priceBefore *big.Int
 	if appleReserveBefore.Sign() > 0 {
@@ -331,20 +341,20 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		priceBefore = big.NewInt(0)
 	}
-	
+
 	// Calculate fee using config constants
 	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
-	
+
 	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
 	numerator := new(big.Int).Mul(amountInAfterFee, ethReserveBefore)
 	denominator := new(big.Int).Add(appleReserveBefore, amountInAfterFee)
 	ethAmountOut := new(big.Int).Div(numerator, denominator)
-	
+
 	// Calculate reserves AFTER trade
 	appleReserveAfter := new(big.Int).Add(appleReserveBefore, appleAmount) // Full amount including fee
 	ethReserveAfter := new(big.Int).Sub(ethReserveBefore, ethAmountOut)
-	
+
 	// Calculate price AFTER trade
 	var priceAfter *big.Int
 	if appleReserveAfter.Sign() > 0 {
@@ -352,7 +362,7 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		priceAfter = priceBefore
 	}
-	
+
 	// Calculate execution price: ETH received / APPL sold (scaled by 1e18)
 	var price *big.Int
 	if appleAmount.Sign() > 0 {
@@ -361,58 +371,58 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 	} else {
 		price = big.NewInt(0)
 	}
-	
+
 	trade := &Trade{
-		TxHash:            signedTx.Hash().Hex(),
-		Trader:            addr,
-		Nickname:          e.GetNickname(addr),
-		IsBuy:             false,
-		AmountIn:          appleAmount,
-		AmountOut:         ethAmountOut,
-		Price:             price,
-		Fee:               fee,
-		Timestamp:         time.Now(),
-		PriceBefore:       priceBefore,
-		PriceAfter:        priceAfter,
-		ReservesBeforeETH: ethReserveBefore,
+		TxHash:             signedTx.Hash().Hex(),
+		Trader:             addr,
+		Nickname:           e.GetNickname(addr),
+		IsBuy:              false,
+		AmountIn:           appleAmount,
+		AmountOut:          ethAmountOut,
+		Price:              price,
+		Fee:                fee,
+		Timestamp:          time.Now(),
+		PriceBefore:        priceBefore,
+		PriceAfter:         priceAfter,
+		ReservesBeforeETH:  ethReserveBefore,
 		ReservesBeforeAPPL: appleReserveBefore,
 	}
 	e.emitTrade(trade)
-	
+
 	return signedTx.Hash().Hex(), nil
 }
 
 // ensureApproval ensures the AMM has approval to spend tokens
 func (e *Executor) ensureApproval(ctx context.Context, privateKey *ecdsa.PrivateKey, amount *big.Int) error {
 	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	
+
 	// Check current allowance
 	allowance, err := e.getAllowance(ctx, addr)
 	if err != nil {
 		return err
 	}
-	
+
 	// If allowance is sufficient, no need to approve
 	if allowance.Cmp(amount) >= 0 {
 		return nil
 	}
-	
+
 	// Approve max uint256
 	maxUint256 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
-	
+
 	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
 	if err != nil {
 		return err
 	}
-	
+
 	auth, err := e.accountMgr.GetTransactOpts(privateKey)
 	if err != nil {
 		return err
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
-	
+
 	data := packApprove(e.ammAddress, maxUint256)
-	
+
 	tx := types.NewTransaction(
 		nonce,
 		e.tokenAddress,
@@ -421,29 +431,29 @@ func (e *Executor) ensureApproval(ctx context.Context, privateKey *ecdsa.Private
 		auth.GasPrice,
 		data,
 	)
-	
+
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
 	if err != nil {
 		return err
 	}
-	
+
 	return e.client.SendTransaction(ctx, signedTx)
 }
 
 // getAllowance gets the current token allowance
 func (e *Executor) getAllowance(ctx context.Context, owner common.Address) (*big.Int, error) {
 	data := packAllowance(owner, e.ammAddress)
-	
+
 	msg := ethereum.CallMsg{
 		To:   &e.tokenAddress,
 		Data: data,
 	}
-	
+
 	result, err := e.client.CallContract(ctx, msg, nil)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return new(big.Int).SetBytes(result), nil
 }
 
@@ -493,7 +503,6 @@ func packAllowance(owner, spender common.Address) []byte {
 	return append(data, common.LeftPadBytes(spender.Bytes(), 32)...)
 }
 
-
 // Pack position operation functions
 func packOpenLeveragedPosition(leverage, minApples *big.Int) []byte {
 	// openLeveragedPosition(uint256 leverage, uint256 minApples)
@@ -533,7 +542,6 @@ func (e *Executor) GetTotalFees(ctx context.Context) (appleFees, ethFees *big.In
 	return result.FeesApple, result.FeesETH, nil
 }
 
-
 // GetETHBalance returns the ETH balance of an address
 func (e *Executor) GetETHBalance(ctx context.Context, address common.Address) (*big.Int, error) {
 	return e.client.GetBalance(ctx, address)
@@ -547,13 +555,13 @@ func (e *Executor) GetAPPLBalance(ctx context.Context, address common.Address) (
 // OpenLeveragedPosition opens a leveraged long position
 func (e *Executor) OpenLeveragedPosition(ctx context.Context, privateKey *ecdsa.PrivateKey, collateral *big.Int, leverage int64) (string, error) {
 	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	
+
 	// Get nonce
 	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
-	
+
 	// Build transaction options
 	auth, err := e.accountMgr.GetTransactOptsWithValue(privateKey, collateral)
 	if err != nil {
@@ -561,11 +569,11 @@ func (e *Executor) OpenLeveragedPosition(ctx context.Context, privateKey *ecdsa.
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Context = ctx
-	
+
 	// Pack function call: openLeveragedPosition(uint256 leverage, uint256 minApples)
 	// Use 0 for minApples (no slippage protection in simulation)
 	data := packOpenLeveragedPosition(big.NewInt(leverage), big.NewInt(0))
-	
+
 	tx := types.NewTransaction(
 		nonce,
 		e.ammAddress,
@@ -574,30 +582,30 @@ func (e *Executor) OpenLeveragedPosition(ctx context.Context, privateKey *ecdsa.
 		auth.GasPrice,
 		data,
 	)
-	
+
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
-	
+
 	err = e.client.SendTransaction(ctx, signedTx)
 	if err != nil {
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
-	
+
 	return signedTx.Hash().Hex(), nil
 }
 
 // LiquidatePosition liquidates an underwater position
 func (e *Executor) LiquidatePosition(ctx context.Context, privateKey *ecdsa.PrivateKey, trader common.Address) (string, error) {
 	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	
+
 	// Get nonce
 	nonce, err := e.nonceManager.GetAndIncrement(ctx, addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
-	
+
 	// Build transaction options
 	auth, err := e.accountMgr.GetTransactOpts(privateKey)
 	if err != nil {
@@ -605,10 +613,10 @@ func (e *Executor) LiquidatePosition(ctx context.Context, privateKey *ecdsa.Priv
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Context = ctx
-	
+
 	// Pack function call: liquidate(address trader)
 	data := packLiquidate(trader)
-	
+
 	tx := types.NewTransaction(
 		nonce,
 		e.ammAddress,
@@ -617,17 +625,17 @@ func (e *Executor) LiquidatePosition(ctx context.Context, privateKey *ecdsa.Priv
 		auth.GasPrice,
 		data,
 	)
-	
+
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(e.client.ChainID()), privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
-	
+
 	err = e.client.SendTransaction(ctx, signedTx)
 	if err != nil {
 		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
-	
+
 	return signedTx.Hash().Hex(), nil
 }
 
@@ -639,39 +647,42 @@ type Position struct {
 	Size       *big.Int // APPL amount for long positions
 	EntryPrice *big.Int
 	Leverage   *big.Int
+	LoanAmount *big.Int // ETH amount lent from contract reserves
 	Timestamp  *big.Int
 }
 
 // GetTraderPosition returns position data for a trader
 func (e *Executor) GetTraderPosition(ctx context.Context, trader common.Address) (*Position, error) {
 	data := packGetTraderPosition(trader)
-	
+
 	msg := ethereum.CallMsg{
 		To:   &e.ammAddress,
 		Data: data,
 	}
-	
+
 	result, err := e.client.CallContract(ctx, msg, nil)
 	if err != nil {
 		return nil, err
 	}
-	
-	// Position struct: (address trader, bool isLong, uint256 collateral, uint256 size, uint256 entryPrice, uint256 leverage, uint256 timestamp)
-	// Each field is 32 bytes
-	if len(result) < 224 { // 7 fields * 32 bytes
-		return nil, fmt.Errorf("invalid position response: got %d bytes, expected at least 224", len(result))
+
+	// Position struct: (address trader, bool isLong, uint256 collateral, uint256 size, uint256 entryPrice, uint256 leverage, uint256 loanAmount, uint256 timestamp)
+	// Each field is 32 bytes (address and bool are packed in first 64 bytes)
+	// Total: 8 fields = 256 bytes
+	if len(result) < 256 { // 8 fields * 32 bytes
+		return nil, fmt.Errorf("invalid position response: got %d bytes, expected at least 256", len(result))
 	}
-	
+
 	pos := &Position{
-		Trader:     common.BytesToAddress(result[12:32]), // address (last 20 bytes of first 32 bytes)
-		IsLong:     result[63] != 0,                       // bool (last byte of second 32 bytes)
-		Collateral: new(big.Int).SetBytes(result[32:64]),
-		Size:       new(big.Int).SetBytes(result[64:96]),
-		EntryPrice: new(big.Int).SetBytes(result[96:128]),
-		Leverage:   new(big.Int).SetBytes(result[128:160]),
-		Timestamp:  new(big.Int).SetBytes(result[160:192]),
+		Trader:     common.BytesToAddress(result[12:32]),   // address (last 20 bytes of first 32 bytes)
+		IsLong:     result[63] != 0,                        // bool (last byte of second 32 bytes)
+		Collateral: new(big.Int).SetBytes(result[64:96]),   // uint256 collateral (bytes 64-95)
+		Size:       new(big.Int).SetBytes(result[96:128]),  // uint256 size (bytes 96-127)
+		EntryPrice: new(big.Int).SetBytes(result[128:160]), // uint256 entryPrice (bytes 128-159)
+		Leverage:   new(big.Int).SetBytes(result[160:192]), // uint256 leverage (bytes 160-191)
+		LoanAmount: new(big.Int).SetBytes(result[192:224]), // uint256 loanAmount (bytes 192-223)
+		Timestamp:  new(big.Int).SetBytes(result[224:256]), // uint256 timestamp (bytes 224-255)
 	}
-	
+
 	return pos, nil
 }
 
@@ -689,22 +700,22 @@ func (e *Executor) GetHybridPrice(ctx context.Context, priceStore PriceDataStore
 		return 0, "", fmt.Errorf("failed to get spot price: %w", err)
 	}
 	spotPrice := toEtherFloat(spotPriceBig)
-	
+
 	// Get TWAP
 	twap := priceStore.GetTWAP()
 	if twap == 0 {
 		// No TWAP data yet, use spot
 		return spotPrice, "spot (no TWAP)", nil
 	}
-	
+
 	// Calculate deviation: |spot - twap| / twap
 	deviation := math.Abs(spotPrice-twap) / twap
-	
+
 	if deviation > deviationThreshold {
 		// Significant deviation - use TWAP (more stable)
 		return twap, fmt.Sprintf("TWAP (deviation: %.2f%%)", deviation*100), nil
 	}
-	
+
 	// Normal conditions - use spot (faster)
 	return spotPrice, "spot", nil
 }
@@ -722,67 +733,67 @@ func (e *Executor) IsLiquidatableHybrid(
 	if err != nil {
 		return false, 0, "", 0, err
 	}
-	
+
 	// Get position from contract
 	pos, err := e.GetTraderPosition(ctx, trader)
 	if err != nil {
 		return false, 0, "", 0, fmt.Errorf("failed to get position: %w", err)
 	}
-	
+
 	if pos.Collateral == nil || pos.Collateral.Sign() == 0 {
 		return false, hybridPrice, priceSource, 0, nil
 	}
-	
+
 	// Calculate position value using hybrid price
 	// Convert hybridPrice (float64) to *big.Int scaled by 1e18
 	hybridPriceFloat := big.NewFloat(hybridPrice)
 	hybridPriceFloat.Mul(hybridPriceFloat, big.NewFloat(1e18))
 	hybridPriceBig, _ := hybridPriceFloat.Int(nil)
-	
+
 	// Calculate position value: APPL_amount * hybrid_price
 	applValue := new(big.Int).Mul(pos.Size, hybridPriceBig)
 	applValue.Div(applValue, big.NewInt(1e18))
-	
+
 	// Calculate leveraged cost
 	leveragedCost := new(big.Int).Mul(pos.Collateral, pos.Leverage)
-	
+
 	// Calculate margin ratio (in basis points)
 	if leveragedCost.Sign() == 0 {
 		return false, hybridPrice, priceSource, 0, nil
 	}
-	
+
 	marginRatioBig := new(big.Int).Mul(applValue, big.NewInt(10000))
 	marginRatioBig.Div(marginRatioBig, leveragedCost)
 	marginRatio := float64(marginRatioBig.Uint64()) / 10000.0
-	
+
 	// Check if liquidatable (margin ratio < 10%)
 	liquidatable := marginRatio < 0.10
-	
+
 	return liquidatable, hybridPrice, priceSource, marginRatio, nil
 }
 
 // IsLiquidatable checks if a position is liquidatable
 func (e *Executor) IsLiquidatable(ctx context.Context, trader common.Address) (bool, error) {
 	data := packIsLiquidatable(trader)
-	
+
 	msg := ethereum.CallMsg{
 		To:   &e.ammAddress,
 		Data: data,
 	}
-	
+
 	result, err := e.client.CallContract(ctx, msg, nil)
 	if err != nil {
 		return false, err
 	}
-	
+
 	// Returns (bool liquidatable, uint256 marginRatio)
 	if len(result) < 32 {
 		return false, fmt.Errorf("invalid response")
 	}
-	
+
 	// First 32 bytes is the bool (padded to 32 bytes)
 	liquidatable := result[31] != 0
-	
+
 	return liquidatable, nil
 }
 

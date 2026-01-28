@@ -259,12 +259,15 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Reserve some ETH for gas (0.01 ETH)
-	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1))
+	// Reserve ETH for gas (0.1 ETH to ensure sufficient buffer)
+	// The transaction sends ethAmount as value, and gas is deducted separately
+	// We need: ethAmount (for trade) + gas (for transaction fee)
+	gasReserve := new(big.Int).Mul(big.NewInt(1e17), big.NewInt(1)) // 0.1 ETH
 	required := new(big.Int).Add(ethAmount, gasReserve)
 	
 	if ethBalance.Cmp(required) < 0 {
-		respondError(w, http.StatusBadRequest, "insufficient ETH balance")
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("insufficient ETH balance: have %s wei, need %s wei (trade: %s + gas reserve: %s)", 
+			ethBalance.String(), required.String(), ethAmount.String(), gasReserve.String()))
 		return
 	}
 	

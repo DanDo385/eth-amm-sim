@@ -138,10 +138,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-12 gap-6">
+      {/* Main Grid - Using 15 columns for wider layout */}
+      <div className="grid grid-cols-15 gap-6">
         {/* Left Column - Controls & LP Stats */}
-        <div className="col-span-12 lg:col-span-3 space-y-6">
+        <div className="col-span-15 lg:col-span-3 space-y-6">
           <SessionControls
             session={session}
             isLoading={isLoading}
@@ -155,7 +155,7 @@ export default function Dashboard() {
         </div>
 
         {/* Center Column - Charts */}
-        <div className="col-span-12 lg:col-span-6 space-y-6">
+        <div className="col-span-15 lg:col-span-6 space-y-6">
           <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
           <TWAPChart candles={candles} trades={sessionTrades} session={session} height={200} />
           <ImpactCurve 
@@ -166,10 +166,10 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Right Column - Blotter & Events */}
-        <div className="col-span-12 lg:col-span-3 space-y-6">
+        {/* Right Column - Trade Blotter and Key Events (same width as center) */}
+        <div className="col-span-15 lg:col-span-6 space-y-6">
           <Blotter trades={sessionTrades} height={350} />
-          <KeyEvents events={events} />
+          <KeyEvents events={events} height={200} />
         </div>
       </div>
 

@@ -20,8 +20,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // SessionStatus represents the current session state
@@ -94,27 +92,24 @@ func (s *Session) emitState() {
 	copy(callbacks, s.stateCallbacks)
 	s.mu.RUnlock()
 	
-	// Use errgroup to handle callback errors gracefully
-	eg, _ := errgroup.WithContext(context.Background())
-	
+	var wg sync.WaitGroup
 	for _, cb := range callbacks {
 		cb := cb // Capture loop variable
-		eg.Go(func() error {
+		wg.Add(1)
+		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("Session state callback panicked: %v", r)
 				}
+				wg.Done()
 			}()
 			cb(state)
-			return nil
-		})
+		}()
 	}
 	
-	// Wait for all callbacks, but don't block on errors (fire-and-forget)
+	// Fire-and-forget wait (don't block emitState caller)
 	go func() {
-		if err := eg.Wait(); err != nil {
-			log.Printf("Error in session state callbacks: %v", err)
-		}
+		wg.Wait()
 	}()
 }
 
@@ -164,7 +159,18 @@ func (s *Session) Start(ctx context.Context) error {
 	s.emitState()
 	
 	// Start the orchestrator
-	go s.run(sessionCtx)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Session run panicked: %v", r)
+				s.mu.Lock()
+				s.status = StatusError
+				s.mu.Unlock()
+				s.emitState()
+			}
+		}()
+		s.run(sessionCtx)
+	}()
 	
 	return nil
 }

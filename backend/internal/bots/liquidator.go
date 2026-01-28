@@ -61,7 +61,14 @@ func (l *LiquidatorBot) Run(ctx context.Context) {
 	log.Printf("[%s] Liquidator bot started (event-driven + polling)", l.Nickname())
 
 	// Start event monitoring (in background)
-	go l.monitorLiquidationEvents(ctx)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[%s] Liquidation event monitor panicked: %v", l.Nickname(), r)
+			}
+		}()
+		l.monitorLiquidationEvents(ctx)
+	}()
 
 	// Also poll every 3 seconds as backup (in case events are missed)
 	ticker := time.NewTicker(3 * time.Second)

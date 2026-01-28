@@ -41,7 +41,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.sendInitialState(conn)
 	
 	// Keep connection alive and handle disconnection
-	go s.handleConnection(conn)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("WebSocket handler panicked: %v", r)
+			}
+		}()
+		s.handleConnection(conn)
+	}()
 }
 
 // sendInitialState sends the current state to a new client

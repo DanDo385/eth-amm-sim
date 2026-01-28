@@ -223,7 +223,7 @@ func init() {
 			MaxTradeSize:   eth(50),  // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(300),
 			TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
-			HalfLifeTrades: 50,                         // Fast decay: 50 trades half-life
+			HalfLifeTrades: 25,                         // Fast decay: 25 trades half-life (halved from 50)
 		},
 		{
 			Index:          5,
@@ -233,7 +233,7 @@ func init() {
 			MaxTradeSize:   eth(75),  // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(400),
 			TriggerLevels:  []float64{1.25, 1.75, 2.25}, // Medium: trades at moderate z-score thresholds
-			HalfLifeTrades: 100,                         // Medium decay: 100 trades half-life
+			HalfLifeTrades: 50,                          // Medium decay: 50 trades half-life (halved from 100)
 		},
 		{
 			Index:          6,
@@ -243,7 +243,7 @@ func init() {
 			MaxTradeSize:   eth(100), // Fixed trade size (not percentage-based)
 			MaxPosition:    eth(500),
 			TriggerLevels:  []float64{2.5, 3.0}, // Large: trades at higher z-score thresholds
-			HalfLifeTrades: 175,                 // Slow decay: 175 trades half-life
+			HalfLifeTrades: 87,                  // Slow decay: 87 trades half-life (halved from 175)
 		},
 	}
 

@@ -27,6 +27,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -154,8 +155,10 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 			log.Printf("[%s] MeanRev bot stopped", m.Nickname())
 			return
 		default:
-			// Check for trading signals periodically
-			delay := m.RandomDelay()
+			// Check for trading signals more frequently (reduced delay for faster response)
+			// Use shorter delay: 0.5-1.5 seconds instead of configured TradeFreqMin/Max
+			delayMs := 500 + rand.Intn(1000) // 500-1500ms
+			delay := time.Duration(delayMs) * time.Millisecond
 			select {
 			case <-ctx.Done():
 				return
@@ -173,7 +176,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 
 					// MeanRev1: Reset EWMA after each executed trade (fast reset)
 					// MeanRev2/3: Keep EWMA, only reset traded levels (already done on zero-crossing)
-					if m.config.HalfLifeTrades <= 60 { // MeanRev1 threshold
+					if m.config.HalfLifeTrades <= 30 { // MeanRev1 threshold (halved from 60 since half-life is now 25)
 						m.ewmaState.ResetEWMA()
 						m.mu.Lock()
 						m.tradedLevels = make(map[float64]bool)
@@ -193,12 +196,17 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Require half-life trades observed since last trade before trading again
+	// Require fewer trades observed since last trade (reduced from full half-life to 30% for more frequent trading)
 	halfLife := m.config.HalfLifeTrades
 	if halfLife <= 0 {
 		halfLife = 50 // Default
 	}
-	if m.tradesSinceTrade < halfLife {
+	// Use 30% of half-life as minimum requirement (allows trading 3x more frequently)
+	minTradesRequired := int(float64(halfLife) * 0.3)
+	if minTradesRequired < 5 {
+		minTradesRequired = 5 // Minimum of 5 trades to ensure some observation
+	}
+	if m.tradesSinceTrade < minTradesRequired {
 		return nil, nil
 	}
 

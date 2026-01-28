@@ -116,16 +116,17 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
         precision: 4,
         minMove: 0.0001,
       },
+      lineType: 0, // Line type: 0 = line (continuous), 1 = area, 2 = histogram
     });
 
-    // Add a price line at 1.0 to show the reference price
+    // Add a price line at 1.0 to show the reference price (center of y-axis)
     series.createPriceLine({
       price: 1.0,
       color: '#9ca3af',
       lineWidth: 1,
       lineStyle: 2, // Dashed
       axisLabelVisible: true,
-      title: 'Reference (1.00)',
+      title: 'Current Price (1.00)',
     });
 
     chartRef.current = chart;
@@ -168,7 +169,13 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
     // Combine buy and sell data into one series
     // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
     // Y-axis: Price relative to reference price (normalized)
+    // Add center point at (0, 1.0) representing current spot price with no trade
     const combinedData: LineData[] = [
+      // Center point: current spot price at trade size 0
+      {
+        time: 0 as Time,
+        value: 1.0, // Normalized reference price (current spot price)
+      },
       // Buy data (positive x-axis)
       ...buyData
         .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
@@ -185,35 +192,42 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
         })),
     ].sort((a, b) => Number(a.time) - Number(b.time));
 
-    // Calculate the center price for sliding scale
-    // Use the price at trade size 0 (or closest to 0) as the center
-    // This represents the current normalized spot price (should be ~1.0)
-    let centerPrice = 1.0; // Default center
+    // Center the axes on the last traded price (normalized to 1.0)
+    // The center point is at (0, 1.0) representing current spot price with no trade
+    const centerPrice = 1.0; // Always use 1.0 as center (normalized reference price)
     
-    if (combinedData.length > 0) {
-      // Find the price closest to trade size 0 (the current spot price)
-      const closestToZero = combinedData.reduce((closest, point) => {
-        const currentDist = Math.abs(Number(point.time));
-        const closestDist = Math.abs(Number(closest.time));
-        return currentDist < closestDist ? point : closest;
-      });
-      centerPrice = closestToZero.value;
+    // Fixed range centered on 1.0: [0.5, 1.5] or wider if needed
+    // This ensures the center (1.0) is always in the middle of the y-axis
+    const range = 2.0;
+    const yAxisMin = Math.max(0, centerPrice - range / 2); // 0.0
+    const yAxisMax = centerPrice + range / 2; // 2.0
+    
+    // Find actual min/max values in the data to ensure they're visible
+    const dataValues = combinedData.map(d => d.value);
+    const actualMin = Math.min(...dataValues);
+    const actualMax = Math.max(...dataValues);
+    
+    // Adjust range if data extends beyond the default range, but keep center at 1.0
+    let finalYMin = yAxisMin;
+    let finalYMax = yAxisMax;
+    
+    if (actualMin < yAxisMin) {
+      // Data goes below 0, extend range downward but keep center visible
+      finalYMin = Math.max(0, actualMin - 0.1);
+    }
+    if (actualMax > yAxisMax) {
+      // Data goes above 2.0, extend range upward but keep center visible
+      finalYMax = actualMax + 0.1;
     }
     
-    // Sliding scale: center around current price with range of 2.0
-    // Scale slides from center - 1.0 to center + 1.0, but never below 0
-    const range = 2.0;
-    let yAxisMin = Math.max(0, centerPrice - range / 2);
-    let yAxisMax = centerPrice + range / 2;
+    // Ensure center (1.0) is always in the middle of the visible range
+    const currentRange = finalYMax - finalYMin;
+    const centerOffset = centerPrice - (finalYMin + finalYMax) / 2;
     
-    // If min is clamped to 0, adjust max to maintain range
-    if (yAxisMin === 0 && centerPrice < 1.0) {
-      // If center is below 1.0, keep range at [0, 2.0]
-      yAxisMax = range;
-    } else if (yAxisMin > 0) {
-      // If center is above 1.0, slide the range up
-      // e.g., center=1.5 → [0.5, 2.5]
-      yAxisMax = yAxisMin + range;
+    // Adjust range to center on 1.0
+    if (Math.abs(centerOffset) > 0.01) {
+      finalYMin = Math.max(0, centerPrice - currentRange / 2);
+      finalYMax = centerPrice + currentRange / 2;
     }
 
     // Set x-axis range to -500 to +500
@@ -248,13 +262,14 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
 
     // Add invisible data points at the min/max to force the scale range
     // This is a workaround since lightweight-charts doesn't directly support setting min/max
-    // We add points at the edges of the x-axis to ensure the y-axis shows the full range [yAxisMin, yAxisMax]
+    // We add points just outside the visible range to ensure they don't conflict with actual data
+    // Use -501 and 501 to avoid duplicates with actual trade data at -500 and 500
     const extendedData = [
       ...combinedData,
-      // Add points at the edges to force the scale
-      { time: -500 as Time, value: yAxisMin },
-      { time: 500 as Time, value: yAxisMax },
-    ];
+      // Add points just outside the edges to force the scale
+      { time: -501 as Time, value: finalYMin },
+      { time: 501 as Time, value: finalYMax },
+    ].sort((a, b) => Number(a.time) - Number(b.time)); // Sort by time to ensure ascending order
 
     // Set data with extended points to force the scale range
     seriesRef.current.setData(extendedData);
@@ -285,7 +300,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       </div>
       <div ref={containerRef} />
       <div className="px-4 py-2 text-xs text-gray-400 text-center border-t border-border">
-        Price (normalized) vs Trade Size (ETH) | Y-axis resets to 1.00 on Reset
+        Price (normalized) vs Trade Size (ETH) | Center (0, 1.0) = Current Spot Price
       </div>
     </div>
   );

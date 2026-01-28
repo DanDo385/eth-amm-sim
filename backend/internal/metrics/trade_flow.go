@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"log"
 	"math"
 	"math/big"
 	"sync"
@@ -163,7 +164,15 @@ func (tft *TradeFlowTracker) RecordTrade(
 			// Increment trade count for this subscriber (external trade)
 			tft.tradeCount++
 			// Notify subscriber
-			go sub.OnTradeFlow(event)
+			sub := sub // Capture loop variable
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("Trade flow subscriber %s panicked: %v", sub.GetNickname(), r)
+					}
+				}()
+				sub.OnTradeFlow(event)
+			}()
 		}
 	}
 }

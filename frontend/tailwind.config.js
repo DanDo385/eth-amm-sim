@@ -16,6 +16,9 @@ module.exports = {
         'surface-light': '#242b35',
         'border': '#2d3748',
       },
+      gridTemplateColumns: {
+        '15': 'repeat(15, minmax(0, 1fr))',
+      },
     },
   },
   plugins: [],
