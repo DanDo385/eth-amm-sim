@@ -155,56 +155,47 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
     const referencePrice = resetPriceRef.current;
     
     if (!referencePrice || referencePrice <= 0) {
-      // If no reference price, clear chart
-      priceSeriesRef.current.setData([]);
-      return;
-    }
-    
-    // If no data, clear the chart
-    if (buyData.length === 0 && sellData.length === 0) {
-      priceSeriesRef.current.setData([]);
+      // If no reference price, show a flat baseline at 1.0
+      const baseline: LineData[] = [
+        { time: -500 as Time, value: 1.0 },
+        { time: 0 as Time, value: 1.0 },
+        { time: 500 as Time, value: 1.0 },
+      ];
+      priceSeriesRef.current.setData(baseline);
       return;
     }
     
     // Combine buy and sell data into one series
     // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
-    // Y-axis: Actual execution price in ETH/APPL
-    // Add center point at (0, referencePrice) representing current spot price with no trade
+    // Y-axis: Price normalized to the reference (last traded) price.
+    // 1.0 = current/last price, <1.0 = cheaper, >1.0 = more expensive.
+    // Add center point at (0, 1.0) representing current spot price with no trade.
     const combinedPriceData: LineData[] = [
-      // Center point: last traded price at trade size 0
+      // Center point: normalized price 1.0 at trade size 0
       {
         time: 0 as Time,
-        value: referencePrice,
+        value: 1.0,
       },
       // Buy data (positive x-axis)
       ...buyData
         .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
         .map((p) => ({
           time: p.tradeSize as Time, // Positive for buys
-          value: p.executePrice, // Actual price
+          value: p.executePrice / referencePrice, // Normalized price
         })),
       // Sell data (negative x-axis)
       ...sellData
         .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
         .map((p) => ({
           time: -p.tradeSize as Time, // Negative for sells
-          value: p.executePrice, // Actual price
+          value: p.executePrice / referencePrice, // Normalized price
         })),
     ].sort((a, b) => Number(a.time) - Number(b.time));
 
-    // Center the y-axis on the last traded price with global [0.0, 2.0] bounds.
-    // We try to keep a 1.0-wide window around the reference price, clipped to [0, 2].
+    // Center the y-axis on 1.0 with global [0.0, 2.0] bounds (normalized price space).
     const window = 1.0;
-    let yAxisMin = referencePrice - window / 2;
-    let yAxisMax = referencePrice + window / 2;
-    if (yAxisMin < 0) {
-      yAxisMin = 0;
-      yAxisMax = Math.min(2.0, yAxisMin + window);
-    }
-    if (yAxisMax > 2.0) {
-      yAxisMax = 2.0;
-      yAxisMin = Math.max(0, yAxisMax - window);
-    }
+    let yAxisMin = 1.0 - window / 2; // 0.5
+    let yAxisMax = 1.0 + window / 2; // 1.5
     
     // Find actual min/max values in the data to ensure they're visible
     const dataValues = combinedPriceData.map(d => d.value);
@@ -293,7 +284,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       </div>
       <div ref={containerRef} />
       <div className="px-4 py-2 text-xs text-gray-400 text-center border-t border-border">
-        Price (normalized) vs Trade Size (ETH) | Center (0, 1.0) = Current Spot Price
+        Price (ETH/APPL) vs Trade Size (ETH) | Dashed line = Last Price (defaults to 1.0)
       </div>
     </div>
   );

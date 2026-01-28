@@ -163,12 +163,13 @@ func eth(n int64) *big.Int {
 var Accounts []AccountConfig
 
 // Pool configuration
-// Deep, highly liquid pool: 1M ETH / 10K APPL
-// Initial price = 100 ETH/APPL
-// Pool depth ensures price movement driven by aggregate flow rather than individual trades
+// On-chain pool seeded in Deploy.s.sol with 10,000 ETH / 10,000 APPL.
+// Backend previously assumed a 1M/10K pool (100 ETH/APPL) for Phase 2 metrics,
+// but for the demo we want the config to exactly mirror the deployed reserves
+// so LP value/price lines up between Go metrics and the Solidity AMM.
 var (
-	PoolApples = eth(10000)   // LP deposits 10,000 APPLES
-	PoolETH    = eth(1000000) // LP deposits 1,000,000 ETH
+	PoolApples = eth(10000) // LP deposits 10,000 APPLES
+	PoolETH    = eth(10000) // LP deposits 10,000 ETH (price starts at 1.0 ETH/APPL)
 )
 
 func init() {

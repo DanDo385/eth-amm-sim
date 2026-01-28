@@ -97,19 +97,36 @@ func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceP
 	return bot, nil
 }
 
-// calculateLeverageHalfLife returns 1/4th of the corresponding meanrev half-life
-// Updated to match halved meanrev half-lives: MeanRev1=25, MeanRev2=50, MeanRev3=87
+// calculateLeverageHalfLife returns 75% of the corresponding meanrev half-life
+// MeanRev1=25, MeanRev2=50, MeanRev3=87
 func calculateLeverageHalfLife(leverage int) int {
-	// Map leverage to meanrev half-life, then divide by 4
+	// Map leverage to meanrev half-life, then multiply by 0.75
 	switch leverage {
 	case 5:
-		return 6 // MeanRev1: 25 / 4 = 6.25 → 6
+		return int(math.Round(float64(25) * 0.75)) // MeanRev1: 25 * 0.75 = 18.75 → 19
 	case 10:
-		return 12 // MeanRev2: 50 / 4 = 12.5 → 12
+		return int(math.Round(float64(50) * 0.75)) // MeanRev2: 50 * 0.75 = 37.5 → 38
 	case 25:
-		return 22 // MeanRev3: 87 / 4 = 21.75 → 22
+		return int(math.Round(float64(87) * 0.75)) // MeanRev3: 87 * 0.75 = 65.25 → 65
 	default:
-		return 6 // Default to Lev5x half-life
+		return 19 // Default to Lev5x half-life
+	}
+}
+
+// getLeverageTriggerLevels returns trigger levels that are 0.2 less than corresponding meanrev levels
+// MeanRev1: [0.75, 1.0, 1.25] → Lev5x: [0.55, 0.8, 1.05]
+// MeanRev2: [1.0, 1.5, 2.0] → Lev10x: [0.8, 1.3, 1.8]
+// MeanRev3: [2.0, 2.5] → Lev25x: [1.8, 2.3]
+func getLeverageTriggerLevels(leverage int) []float64 {
+	switch leverage {
+	case 5:
+		return []float64{0.55, 0.8, 1.05} // MeanRev1 levels - 0.2
+	case 10:
+		return []float64{0.8, 1.3, 1.8} // MeanRev2 levels - 0.2
+	case 25:
+		return []float64{1.8, 2.3} // MeanRev3 levels - 0.2
+	default:
+		return []float64{0.55, 0.8, 1.05} // Default to Lev5x levels
 	}
 }
 
@@ -258,9 +275,8 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 	absZScore := math.Abs(zScore)
 	mu := l.ewmaState.GetMu()
 
-	// Trigger levels: slightly looser than MeanRev1 so leverage bots see more signals
-	// while still requiring meaningful deviations
-	triggerLevels := []float64{0.5, 0.75, 1.0}
+	// Get trigger levels based on leverage (0.2 less than corresponding meanrev levels)
+	triggerLevels := getLeverageTriggerLevels(l.config.Leverage)
 
 	// Check each trigger level to see if we should trade
 	var bestLevel float64 = -1
@@ -293,23 +309,12 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 				baseCollateral = new(big.Int).Mul(big.NewInt(50), big.NewInt(1e18))
 			}
 
-			// Scale collateral with volatility (sigma)
-			// Higher volatility = larger positions
-			volatilityMultiplier := 1.0 + (sigma * 10.0) // Scale sigma by 10x for meaningful impact
-			if volatilityMultiplier < 1.0 {
-				volatilityMultiplier = 1.0 // Don't reduce below base
-			}
-			if volatilityMultiplier > 2.0 {
-				volatilityMultiplier = 2.0 // Cap at 2x base
-			}
+			// Use base collateral without volatility scaling to avoid balance issues
+			// Volatility scaling was causing bots to request 2x collateral which exceeded balances
+			collateral := new(big.Int).Set(baseCollateral)
 
-			// Calculate scaled collateral
-			scaledCollateral := new(big.Float).SetInt(baseCollateral)
-			scaledCollateral.Mul(scaledCollateral, big.NewFloat(volatilityMultiplier))
-			collateral, _ := scaledCollateral.Int(nil)
-
-			log.Printf("[%s] Momentum BUY signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, collateral=%s (volatility scaled: %.2fx), tradesSinceTrade=%d/%d",
-				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(collateral), volatilityMultiplier, l.tradesSinceTrade, halfLife)
+			log.Printf("[%s] Momentum BUY signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, collateral=%s, tradesSinceTrade=%d/%d",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(collateral), l.tradesSinceTrade, halfLife)
 
 			// Mark this level as traded
 			levelKey := math.Floor(bestLevel*10) / 10
@@ -319,29 +324,21 @@ func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
 			return &side, collateral
 		} else if zScore < 0 {
 			// SELL: Sell APPL for ETH (sell into weakness)
-			// Use MaxTradeSize as base size, scaled by volatility
-			baseSize := l.config.MaxTradeSize
+			// Use a reasonable fixed size based on starting APPL balance
+			// Use 20% of starting APPL (250 APPL * 0.2 = 50 APPL) to ensure multiple trades possible
+			baseSize := l.config.StartingApples
 			if baseSize == nil || baseSize.Sign() == 0 {
 				// Default size
-				baseSize = new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18)) // 100 APPL default
+				baseSize = new(big.Int).Mul(big.NewInt(50), big.NewInt(1e18)) // 50 APPL default
+			} else {
+				// Use 20% of starting APPL balance
+				baseSize = new(big.Int).Div(new(big.Int).Mul(baseSize, big.NewInt(20)), big.NewInt(100))
 			}
 
-			// Scale size with volatility (higher volatility = larger sells)
-			volatilityMultiplier := 1.0 + (sigma * 10.0)
-			if volatilityMultiplier < 1.0 {
-				volatilityMultiplier = 1.0
-			}
-			if volatilityMultiplier > 2.0 {
-				volatilityMultiplier = 2.0
-			}
+			size := new(big.Int).Set(baseSize)
 
-			// Calculate scaled size (in APPL)
-			scaledSize := new(big.Float).SetInt(baseSize)
-			scaledSize.Mul(scaledSize, big.NewFloat(volatilityMultiplier))
-			size, _ := scaledSize.Int(nil)
-
-			log.Printf("[%s] Momentum SELL signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, size=%s APPL (volatility scaled: %.2fx), tradesSinceTrade=%d/%d",
-				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(size), volatilityMultiplier, l.tradesSinceTrade, halfLife)
+			log.Printf("[%s] Momentum SELL signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, size=%s APPL, tradesSinceTrade=%d/%d",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(size), l.tradesSinceTrade, halfLife)
 
 			// Mark this level as traded
 			levelKey := math.Floor(bestLevel*10) / 10
