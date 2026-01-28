@@ -1,4 +1,13 @@
-// Package config contains chain and session configuration
+// Package config contains chain and session configuration.
+//
+// SYSTEM ROLE:
+// Provides the connection settings (RPC URL, chain ID) and a bridge between the
+// Foundry deployment output and the Go backend. After deploy.sh runs, contract
+// addresses are saved in contracts/broadcast/Deploy.s.sol/31337/run-latest.json.
+// LoadAddressesFromBroadcast reads that file so the backend knows which on-chain
+// contracts to interact with — no manual .env file needed.
+//
+// See also: config/accounts.go for the account roster and bot parameters.
 package config
 
 import (

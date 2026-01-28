@@ -1,4 +1,14 @@
-// API client for the Go backend
+// api.ts — REST client for the Go backend on :8080.
+//
+// Every exported function maps 1-to-1 to a route in server/server.go.
+// Types are imported from types/index.ts, which mirrors the JSON structs
+// defined in Go (metrics/*.go, engine/types.go, store/memory.go).
+//
+// CONNECTIONS:
+//   - Backend routes:  server/server.go setupRoutes → server/handlers.go
+//   - Type contracts:  types/index.ts ↔ Go JSON structs
+//   - Consumers:       hooks/useSession.ts, hooks/usePriceData.ts,
+//                      components/TradingPanel.tsx, page.tsx
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -61,8 +71,12 @@ export async function getCandles() {
 }
 
 export async function getTrades(limit?: number) {
-  const query = limit ? `?limit=${limit}` : '';
-  return fetchAPI<import('@/types').Trade[]>(`/trades${query}`);
+  const params = new URLSearchParams();
+  if (limit) {
+    params.set('limit', limit.toString());
+  }
+  const query = params.toString();
+  return fetchAPI<import('@/types').Trade[]>(`/trades${query ? `?${query}` : ''}`);
 }
 
 export async function getImpactCurve() {
@@ -70,8 +84,12 @@ export async function getImpactCurve() {
 }
 
 export async function getEvents(limit?: number) {
-  const query = limit ? `?limit=${limit}` : '';
-  return fetchAPI<import('@/types').KeyEvent[]>(`/events${query}`);
+  const params = new URLSearchParams();
+  if (limit) {
+    params.set('limit', limit.toString());
+  }
+  const query = params.toString();
+  return fetchAPI<import('@/types').KeyEvent[]>(`/events${query ? `?${query}` : ''}`);
 }
 
 // User trading API

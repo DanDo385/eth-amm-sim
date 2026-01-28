@@ -1,5 +1,14 @@
-// Package metrics provides EWMA (Exponentially Weighted Moving Average) statistics
-// for AMM-correct mean reversion trading
+// ewma.go — Exponentially Weighted Moving Average calculator for mean reversion.
+//
+// Maintains a running mean and variance of liquidity-normalized log returns
+// using exponential decay. The half-life parameter controls how quickly old
+// observations lose weight (e.g., 50 trades = weight decays to 50% after 50
+// observations). MeanRev bots use the z-score (deviation / std dev) to
+// decide when to trade.
+//
+// CONNECTIONS:
+//   - Used by: bots/meanrev.go (each MeanRev bot has its own EWMACalculator)
+//   - Fed by: metrics/trade_flow.go emits trade flow events with normalized returns
 package metrics
 
 import (

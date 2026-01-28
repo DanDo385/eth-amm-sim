@@ -1,3 +1,13 @@
+// TWAPChart.tsx — Time-Weighted Average Price and standard deviation chart.
+//
+// Computes TWAP and rolling standard deviation client-side from candle data.
+// Visualizes price stability and volatility over the simulation window.
+// Candle data originates from the same source as PriceChart (metrics/price.go).
+//
+// CONNECTIONS:
+//   - Backend data:  metrics/price.go Candle close prices (used for TWAP calc)
+//   - Data hook:     hooks/usePriceData.ts provides candle array
+//   - Types:         types/index.ts Candle, Trade, SessionState
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -182,9 +192,12 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
 
     const data = metricType === 'twap' ? twapData : stdDevData;
 
+    // Handle empty data gracefully
     if (data.length === 0) {
       seriesRef.current.setData([]);
-      return;
+      // Don't return early - still update series options
+    } else {
+      seriesRef.current.setData(data);
     }
 
     // Update series color and title
@@ -193,19 +206,27 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
       title: metricType === 'twap' ? 'TWAP' : 'Rolling Std Dev (100 trades)',
     });
 
-    seriesRef.current.setData(data);
-
     // Set time range to match session
     if (session.startedAt && session.duration > 0) {
       const startTime = new Date(session.startedAt).getTime() / 1000;
       const endTime = startTime + session.duration;
       
-      chartRef.current.timeScale().setVisibleRange({
-        from: startTime as Time,
-        to: endTime as Time,
-      });
+      try {
+        chartRef.current.timeScale().setVisibleRange({
+          from: startTime as Time,
+          to: endTime as Time,
+        });
+      } catch (error) {
+        // Ignore errors when setting time range (e.g., invalid range)
+        console.warn('Error setting time range:', error);
+      }
     } else if (data.length > 0) {
-      chartRef.current.timeScale().fitContent();
+      try {
+        chartRef.current.timeScale().fitContent();
+      } catch (error) {
+        // Ignore errors when fitting content
+        console.warn('Error fitting content:', error);
+      }
     }
   }, [twapData, stdDevData, metricType, session.startedAt, session.duration]);
 

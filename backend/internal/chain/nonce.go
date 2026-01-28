@@ -1,4 +1,12 @@
-// Package chain provides nonce management for concurrent transactions
+// nonce.go — Thread-safe nonce tracking for concurrent bot transactions.
+//
+// Each Ethereum transaction needs a sequential nonce per sender address.
+// Because multiple bot goroutines submit transactions concurrently,
+// NonceManager serializes nonce allocation with a mutex. Each call to
+// GetAndIncrement atomically returns the next nonce and advances the counter.
+//
+// Used by: engine/executor.go (SwapETHForApples, SwapApplesForETH,
+// ensureApproval, OpenLeveragedPosition, LiquidatePosition)
 package chain
 
 import (

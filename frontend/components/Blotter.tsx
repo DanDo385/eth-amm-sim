@@ -1,3 +1,15 @@
+// Blotter.tsx — Real-time trade blotter showing all executed trades.
+//
+// Displays a scrolling table of trades with nickname, direction, size,
+// price, and timestamp. Trades arrive via WebSocket "trade" messages
+// from broadcast.go BroadcastTrade, triggered by the executor callback.
+//
+// CONNECTIONS:
+//   - Backend data:  engine/types.go Trade struct (serialized as JSON)
+//   - WebSocket msg: "trade" from broadcast.go BroadcastTrade
+//   - Initial load:  sendInitialState sends "trades" batch on WS connect
+//   - Trade origin:  executor.go callback → main.go → BroadcastTrade
+//   - Types:         types/index.ts Trade
 'use client';
 
 import { useEffect, useRef, useMemo } from 'react';

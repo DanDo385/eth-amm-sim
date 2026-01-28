@@ -1,4 +1,17 @@
-// Package engine provides session management
+// session.go — Controls the simulation session lifecycle (idle → running → completed).
+//
+// A session wraps an Orchestrator and a timer. When the frontend user clicks
+// "Start" (SessionControls → POST /session/start → server/handlers.go), Session
+// creates a context with the configured duration (default 3 min), starts all bots
+// via Orchestrator, and transitions to StatusRunning. When the timer expires or
+// the user clicks "Stop", the context is cancelled, bots exit, and state becomes
+// StatusCompleted. State changes are broadcast via WebSocket to update the
+// frontend SessionControls component in real time.
+//
+// CONNECTIONS:
+//   - REST API: server/handlers.go calls Start/Stop/Reset/GetState
+//   - Frontend: SessionControls reads session state; useSession hook polls it
+//   - Orchestrator: session.run() calls orchestrator.Start/Stop
 package engine
 
 import (

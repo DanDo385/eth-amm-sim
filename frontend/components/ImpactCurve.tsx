@@ -1,3 +1,14 @@
+// ImpactCurve.tsx — Price impact visualization for hypothetical trade sizes.
+//
+// Shows buy and sell slippage curves (in basis points) using the constant
+// product formula x*y=k. Data is computed by backend metrics/impact.go
+// using current pool reserves, fetched via GET /impact-curve.
+//
+// CONNECTIONS:
+//   - Backend data:  metrics/impact.go CalculateBuyCurve/CalculateSellCurve
+//   - REST endpoint: server/handlers.go handleGetImpactCurve
+//   - Reserve updates: main.go pollPrices → impact.UpdateReserves
+//   - Types:         types/index.ts ImpactPoint, ImpactCurve
 'use client';
 
 import { useEffect, useRef } from 'react';

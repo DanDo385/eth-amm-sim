@@ -1,3 +1,19 @@
+// types/index.ts — TypeScript interfaces mirroring Go backend JSON structs.
+//
+// Each interface here corresponds to a struct serialized by the backend:
+//   SessionState   ← engine/session.go    SessionState
+//   Trade          ← engine/types.go      Trade
+//   Candle         ← metrics/price.go     Candle
+//   LPMetrics      ← metrics/lp.go        LPData / LPSnapshot
+//   PerformanceData← metrics/account.go   AccountPerformance
+//   ImpactPoint    ← metrics/impact.go    ImpactPoint
+//   KeyEvent       ← store/memory.go      KeyEvent
+//   WSMessage      ← server/server.go     WSMessage
+//
+// CONNECTIONS:
+//   - Consumed by: lib/api.ts (return types), hooks/, components/
+//   - Produced by: Go backend JSON serialization via encoding/json
+
 // Session types
 export interface SessionState {
   status: 'idle' | 'running' | 'completed' | 'error';

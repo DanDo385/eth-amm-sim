@@ -1,4 +1,13 @@
-// Package metrics provides market and performance analytics
+// price.go — OHLC candle aggregation, TWAP, and volatility tracking.
+//
+// Records raw price observations (fed by main.go's poll loop every 2s) and
+// aggregates them into candles. Also computes rolling TWAP and volatility
+// used by mean reversion bots and the liquidator's hybrid price check.
+//
+// CONNECTIONS:
+//   - Fed by: cmd/simulator/main.go pollPrices → store.RecordPrice
+//   - Read by: metrics/price_provider.go (PriceProvider interface for bots)
+//   - Frontend: candles served via GET /candles → PriceChart and TWAPChart components
 package metrics
 
 import (

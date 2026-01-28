@@ -1,3 +1,20 @@
+// useWebSocket.ts — Persistent WebSocket connection to backend /stream.
+//
+// Opens a WebSocket to the Go server (server/broadcast.go handleWebSocket).
+// On connect, the backend sends initial state (session, LP metrics, candles,
+// trades, events). During the simulation, broadcast.go fans out real-time
+// messages which this hook dispatches to registered handlers.
+//
+// MESSAGE FLOW:
+//   backend executor callback → server.BroadcastTrade/Price/etc
+//   → broadcast channel → runBroadcast → WebSocket frame
+//   → this hook → page.tsx handleWSMessage → component state updates
+//
+// CONNECTIONS:
+//   - Backend endpoint: server/broadcast.go handleWebSocket + sendInitialState
+//   - Consumer:         page.tsx registers handleWSMessage as the onMessage callback
+//   - Message types:    "trade", "price", "lp_metrics", "account_update",
+//                       "key_event", "session_state", "candles", "trades", "events"
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';

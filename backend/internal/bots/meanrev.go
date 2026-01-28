@@ -1,5 +1,22 @@
-// Package bots contains the mean reversion bot implementation
-// Refactored to use EWMA on liquidity-normalized log returns for AMM-correct mean reversion
+// meanrev.go — EWMA-based mean reversion bot (accounts 4-6).
+//
+// Strategy: Subscribes to trade flow events (via metrics/trade_flow.go) and
+// maintains an EWMA of liquidity-normalized log returns. When the z-score
+// crosses configured trigger levels (e.g., ±0.75σ, ±1.0σ), the bot trades
+// against the deviation — buying when price is below the moving average and
+// selling when above.
+//
+// Three variants with different sensitivities:
+//   MeanRev1: Fast (50-trade half-life), low thresholds → trades frequently
+//   MeanRev2: Medium (100-trade half-life), moderate thresholds
+//   MeanRev3: Slow (175-trade half-life), high thresholds → trades rarely
+//
+// CONNECTIONS:
+//   - Subscribes to: metrics/trade_flow.go TradeFlowTracker for trade events
+//   - Uses: metrics/ewma.go EWMACalculator for z-score computation
+//   - Reads: metrics/price_provider.go PriceProvider for current price (to size sells)
+//   - Executes: via engine/executor.go → contracts/src/AppleAMM.sol
+//   - Config: config/accounts.go TriggerLevels and HalfLifeTrades parameters
 package bots
 
 import (
@@ -44,11 +61,11 @@ type MeanRevBot struct {
 }
 
 // NewMeanRevBot creates a new mean reversion bot with EWMA
-func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *MeanRevBot {
+func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) (*MeanRevBot, error) {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
-		panic("invalid private key for " + cfg.Nickname)
+		return nil, fmt.Errorf("invalid private key for %s: %w", cfg.Nickname, err)
 	}
 
 	// Initialize EWMA state with configured half-life
@@ -72,7 +89,7 @@ func NewMeanRevBot(cfg *config.AccountConfig, executor *engine.Executor, pricePr
 	tradeFlowTracker := store.GetTradeFlowTracker()
 	tradeFlowTracker.Subscribe(bot)
 	
-	return bot
+	return bot, nil
 }
 
 // GetNickname returns the bot's nickname (required for TradeFlowSubscriber interface)
@@ -116,7 +133,7 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 	if len(m.config.TriggerLevels) > 0 {
 		levelStr = fmt.Sprintf("levels: %v", m.config.TriggerLevels)
 	} else {
-		levelStr = fmt.Sprintf("sigma: %.2f", m.config.TriggerSigma)
+		levelStr = "no trigger levels configured"
 	}
 	log.Printf("[%s] MeanRev bot started (EWMA half-life: %d trades, %s)", 
 		m.Nickname(), m.config.HalfLifeTrades, levelStr)
@@ -183,8 +200,6 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	var triggerLevels []float64
 	if len(m.config.TriggerLevels) > 0 {
 		triggerLevels = m.config.TriggerLevels
-	} else if m.config.TriggerSigma > 0 {
-		triggerLevels = []float64{m.config.TriggerSigma}
 	} else {
 		return nil, nil
 	}

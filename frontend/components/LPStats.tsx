@@ -1,3 +1,14 @@
+// LPStats.tsx — Liquidity provider performance metrics display.
+//
+// Shows pool reserves, impermanent loss, fees earned, and net PnL.
+// Data flows from the backend's metrics/lp.go calculations, which track
+// how the LP position performs vs simply holding the initial assets.
+//
+// CONNECTIONS:
+//   - Backend data:  metrics/lp.go LPData (IL, fees, net PnL calculations)
+//   - WebSocket msg: "lp_metrics" from broadcast.go BroadcastLPMetrics
+//   - REST fallback: GET /lp/metrics via hooks/usePriceData.ts
+//   - Types:         types/index.ts LPMetrics, LPSnapshot
 'use client';
 
 import type { LPMetrics } from '@/types';

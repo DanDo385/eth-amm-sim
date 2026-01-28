@@ -1,3 +1,15 @@
+// usePriceData.ts — Fetches and maintains candle + LP metrics state.
+//
+// On mount, fetches initial candle history (GET /candles) and LP metrics
+// (GET /lp/metrics) via lib/api.ts. During the simulation, page.tsx
+// feeds real-time updates from the WebSocket:
+//   "price"      → addCandle   (updates PriceChart)
+//   "lp_metrics" → updateLPMetrics (updates LPStats)
+//
+// CONNECTIONS:
+//   - REST:      lib/api.ts → server/handlers.go handleGetCandles, handleGetLPMetrics
+//   - WebSocket: broadcast.go BroadcastPrice → page.tsx → addCandle
+//   - Backend:   metrics/price.go (candles), metrics/lp.go (LP data)
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';

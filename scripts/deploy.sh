@@ -38,16 +38,23 @@
 #      * Includes leveraged positions and liquidation mechanics
 #      * Uses ReentrancyGuard and Address.sendValue() for security
 #
-# 2. MINT TOKENS to all Anvil accounts based on their role:
-#    - Account 0 (LP):      2000 APPL (1000 for pool, 1000 reserve)
-#    - Accounts 1-3 (Whales): 0-1000 APPL (varies by whale)
-#    - Accounts 4-9 (Bots):   100 APPL each
-#    - Accounts 10-24 (Retail): 20 APPL each
-#    - Accounts 25-28:        0 APPL (use ETH only)
+# 2. REDISTRIBUTE ETH via vm.deal:
+#    - Account 0 (LP):     15,000 ETH (10k liquidity + 5k for loans/gas)
+#    - Accounts 1-29:      1,000 ETH each
 #
-# 3. SEED LIQUIDITY POOL
-#    - LP (account 0) deposits 1000 APPL + 1000 ETH
+# 3. MINT TOKENS to all Anvil accounts:
+#    - Account 0 (LP):         10,000 APPL (for pool seeding)
+#    - Accounts 1-27, 29:      1,000 APPL each
+#    - Account 28 (Liquidator): 0 APPL (uses ETH only)
+#
+# 4. SEED LIQUIDITY POOL
+#    - LP (account 0) deposits 10,000 APPL + 10,000 ETH
 #    - This creates the initial trading pool with 1:1 price ratio
+#
+# NOTE: The backend config (backend/internal/config/accounts.go) defines
+# PoolApples=10,000 and PoolETH=1,000,000 — these are the backend's
+# expected values and may differ from what Deploy.s.sol actually seeds.
+# Check Deploy.s.sol for the authoritative on-chain pool state.
 #
 # ==============================================================================
 # OUTPUT FILES

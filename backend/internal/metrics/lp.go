@@ -1,4 +1,15 @@
-// Package metrics provides LP (Liquidity Provider) analytics
+// lp.go — Liquidity Provider economics: impermanent loss, fees, and net PnL.
+//
+// Tracks the LP's pool position (account 0) and computes:
+//   - Current pool value vs HODL value (if LP had just held initial tokens)
+//   - Impermanent loss (IL) from price divergence
+//   - Cumulative fees earned (read from AppleAMM.getTotalFees)
+//   - Net PnL = fees - IL
+//
+// CONNECTIONS:
+//   - Updated by: main.go pollPrices → memStore.GetLPMetrics().UpdateState()
+//   - Fees from: executor.GetTotalFees() → reads AppleAMM contract on-chain
+//   - Frontend: GET /lp/metrics → LPStats component displays IL, fees, net PnL
 package metrics
 
 import (

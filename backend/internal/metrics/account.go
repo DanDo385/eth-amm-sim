@@ -1,4 +1,14 @@
-// Package metrics provides TradFi-style account performance analytics
+// account.go — Per-account performance analytics (Sharpe ratio, drawdown, win rate).
+//
+// Tracks equity curves and trade history for every account in the simulation.
+// Updated after each trade via the trade callback in main.go. Computes:
+//   - Total return, PnL, volatility, Sharpe ratio, max drawdown, win rate
+//   - Equity curve snapshots for charting
+//
+// CONNECTIONS:
+//   - Updated by: main.go trade callback → store.RecordTrade → AccountMetrics
+//   - Frontend: GET /accounts/{nickname}/performance → AccountMetrics component
+//   - Persists across sessions (not cleared on reset unless hard reset)
 package metrics
 
 import (

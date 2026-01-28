@@ -1,4 +1,28 @@
-// Package main is the entry point for the AMM simulation backend
+// Package main is the entry point for the AMM simulation backend.
+//
+// SYSTEM ROLE:
+// This is the central orchestrator that wires together every backend component.
+// It connects the Go backend to the on-chain contracts (via Anvil RPC) and serves
+// real-time data to the Next.js frontend (via HTTP REST + WebSocket on :8080).
+//
+// STARTUP SEQUENCE:
+//  1. Load config and contract addresses (from broadcast JSON written by deploy.sh)
+//  2. Connect to Anvil at localhost:8545 (chain/client.go)
+//  3. Verify contracts are deployed by reading pool reserves
+//  4. Create Executor (engine/executor.go) — the bridge to on-chain contract calls
+//  5. Create bots from config/accounts.go definitions, each wired to the Executor
+//  6. Start price polling goroutine (every 2s reads reserves → updates metrics → broadcasts)
+//  7. Start HTTP+WebSocket server (server/server.go) on :8080 for the frontend
+//
+// DATA FLOW:
+//
+//	Contract (Anvil) → Executor → Trade callback → MemoryStore + WebSocket → Frontend
+//	Price poll loop  → Executor.GetSpotPrice → MemoryStore → WebSocket → Frontend
+//
+// CONNECTIONS TO OTHER PARTS:
+//
+//	contracts/: Addresses loaded from contracts/broadcast/Deploy.s.sol/31337/run-latest.json
+//	frontend/:  Connects to :8080 for REST API and WebSocket (see frontend/lib/api.ts, hooks/useWebSocket.ts)
 package main
 
 import (
@@ -143,9 +167,9 @@ func main() {
 
 		// Record key events for large trades
 		amountInETH := toEther(trade.AmountIn)
-		if amountInETH >= 100.0 { // Large trade threshold
+		if amountInETH >= config.LargeTradeThresholdETH {
 			severity := "warning"
-			if amountInETH >= 300.0 {
+			if amountInETH >= config.CriticalTradeThresholdETH {
 				severity = "critical"
 			}
 			event := store.KeyEvent{
@@ -238,7 +262,11 @@ func main() {
 	os.Exit(0)
 }
 
-// createBots creates all trading bots based on config
+// createBots iterates over config.Accounts and creates a bot goroutine for each
+// trading account. Each bot is wired to the Executor (for on-chain contract calls)
+// and the MemoryStore (for metrics). MeanRev bots also receive a PriceProvider
+// to access TWAP/volatility from the store without an import cycle.
+// See config/accounts.go for the full account roster and trading parameters.
 func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, priceProvider metrics.PriceProvider, store *store.MemoryStore) {
 	for _, acc := range config.Accounts {
 		// Skip user account (not a bot)
@@ -247,6 +275,7 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 		}
 
 		var bot bots.Bot
+		var err error
 
 		switch acc.Type {
 		case config.BotTypeLP:
@@ -254,22 +283,27 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 			continue
 
 		case config.BotTypeWhale:
-			bot = bots.NewWhaleBot(&acc, executor, store)
+			bot, err = bots.NewWhaleBot(&acc, executor, store)
 
 		case config.BotTypeRetail:
-			bot = bots.NewRetailBot(&acc, executor, store)
+			bot, err = bots.NewRetailBot(&acc, executor, store)
 
 		case config.BotTypeMeanRev:
-			bot = bots.NewMeanRevBot(&acc, executor, priceProvider, store)
+			bot, err = bots.NewMeanRevBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeLeverage:
-			bot = bots.NewLeverageBot(&acc, executor, priceProvider, store)
+			bot, err = bots.NewLeverageBot(&acc, executor, priceProvider, store)
 
 		case config.BotTypeLiquidator:
-			bot = bots.NewLiquidatorBot(&acc, executor, priceProvider, store)
+			bot, err = bots.NewLiquidatorBot(&acc, executor, priceProvider, store)
 
 		default:
 			log.Printf("Unknown bot type for %s: %s", acc.Nickname, acc.Type)
+			continue
+		}
+
+		if err != nil {
+			log.Printf("Failed to create bot %s: %v", acc.Nickname, err)
 			continue
 		}
 
@@ -282,8 +316,8 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 // initializeAccountMetrics initializes metrics for all accounts
 func initializeAccountMetrics(memStore *store.MemoryStore) {
 	for _, acc := range config.Accounts {
-		// Initial equity = starting ETH (10000 from Anvil default)
-		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address(), 10000)
+		// Initial equity from config
+		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address(), config.InitialAccountEquityETH)
 	}
 }
 
@@ -291,9 +325,6 @@ func initializeAccountMetrics(memStore *store.MemoryStore) {
 func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
 	// Initial pool: 10,000 APPL + 1,000,000 ETH (from config.PoolApples and config.PoolETH)
 	// Initial price: 100 ETH/APPL
-	ether := func(n int64) *big.Int {
-		return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18))
-	}
 
 	// Get initial fees from contract (should be 0 at start, but track for accuracy)
 	initialFeesApple, initialFeesETH, err := executor.GetTotalFees(ctx)
@@ -303,13 +334,20 @@ func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *sto
 		initialFeesETH = big.NewInt(0)
 	}
 
-	memStore.GetLPMetrics().SetInitialState(ether(1000), ether(1000))
+	memStore.GetLPMetrics().SetInitialState(config.PoolApples, config.PoolETH)
 	memStore.GetLPMetrics().SetInitialFees(initialFeesApple, initialFeesETH)
-	memStore.GetImpactCurve().UpdateReserves(ether(1000), ether(1000))
+	memStore.GetImpactCurve().UpdateReserves(config.PoolApples, config.PoolETH)
 }
 
-// pollPrices periodically fetches price and updates metrics
-// pollPricesWithError wraps pollPrices to return an error for errgroup
+// pollPricesWithError is the main market data loop. Every 2 seconds it:
+//  1. Reads spot price from the on-chain AMM contract (executor.GetSpotPrice)
+//  2. Records it in MemoryStore (updates candles, TWAP, volatility)
+//  3. Reads reserves and fees from the contract
+//  4. Updates LP metrics (impermanent loss, fees earned, net PnL)
+//  5. Broadcasts price and LP data via WebSocket to all connected frontend clients
+//
+// This is the primary path that feeds real-time data to the frontend charts
+// (PriceChart, LPStats, ImpactCurve components).
 func pollPricesWithError(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) error {
 	pollPrices(ctx, executor, memStore, srv)
 	// Return nil on context cancellation (expected shutdown)

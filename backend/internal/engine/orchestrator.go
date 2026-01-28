@@ -1,4 +1,15 @@
-// Package engine provides bot orchestration
+// orchestrator.go — Manages the lifecycle of all bot goroutines.
+//
+// When a session starts (via frontend SessionControls → POST /session/start),
+// Start() launches each bot's Run() method in a separate goroutine using errgroup.
+// When the session ends (timeout or user stop), Stop() cancels the shared context,
+// causing all bots to exit their main loops.
+//
+// CONNECTIONS:
+//   - Created in: cmd/simulator/main.go
+//   - Controlled by: engine/session.go (Start/Stop lifecycle)
+//   - Bots registered via: AddBot() called from main.go:createBots()
+//   - Frontend trigger: SessionControls component → useSession hook → REST API
 package engine
 
 import (

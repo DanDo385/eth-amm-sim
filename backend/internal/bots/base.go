@@ -1,4 +1,20 @@
-// Package bots contains base bot implementation
+// base.go — Shared foundation for all trading bot types.
+//
+// SYSTEM ROLE:
+// BaseBot holds the account config, executor reference, store reference, and
+// private key that every bot needs. It provides utility methods (RandomDelay,
+// RandomSize, Stop) used by whale, retail, meanrev, leverage, and liquidator bots.
+//
+// Each bot's Run() method loops until the context is cancelled (session ends).
+// Bots call executor.SwapETHForApples / SwapApplesForETH to submit transactions
+// to the on-chain AppleAMM contract. Trade callbacks in main.go record results
+// to the MemoryStore and broadcast them via WebSocket to the frontend.
+//
+// CONNECTIONS:
+//   - Config: config/accounts.go defines each bot's parameters
+//   - Executor: engine/executor.go submits transactions to contracts/src/AppleAMM.sol
+//   - Store: store/memory.go for metrics access (price data, account metrics)
+//   - Lifecycle: engine/orchestrator.go starts/stops bots via context cancellation
 package bots
 
 import (

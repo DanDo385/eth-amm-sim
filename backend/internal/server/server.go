@@ -1,4 +1,24 @@
-// Package server provides HTTP and WebSocket server
+// server.go — HTTP REST API and WebSocket server on :8080.
+//
+// SYSTEM ROLE:
+// This is the backend's interface to the frontend. It exposes REST endpoints
+// for session control, metrics queries, and user trading, plus a WebSocket
+// endpoint for real-time data streaming. The frontend (Next.js on :3000)
+// connects here for all data.
+//
+// ROUTES (see handlers.go for implementations):
+//   POST /session/{start,stop,reset}  — Control simulation lifecycle
+//   GET  /session/state               — Current session status
+//   GET  /candles, /trades, /events   — Market data
+//   GET  /lp/metrics                  — LP performance
+//   GET  /accounts                    — All account metrics
+//   POST /trade/{buy,sell}            — User manual trading
+//   WS   /stream                      — Real-time WebSocket feed
+//
+// CONNECTIONS:
+//   - Frontend: lib/api.ts makes REST calls; hooks/useWebSocket.ts opens /stream
+//   - Backend: reads from store/memory.go, controls engine/session.go
+//   - Broadcast: server/broadcast.go pushes trade/price/event data to WS clients
 package server
 
 import (
@@ -144,16 +164,27 @@ func (s *Server) runBroadcast() {
 			continue
 		}
 		
+		// Collect failed clients during read-locked iteration
+		var failed []*websocket.Conn
 		s.clientsMu.RLock()
 		for client := range s.clients {
 			err := client.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
 				log.Printf("Error sending to client: %v", err)
-				client.Close()
-				delete(s.clients, client)
+				failed = append(failed, client)
 			}
 		}
 		s.clientsMu.RUnlock()
+		
+		// Delete failed clients under write lock
+		if len(failed) > 0 {
+			s.clientsMu.Lock()
+			for _, client := range failed {
+				client.Close()
+				delete(s.clients, client)
+			}
+			s.clientsMu.Unlock()
+		}
 	}
 }
 

@@ -1,4 +1,17 @@
-// Package bots contains the liquidator bot implementation
+// liquidator.go — Position liquidation bot (account 28).
+//
+// Strategy: Polls every 3 seconds for leveraged positions that are underwater
+// (margin ratio below the leverage-specific threshold). Uses a hybrid
+// TWAP/spot price check to prevent false liquidations from temporary price
+// spikes. When a position is liquidatable, calls executor.LiquidatePosition
+// which invokes AppleAMM.liquidate() on-chain. The liquidator earns a 5%
+// fee on the collateral.
+//
+// CONNECTIONS:
+//   - Monitors: leverage bot positions (accounts 25-27)
+//   - Reads: executor.IsLiquidatableHybrid (uses TWAP from store/metrics)
+//   - Executes: executor.LiquidatePosition → AppleAMM.liquidate()
+//   - Frontend: liquidation events appear in KeyEvents component
 package bots
 
 import (
@@ -27,11 +40,11 @@ type LiquidatorBot struct {
 }
 
 // NewLiquidatorBot creates a new liquidator bot
-func NewLiquidatorBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *LiquidatorBot {
+func NewLiquidatorBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) (*LiquidatorBot, error) {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
-		panic("invalid private key for " + cfg.Nickname)
+		return nil, fmt.Errorf("invalid private key for %s: %w", cfg.Nickname, err)
 	}
 
 	return &LiquidatorBot{
@@ -39,7 +52,7 @@ func NewLiquidatorBot(cfg *config.AccountConfig, executor *engine.Executor, pric
 		privateKey:    privateKey,
 		priceProvider: priceProvider,
 		executor:      executor,
-	}
+	}, nil
 }
 
 // Run starts the liquidator bot monitoring loop

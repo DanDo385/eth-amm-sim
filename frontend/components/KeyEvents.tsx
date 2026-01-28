@@ -1,3 +1,14 @@
+// KeyEvents.tsx — Real-time feed of notable simulation events.
+//
+// Shows trades, liquidations, and strategy triggers with severity badges.
+// Events arrive via WebSocket "key_event" messages, dispatched from
+// broadcast.go BroadcastEvent whenever a bot executes a notable action.
+//
+// CONNECTIONS:
+//   - Backend data:  store/memory.go AddEvent (called by main.go trade callback)
+//   - WebSocket msg: "key_event" from broadcast.go BroadcastEvent
+//   - Initial load:  sendInitialState sends "events" batch on WS connect
+//   - Types:         types/index.ts KeyEvent
 'use client';
 
 import type { KeyEvent } from '@/types';

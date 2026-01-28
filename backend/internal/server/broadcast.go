@@ -1,4 +1,17 @@
-// Package server provides WebSocket broadcasting
+// broadcast.go — Pushes real-time data to all connected WebSocket clients.
+//
+// The frontend opens a WebSocket to /stream (via hooks/useWebSocket.ts).
+// When trades execute, prices update, or sessions change, main.go calls
+// BroadcastTrade, BroadcastPrice, BroadcastLPMetrics, etc. These methods
+// serialize the data as JSON and fan it out to every connected client.
+//
+// MESSAGE TYPES (consumed by frontend page.tsx handleWSMessage):
+//   "trade"          → Blotter component
+//   "price"          → PriceChart component
+//   "lp_metrics"     → LPStats component
+//   "key_event"      → KeyEvents component
+//   "session_state"  → SessionControls component
+//   "account_update" → AccountMetrics component
 package server
 
 import (

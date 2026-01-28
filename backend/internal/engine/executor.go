@@ -1,4 +1,23 @@
-// Package engine provides trade execution functionality
+// executor.go — The bridge between Go bot logic and on-chain smart contracts.
+//
+// SYSTEM ROLE:
+// Executor is the single point through which all bot and user trades reach the
+// blockchain. It ABI-encodes function calls, signs transactions with each
+// account's private key, and sends them to Anvil via chain/client.go.
+//
+// TRADE LIFECYCLE:
+//   Bot decides to trade → calls Executor.SwapETHForApples or SwapApplesForETH
+//   → NonceManager assigns nonce → transaction signed and sent to Anvil
+//   → Executor calculates amountOut/price from constant product formula
+//   → Trade struct emitted via callbacks → main.go records in MemoryStore
+//     and broadcasts via WebSocket → frontend Blotter and PriceChart update
+//
+// CONNECTIONS:
+//   - Contract ABI: Manually packed (packSwapETHForApples, etc.) to match
+//     contracts/src/AppleAMM.sol function signatures
+//   - Callers: bots/whale.go, retail.go, meanrev.go, leverage.go, liquidator.go
+//   - Callbacks: main.go registers OnTrade to feed MemoryStore and WebSocket
+//   - Frontend: Trade data flows through server/broadcast.go → frontend WebSocket
 package engine
 
 import (
@@ -11,6 +30,8 @@ import (
 	"time"
 
 	"eth-amm-sim/internal/chain"
+	"eth-amm-sim/internal/config"
+	"eth-amm-sim/internal/contracts"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -51,6 +72,10 @@ type Executor struct {
 	ammAddress   common.Address
 	tokenAddress common.Address
 	
+	// Contract bindings
+	ammContract   *contracts.AppleAMM
+	tokenContract *contracts.AppleToken
+	
 	// Callbacks for trade events
 	tradeCallbacks []TradeCallback
 	callbackMu     sync.RWMutex
@@ -67,13 +92,19 @@ func NewExecutor(
 	ammAddress common.Address,
 	tokenAddress common.Address,
 ) *Executor {
+	// Create contract bindings
+	ammContract, _ := contracts.NewAppleAMM(ammAddress, client.Client)
+	tokenContract, _ := contracts.NewAppleToken(tokenAddress, client.Client)
+	
 	return &Executor{
-		client:       client,
-		nonceManager: nonceManager,
-		accountMgr:   chain.NewAccountManager(client.ChainID()),
-		ammAddress:   ammAddress,
-		tokenAddress: tokenAddress,
-		nicknames:    make(map[common.Address]string),
+		client:        client,
+		nonceManager:  nonceManager,
+		accountMgr:    chain.NewAccountManager(client.ChainID()),
+		ammAddress:    ammAddress,
+		tokenAddress:  tokenAddress,
+		ammContract:   ammContract,
+		tokenContract: tokenContract,
+		nicknames:     make(map[common.Address]string),
 	}
 }
 
@@ -179,8 +210,8 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		priceBefore = big.NewInt(0)
 	}
 	
-	// Calculate fee (0.30% = 30/10000)
-	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(30)), big.NewInt(10000))
+	// Calculate fee using config constants
+	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
 	
 	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
@@ -301,8 +332,8 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		priceBefore = big.NewInt(0)
 	}
 	
-	// Calculate fee (0.30% = 30/10000)
-	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(30)), big.NewInt(10000))
+	// Calculate fee using config constants
+	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
 	
 	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
@@ -418,44 +449,16 @@ func (e *Executor) getAllowance(ctx context.Context, owner common.Address) (*big
 
 // GetReserves returns current AMM reserves
 func (e *Executor) GetReserves(ctx context.Context) (appleReserve, ethReserve *big.Int, err error) {
-	data := packGetReserves()
-	
-	msg := ethereum.CallMsg{
-		To:   &e.ammAddress,
-		Data: data,
-	}
-	
-	result, err := e.client.CallContract(ctx, msg, nil)
+	result, err := e.ammContract.GetReserves(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return nil, nil, err
 	}
-	
-	// Decode (uint256, uint256)
-	if len(result) < 64 {
-		return nil, nil, fmt.Errorf("invalid reserves response")
-	}
-	
-	appleReserve = new(big.Int).SetBytes(result[0:32])
-	ethReserve = new(big.Int).SetBytes(result[32:64])
-	
-	return appleReserve, ethReserve, nil
+	return result.AppleReserve, result.EthReserve, nil
 }
 
 // GetSpotPrice returns current spot price (ETH per APPL, scaled by 1e18)
 func (e *Executor) GetSpotPrice(ctx context.Context) (*big.Int, error) {
-	data := packGetSpotPrice()
-	
-	msg := ethereum.CallMsg{
-		To:   &e.ammAddress,
-		Data: data,
-	}
-	
-	result, err := e.client.CallContract(ctx, msg, nil)
-	if err != nil {
-		return nil, err
-	}
-	
-	return new(big.Int).SetBytes(result), nil
+	return e.ammContract.GetSpotPrice(&bind.CallOpts{Context: ctx})
 }
 
 // Implement bind.ContractCaller for compatibility
@@ -490,15 +493,6 @@ func packAllowance(owner, spender common.Address) []byte {
 	return append(data, common.LeftPadBytes(spender.Bytes(), 32)...)
 }
 
-func packGetReserves() []byte {
-	// getReserves()
-	return []byte{0x09, 0x02, 0xf1, 0xac}
-}
-
-func packGetSpotPrice() []byte {
-	// getSpotPrice()
-	return []byte{0xdc, 0x76, 0xfa, 0xbc}
-}
 
 // Pack position operation functions
 func packOpenLeveragedPosition(leverage, minApples *big.Int) []byte {
@@ -532,34 +526,13 @@ func packGetTraderPosition(trader common.Address) []byte {
 
 // GetTotalFees returns total fees collected by the AMM
 func (e *Executor) GetTotalFees(ctx context.Context) (appleFees, ethFees *big.Int, err error) {
-	data := packGetTotalFees()
-	
-	msg := ethereum.CallMsg{
-		To:   &e.ammAddress,
-		Data: data,
-	}
-	
-	result, err := e.client.CallContract(ctx, msg, nil)
+	result, err := e.ammContract.GetTotalFees(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return nil, nil, err
 	}
-	
-	// Decode (uint256, uint256)
-	if len(result) < 64 {
-		return nil, nil, fmt.Errorf("invalid fees response")
-	}
-	
-	appleFees = new(big.Int).SetBytes(result[0:32])
-	ethFees = new(big.Int).SetBytes(result[32:64])
-	
-	return appleFees, ethFees, nil
+	return result.FeesApple, result.FeesETH, nil
 }
 
-func packGetTotalFees() []byte {
-	// getTotalFees()
-	// selector: keccak256("getTotalFees()")[:4] = 0x626e1ae7
-	return []byte{0x62, 0x6e, 0x1a, 0xe7}
-}
 
 // GetETHBalance returns the ETH balance of an address
 func (e *Executor) GetETHBalance(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -568,31 +541,7 @@ func (e *Executor) GetETHBalance(ctx context.Context, address common.Address) (*
 
 // GetAPPLBalance returns the APPL token balance of an address
 func (e *Executor) GetAPPLBalance(ctx context.Context, address common.Address) (*big.Int, error) {
-	// balanceOf(address) selector: 0x70a08231
-	data := packBalanceOf(address)
-	
-	msg := ethereum.CallMsg{
-		To:   &e.tokenAddress,
-		Data: data,
-	}
-	
-	result, err := e.client.CallContract(ctx, msg, nil)
-	if err != nil {
-		return nil, err
-	}
-	
-	if len(result) < 32 {
-		return nil, fmt.Errorf("invalid balance response")
-	}
-	
-	return new(big.Int).SetBytes(result), nil
-}
-
-func packBalanceOf(owner common.Address) []byte {
-	// balanceOf(address owner)
-	// selector: keccak256("balanceOf(address)")[:4] = 0x70a08231
-	selector := []byte{0x70, 0xa0, 0x82, 0x31}
-	return append(selector, common.LeftPadBytes(owner.Bytes(), 32)...)
+	return e.tokenContract.BalanceOf(&bind.CallOpts{Context: ctx}, address)
 }
 
 // OpenLeveragedPosition opens a leveraged long position

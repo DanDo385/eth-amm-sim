@@ -1,49 +1,147 @@
-// Package bots contains the leverage bot implementation
+// leverage.go — Leveraged momentum trader bot (accounts 25-27).
+//
+// Strategy: Uses EWMA-based momentum detection similar to meanrev bots, but trades
+// WITH momentum instead of against it. Subscribes to trade flow events and maintains
+// EWMA of liquidity-normalized log returns. When z-score crosses thresholds, the
+// bot trades in the direction of momentum — buying strength (z > 0) and selling
+// weakness (z < 0).
+//
+// Three variants with different leverage levels:
+//
+//	Lev5x:  ~12 trade half-life (from MeanRev1's 50/4)
+//	Lev10x: ~25 trade half-life (from MeanRev2's 100/4)
+//	Lev25x: ~44 trade half-life (from MeanRev3's 175/4)
+//
+// Trade size scales with volatility: higher sigma = larger positions
+//
+// CONNECTIONS:
+//   - Subscribes to: metrics/trade_flow.go TradeFlowTracker for trade events
+//   - Uses: metrics/ewma.go EWMACalculator for z-score computation
+//   - Executes: executor.OpenLeveragedPosition → AppleAMM.openLeveragedPosition()
+//   - Monitored by: liquidator.go checks isLiquidatable on these accounts
+//   - Config: config/accounts.go defines Leverage, Collateral, LiquidationThreshold
 package bots
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"log"
+	"math"
 	"math/big"
+	"sync"
 	"time"
 
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
 	"eth-amm-sim/internal/metrics"
 	"eth-amm-sim/internal/store"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// LeverageBot trades with leverage (simplified for Phase 1)
-// For now, this bot trades more aggressively based on leverage multiplier
+// LeverageBot implements momentum trading using EWMA on liquidity-normalized log returns
+// Key differences from mean reversion:
+// - Uses same EWMA methodology but trades WITH momentum (not against it)
+// - Uses 1/4th the half-life of meanrev bots for faster adaptation
+// - Scales position size with volatility (higher sigma = larger positions)
 type LeverageBot struct {
 	*BaseBot
-	privateKey   *ecdsa.PrivateKey
-	priceProvider metrics.PriceProvider
-	lastSignalPrice float64 // Track last price when signal fired
-	lastCheckedPrice float64 // Track last price we checked for signals
+	privateKey *ecdsa.PrivateKey
+	store      *store.MemoryStore
+
+	// EWMA state for liquidity-normalized returns (1/4th half-life of meanrev)
+	ewmaState *metrics.EWMAState
+
+	// Trading state
+	tradedLevels map[float64]bool // Track which sigma levels we've traded at
+	lastZ        float64          // Last z-score (for zero-crossing detection)
+	lastRTilde   float64          // Most recent rTilde (for recalculating z-score)
+
+	mu sync.RWMutex // Mutex for thread-safe access to trading state
 }
 
-// NewLeverageBot creates a new leverage bot
-func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) *LeverageBot {
+// NewLeverageBot creates a new leverage bot with EWMA momentum strategy
+func NewLeverageBot(cfg *config.AccountConfig, executor *engine.Executor, priceProvider metrics.PriceProvider, store *store.MemoryStore) (*LeverageBot, error) {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
-		panic("invalid private key for " + cfg.Nickname)
+		return nil, fmt.Errorf("invalid private key for %s: %w", cfg.Nickname, err)
 	}
 
-	return &LeverageBot{
+	// Calculate half-life as 1/4th of meanrev bots
+	// MeanRev1: 50 → Lev5x: ~12
+	// MeanRev2: 100 → Lev10x: ~25
+	// MeanRev3: 175 → Lev25x: ~44
+	halfLifeTrades := calculateLeverageHalfLife(cfg.Leverage)
+	ewmaState := metrics.NewEWMAState(halfLifeTrades)
+
+	bot := &LeverageBot{
 		BaseBot:      NewBaseBot(cfg, executor, store),
 		privateKey:   privateKey,
-		priceProvider: priceProvider,
+		store:        store,
+		ewmaState:    ewmaState,
+		tradedLevels: make(map[float64]bool),
+		lastZ:        0,
 	}
+
+	// Subscribe to trade flow events (will receive all trades except own)
+	tradeFlowTracker := store.GetTradeFlowTracker()
+	tradeFlowTracker.Subscribe(bot)
+
+	return bot, nil
+}
+
+// calculateLeverageHalfLife returns 1/4th of the corresponding meanrev half-life
+func calculateLeverageHalfLife(leverage int) int {
+	// Map leverage to meanrev half-life, then divide by 4
+	switch leverage {
+	case 5:
+		return 12 // MeanRev1: 50 / 4 = 12.5 → 12
+	case 10:
+		return 25 // MeanRev2: 100 / 4 = 25
+	case 25:
+		return 44 // MeanRev3: 175 / 4 = 43.75 → 44
+	default:
+		return 12 // Default to Lev5x half-life
+	}
+}
+
+// GetNickname returns the bot's nickname (required for TradeFlowSubscriber interface)
+func (l *LeverageBot) GetNickname() string {
+	return l.Nickname()
+}
+
+// OnTradeFlow is called when an external trade occurs (not this bot's own trade)
+// This is where we update EWMA statistics
+func (l *LeverageBot) OnTradeFlow(event metrics.TradeFlowEvent) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// Update EWMA statistics with new rTilde observation
+	l.ewmaState.UpdateEWMA(event.RTilde)
+
+	// Store most recent rTilde for z-score recalculation
+	l.lastRTilde = event.RTilde
+
+	// Calculate z-score: z = (rTilde - mu) / sigma
+	zScore := l.ewmaState.GetZScore(event.RTilde)
+
+	// Check for zero-crossing (reset traded levels when z-score crosses zero)
+	if l.lastZ != 0 {
+		if (l.lastZ > 0 && zScore <= 0) || (l.lastZ < 0 && zScore >= 0) {
+			// Zero crossing detected - reset traded levels
+			l.tradedLevels = make(map[float64]bool)
+		}
+	}
+	l.lastZ = zScore
 }
 
 // Run starts the leverage bot trading loop
 func (l *LeverageBot) Run(ctx context.Context) {
-	log.Printf("[%s] Leverage bot started (%dx leverage)", l.Nickname(), l.config.Leverage)
+	log.Printf("[%s] Leverage bot started (%dx leverage, EWMA half-life: %d trades)",
+		l.Nickname(), l.config.Leverage, calculateLeverageHalfLife(l.config.Leverage))
 
 	for {
 		select {
@@ -54,14 +152,14 @@ func (l *LeverageBot) Run(ctx context.Context) {
 			log.Printf("[%s] Leverage bot stopped", l.Nickname())
 			return
 		default:
-			// Trade more frequently with leverage
-			// Higher leverage = more aggressive trading
+			// Check for trading signals periodically
+			// Trade more frequently with higher leverage
 			baseDelay := 5 // Base delay in seconds
 			leverageDelay := baseDelay / l.config.Leverage
 			if leverageDelay < 1 {
 				leverageDelay = 1
 			}
-			
+
 			delay := time.Duration(leverageDelay) * time.Second
 			select {
 			case <-ctx.Done():
@@ -71,39 +169,27 @@ func (l *LeverageBot) Run(ctx context.Context) {
 			case <-time.After(delay):
 			}
 
-			// Get current price first
-			currentPrice := l.priceProvider.GetCurrentPrice()
-			if currentPrice == 0 {
-				continue // No price data yet
-			}
+			// Check for momentum signal using EWMA z-score
+			side, size := l.checkMomentumSignal()
+			if side != nil && size != nil && size.Sign() > 0 {
+				// For BUY (leveraged positions), check if we already have a position
+				if *side == engine.BUY {
+					addr := crypto.PubkeyToAddress(l.privateKey.PublicKey)
+					hasPosition, err := l.hasOpenPosition(ctx, addr)
+					if err == nil && hasPosition {
+						// Already have a leveraged position, skip opening new one
+						continue
+					}
+				}
 
-			// Skip signal checking if price hasn't changed since last check
-			// This prevents flooding logs with repeated signal detections
-			if currentPrice == l.lastCheckedPrice {
-				continue
-			}
-			l.lastCheckedPrice = currentPrice
-
-			// Check if we already have a position
-			addr := crypto.PubkeyToAddress(l.privateKey.PublicKey)
-			hasPosition, err := l.hasOpenPosition(ctx, addr)
-			if err == nil && hasPosition {
-				// Already have a position, skip opening new one
-				// In future, could add logic to close/rebalance positions
-				continue
-			}
-			
-			// Simple momentum-based strategy for leverage traders
-			// They chase trends more aggressively
-			side, collateral := l.checkLeverageSignal()
-			if side != nil && collateral != nil && collateral.Sign() > 0 {
-				// Only execute if price has changed since last signal
-				if currentPrice != l.lastSignalPrice {
-					// Check balance before attempting trade
-					if l.hasSufficientBalance(ctx, *side, collateral) {
+				// Check balance before attempting trade
+				if l.hasSufficientBalance(ctx, *side, size) {
+					if *side == engine.BUY {
 						// Open leveraged position through contract
-						l.openLeveragedPosition(ctx, collateral)
-						l.lastSignalPrice = currentPrice
+						l.openLeveragedPosition(ctx, size)
+					} else {
+						// Sell APPL for ETH (sell into weakness)
+						l.executeSell(ctx, size)
 					}
 				}
 			}
@@ -111,57 +197,125 @@ func (l *LeverageBot) Run(ctx context.Context) {
 	}
 }
 
-// checkLeverageSignal uses simple momentum to decide trades
-// Returns side (always BUY for long positions) and collateral amount
-func (l *LeverageBot) checkLeverageSignal() (*engine.TradeSide, *big.Int) {
-	// Get recent prices (shorter lookback for leverage traders)
-	lookback := 5 // Look back 5 candles
-	prices := l.priceProvider.GetRecentPrices(lookback + 1)
-	
-	// Minimum 3 prices needed (current, previous, lookback)
-	minRequired := 3
-	if len(prices) < minRequired {
+// checkMomentumSignal checks if z-score indicates momentum to trade WITH
+// Returns (side, size) if signal detected, (nil, nil) otherwise
+func (l *LeverageBot) checkMomentumSignal() (*engine.TradeSide, *big.Int) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	// Recalculate z-score using most recent rTilde and current EWMA state
+	zScore := l.ewmaState.GetZScore(l.lastRTilde)
+	absZScore := math.Abs(zScore)
+
+	// Require minimum trades observed before trading
+	if l.ewmaState.GetTradeCount() < 5 {
 		return nil, nil
 	}
-	
-	// Adjust lookback if we don't have enough data
-	if len(prices) < lookback+1 {
-		lookback = len(prices) - 1
+
+	// Use trigger levels similar to meanrev but trade WITH momentum
+	// Lower thresholds for leverage bots (more aggressive)
+	triggerLevels := []float64{0.5, 0.75, 1.0} // Lower than meanrev for more frequent trading
+
+	// Check each trigger level to see if we should trade
+	var bestLevel float64 = -1
+	for _, level := range triggerLevels {
+		if absZScore >= level {
+			// Check if we've already traded at this level
+			levelKey := math.Floor(level*10) / 10 // Round to 0.1 precision
+			if !l.tradedLevels[levelKey] {
+				if level > bestLevel {
+					bestLevel = level
+				}
+			}
+		}
 	}
 
-	currentPrice := prices[len(prices)-1]
-	previousPrice := prices[len(prices)-1-lookback]
+	// If we found a level to trade at
+	if bestLevel > 0 {
+		// Trade WITH momentum (opposite of meanrev):
+		// - z-score > 0 (price moving up) → BUY (buy strength) - open leveraged long
+		// - z-score < 0 (price moving down) → SELL (sell weakness) - sell APPL for ETH
+		sigma := l.ewmaState.GetSigma()
+		mu := l.ewmaState.GetMu()
 
-	// Simple momentum: if price moved up, open long position
-	// Leverage traders are more sensitive to smaller moves
-	priceChange := (currentPrice - previousPrice) / previousPrice
-	threshold := 0.01 // 1% move triggers (lower threshold for leverage)
+		if zScore > 0 {
+			// BUY: Open leveraged long position
+			// Get base collateral from config
+			baseCollateral := l.config.Collateral
+			if baseCollateral == nil {
+				// Default based on leverage
+				baseCollateral = new(big.Int).Mul(big.NewInt(50), big.NewInt(1e18))
+			}
 
-	if priceChange >= threshold {
-		// Use collateral from config
-		collateral := l.config.Collateral
-		if collateral == nil {
-			// Default based on leverage
-			collateral = new(big.Int).Mul(big.NewInt(50), big.NewInt(1e18))
+			// Scale collateral with volatility (sigma)
+			// Higher volatility = larger positions
+			volatilityMultiplier := 1.0 + (sigma * 10.0) // Scale sigma by 10x for meaningful impact
+			if volatilityMultiplier < 1.0 {
+				volatilityMultiplier = 1.0 // Don't reduce below base
+			}
+			if volatilityMultiplier > 2.0 {
+				volatilityMultiplier = 2.0 // Cap at 2x base
+			}
+
+			// Calculate scaled collateral
+			scaledCollateral := new(big.Float).SetInt(baseCollateral)
+			scaledCollateral.Mul(scaledCollateral, big.NewFloat(volatilityMultiplier))
+			collateral, _ := scaledCollateral.Int(nil)
+
+			log.Printf("[%s] Momentum BUY signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, collateral=%s (volatility scaled: %.2fx)",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(collateral), volatilityMultiplier)
+
+			// Mark this level as traded
+			levelKey := math.Floor(bestLevel*10) / 10
+			l.tradedLevels[levelKey] = true
+
+			side := engine.BUY
+			return &side, collateral
+		} else if zScore < 0 {
+			// SELL: Sell APPL for ETH (sell into weakness)
+			// Use MaxTradeSize as base size, scaled by volatility
+			baseSize := l.config.MaxTradeSize
+			if baseSize == nil || baseSize.Sign() == 0 {
+				// Default size
+				baseSize = new(big.Int).Mul(big.NewInt(100), big.NewInt(1e18)) // 100 APPL default
+			}
+
+			// Scale size with volatility (higher volatility = larger sells)
+			volatilityMultiplier := 1.0 + (sigma * 10.0)
+			if volatilityMultiplier < 1.0 {
+				volatilityMultiplier = 1.0
+			}
+			if volatilityMultiplier > 2.0 {
+				volatilityMultiplier = 2.0
+			}
+
+			// Calculate scaled size (in APPL)
+			scaledSize := new(big.Float).SetInt(baseSize)
+			scaledSize.Mul(scaledSize, big.NewFloat(volatilityMultiplier))
+			size, _ := scaledSize.Int(nil)
+
+			log.Printf("[%s] Momentum SELL signal: z-score=%.2f, mu=%.6f, sigma=%.6f, level=%.2f std, size=%s APPL (volatility scaled: %.2fx)",
+				l.Nickname(), zScore, mu, sigma, bestLevel, formatEther(size), volatilityMultiplier)
+
+			// Mark this level as traded
+			levelKey := math.Floor(bestLevel*10) / 10
+			l.tradedLevels[levelKey] = true
+
+			side := engine.SELL
+			return &side, size
 		}
-
-		log.Printf("[%s] Leverage signal: change=%.2f%%, opening long position with collateral=%s", 
-			l.Nickname(), priceChange*100, formatEther(collateral))
-
-		side := engine.BUY // Always BUY for long positions
-		return &side, collateral
 	}
 
 	return nil, nil
 }
 
 // hasSufficientBalance checks if the bot has enough balance for the trade
-// Note: For SELL trades, we don't check APPL balance - bots can build short positions over time
 func (l *LeverageBot) hasSufficientBalance(ctx context.Context, side engine.TradeSide, size *big.Int) bool {
 	addr := crypto.PubkeyToAddress(l.privateKey.PublicKey)
 	gasReserve := new(big.Int).Mul(big.NewInt(1e16), big.NewInt(1)) // 0.01 ETH
-	
+
 	if side == engine.BUY {
+		// BUY: Check ETH balance for collateral
 		ethBalance, err := l.executor.GetETHBalance(ctx, addr)
 		if err != nil {
 			return false
@@ -169,12 +323,19 @@ func (l *LeverageBot) hasSufficientBalance(ctx context.Context, side engine.Trad
 		required := new(big.Int).Add(size, gasReserve)
 		return ethBalance.Cmp(required) >= 0
 	} else {
-		// For SELL: Only check ETH for gas (allow short positions)
+		// SELL: Check APPL balance (size is in APPL)
+		appleBalance, err := l.executor.GetAPPLBalance(ctx, addr)
+		if err != nil {
+			return false
+		}
+
+		// Check ETH for gas
 		ethBalance, err := l.executor.GetETHBalance(ctx, addr)
 		if err != nil {
 			return false
 		}
-		return ethBalance.Cmp(gasReserve) >= 0
+
+		return appleBalance.Cmp(size) >= 0 && ethBalance.Cmp(gasReserve) >= 0
 	}
 }
 
@@ -184,23 +345,36 @@ func (l *LeverageBot) openLeveragedPosition(ctx context.Context, collateral *big
 	if leverage == 0 {
 		leverage = 5 // Default
 	}
-	
+
 	txHash, err := l.executor.OpenLeveragedPosition(ctx, l.privateKey, collateral, leverage)
 	if err != nil {
 		log.Printf("[%s] Failed to open leveraged position: %v", l.Nickname(), err)
 		return
 	}
 
-	log.Printf("[%s] ✓ Leveraged position opened: %s (collateral: %s, leverage: %dx)", 
+	log.Printf("[%s] ✓ Leveraged position opened: %s (collateral: %s, leverage: %dx)",
 		l.Nickname(), txHash[:10]+"...", formatEther(collateral), leverage)
 }
 
+// executeSell sells APPL for ETH (sell into weakness)
+func (l *LeverageBot) executeSell(ctx context.Context, appleAmount *big.Int) {
+	txHash, err := l.executor.SwapApplesForETH(ctx, l.privateKey, appleAmount)
+	if err != nil {
+		log.Printf("[%s] Failed to sell APPL: %v", l.Nickname(), err)
+		return
+	}
+
+	log.Printf("[%s] ✓ Sold APPL: %s (amount: %s)",
+		l.Nickname(), txHash[:10]+"...", formatEther(appleAmount))
+}
+
 // hasOpenPosition checks if the bot already has an open position
-func (l *LeverageBot) hasOpenPosition(_ context.Context, _ common.Address) (bool, error) {
-	// Check if position exists by trying to read it
-	// For now, we'll use a simple approach - check if we can liquidate
-	// (if we can't liquidate, position might not exist or might not be liquidatable)
-	// Actually, better to add a getPosition method to executor
-	// For now, return false (no position check) - positions will be tracked on-chain
-	return false, nil
+func (l *LeverageBot) hasOpenPosition(ctx context.Context, addr common.Address) (bool, error) {
+	pos, err := l.executor.GetTraderPosition(ctx, addr)
+	if err != nil {
+		return false, err
+	}
+
+	// Position exists if collateral is non-zero
+	return pos != nil && pos.Collateral != nil && pos.Collateral.Sign() > 0, nil
 }

@@ -105,7 +105,7 @@
 # The backend then:
 # 1. Dials Anvil: ethclient.Dial(config.RPCURL)
 # 2. Verifies chain ID matches
-# 3. Loads contract addresses from .env
+# 3. Loads contract addresses from broadcast JSON
 # 4. Starts sending transactions
 #
 # ==============================================================================

@@ -1,4 +1,21 @@
-// Package store provides in-memory storage for session data
+// Package store provides in-memory storage for all simulation metrics and events.
+//
+// SYSTEM ROLE:
+// MemoryStore is the single source of truth for all backend state. It composes
+// all metrics objects (price, LP, account, impact curve, trade flow) and holds
+// the trade blotter and key events list. Every write comes from either the
+// trade callback (main.go) or the price poll loop (main.go), and every read
+// goes to the server's REST/WebSocket handlers.
+//
+// MemoryStore also implements the metrics.PriceDataStore interface, which lets
+// metrics/price_provider.go wrap it as a PriceProvider for bots — breaking the
+// import cycle between store and metrics packages.
+//
+// CONNECTIONS:
+//   - Writers: main.go (RecordTrade, RecordPrice, RecordTradeFlow, RecordEvent)
+//   - Readers: server/handlers.go (all GET endpoints read from MemoryStore)
+//   - Interface: implements metrics.PriceDataStore (GetCandles, GetTWAP, GetVolatility)
+//   - Reset: server/handlers.go handleSessionReset clears price, LP, trades, events
 package store
 
 import (
@@ -6,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/engine"
 	"eth-amm-sim/internal/metrics"
 
@@ -139,9 +157,14 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 	defer s.mu.Unlock()
 	s.trades = append(s.trades, trade)
 
+	// Cap trades slice to prevent unbounded memory growth
+	if len(s.trades) > config.MaxTrades {
+		s.trades = s.trades[len(s.trades)-config.MaxTrades:]
+	}
+
 	// Update account metrics for this trade
 	// Get or create account metrics
-	am := s.accountMetrics.GetOrCreate(trade.Nickname, trade.Trader, 10000) // Initial equity 10000 ETH
+	am := s.accountMetrics.GetOrCreate(trade.Nickname, trade.Trader, config.InitialAccountEquityETH)
 
 	// Convert trade amounts to float64
 	// For BUY: amountIn is ETH (wei), amountOut is APPL (wei)
@@ -213,6 +236,11 @@ func (s *MemoryStore) RecordEvent(eventType, description, severity string) {
 		Description: description,
 		Severity:    severity,
 	})
+
+	// Cap events slice to prevent unbounded memory growth
+	if len(s.events) > config.MaxEvents {
+		s.events = s.events[len(s.events)-config.MaxEvents:]
+	}
 }
 
 func (s *MemoryStore) GetEvents() []KeyEvent {

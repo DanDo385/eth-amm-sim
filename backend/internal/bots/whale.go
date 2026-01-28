@@ -1,9 +1,18 @@
-// Package bots contains the whale bot implementation
+// whale.go — Large opportunistic trader bot (accounts 1-3).
+//
+// Strategy: Whales decide buy/sell based on their current APPL position.
+// If long (owns APPL), they tend to sell; if short (ETH only), they tend to buy.
+// Trade sizes are large (up to 600 ETH) with longer intervals (12-25s).
+// This creates periodic large price impacts visible on the frontend PriceChart.
+//
+// Parameters come from config/accounts.go (MaxTradeSize, TradeFreqMin/Max).
+// Trades execute via executor.SwapETHForApples / SwapApplesForETH → AppleAMM contract.
 package bots
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"log"
 	"math/big"
 	"time"
@@ -21,17 +30,17 @@ type WhaleBot struct {
 }
 
 // NewWhaleBot creates a new whale bot
-func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) *WhaleBot {
+func NewWhaleBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) (*WhaleBot, error) {
 	privateKeyHex := cfg.PrivateKey()
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
-		panic("invalid private key for " + cfg.Nickname)
+		return nil, fmt.Errorf("invalid private key for %s: %w", cfg.Nickname, err)
 	}
 
 	return &WhaleBot{
 		BaseBot:    NewBaseBot(cfg, executor, store),
 		privateKey: privateKey,
-	}
+	}, nil
 }
 
 // Run starts the whale bot trading loop

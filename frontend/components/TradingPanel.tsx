@@ -1,3 +1,15 @@
+// TradingPanel.tsx — Manual trading UI for the "User" account.
+//
+// Lets the user buy APPL with ETH or sell APPL for ETH, using the
+// dedicated User account (Anvil account index 29). Trades execute via
+// POST /trade/{buy,sell} → server/handlers.go → engine/executor.go.
+//
+// CONNECTIONS:
+//   - REST endpoints: lib/api.ts tradeBuy/tradeSell → handlers.go handleTradeBuy/Sell
+//   - Backend exec:   executor.go BuyApples/SellApples using User's private key
+//   - Contract:       AppleAMM.sol swapETHForApple / swapAppleForETH
+//   - Balance:        GET /user/balance → handlers.go handleGetUserBalance
+//   - Types:          types/index.ts UserBalance, TradeResponse
 'use client';
 
 import { useState, useEffect } from 'react';

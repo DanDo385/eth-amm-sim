@@ -1,3 +1,20 @@
+// page.tsx — Main dashboard page, orchestrates all frontend components.
+//
+// This is a client component ('use client') because it uses React hooks
+// for state, effects, and the WebSocket connection. It wires together:
+//   - useSession:   simulation lifecycle (start/stop/reset)
+//   - usePriceData: candle history and LP metrics
+//   - useWebSocket: real-time data stream from backend /stream
+//
+// The handleWSMessage callback is the central dispatcher: it receives
+// every WebSocket message and routes it to the appropriate state updater
+// (trades → Blotter, price → PriceChart, lp_metrics → LPStats, etc.).
+//
+// CONNECTIONS:
+//   - Backend WebSocket: server/broadcast.go → useWebSocket.ts → handleWSMessage
+//   - Backend REST:      lib/api.ts for initial data fetches
+//   - Components:        SessionControls, PriceChart, TWAPChart, Blotter,
+//                        LPStats, KeyEvents, AccountMetrics, ImpactCurve, TradingPanel
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';

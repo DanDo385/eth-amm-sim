@@ -1,4 +1,15 @@
-// Package server provides HTTP handlers
+// handlers.go — HTTP handler implementations for all REST endpoints.
+//
+// Each handler reads from MemoryStore or controls Session/Executor and returns
+// JSON. Frontend lib/api.ts calls these endpoints. User trade handlers
+// (handleUserBuy/Sell) call executor methods directly to submit on-chain
+// transactions for the User account (index 29).
+//
+// CONNECTIONS:
+//   - Frontend API client: frontend/lib/api.ts (fetches from these endpoints)
+//   - Session control: engine/session.go (Start/Stop/Reset/GetState)
+//   - Trade execution: engine/executor.go (user buy/sell → on-chain tx)
+//   - Data source: store/memory.go (candles, trades, LP metrics, events, accounts)
 package server
 
 import (
@@ -221,8 +232,8 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Get user account (index 29)
-	userAccount := config.GetAccountByIndex(29)
+	// Get user account
+	userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 	if userAccount == nil {
 		respondError(w, http.StatusInternalServerError, "user account not found")
 		return
@@ -298,8 +309,8 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Get user account (index 29)
-	userAccount := config.GetAccountByIndex(29)
+	// Get user account
+	userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 	if userAccount == nil {
 		respondError(w, http.StatusInternalServerError, "user account not found")
 		return
@@ -374,8 +385,8 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetUserBalance(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	
-	// Get user account (index 29)
-	userAccount := config.GetAccountByIndex(29)
+	// Get user account
+	userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 	if userAccount == nil {
 		respondError(w, http.StatusInternalServerError, "user account not found")
 		return
