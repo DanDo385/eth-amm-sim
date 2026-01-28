@@ -5,8 +5,7 @@
 // NonceManager serializes nonce allocation with a mutex. Each call to
 // GetAndIncrement atomically returns the next nonce and advances the counter.
 //
-// Used by: engine/executor.go (SwapETHForApples, SwapApplesForETH,
-// ensureApproval, OpenLeveragedPosition, LiquidatePosition)
+// Used by: engine/executor.go (SwapETHForApples, SwapApplesForETH, ensureApproval)
 package chain
 
 import (

@@ -2,7 +2,7 @@
 //
 // Records raw price observations (fed by main.go's poll loop every 2s) and
 // aggregates them into candles. Also computes rolling TWAP and volatility
-// used by mean reversion bots and the liquidator's hybrid price check.
+// used by mean reversion bots.
 //
 // CONNECTIONS:
 //   - Fed by: cmd/simulator/main.go pollPrices → store.RecordPrice

@@ -3,9 +3,9 @@
 // SYSTEM ROLE:
 // This is the lowest layer of the backend — it speaks JSON-RPC to the Anvil
 // node started by scripts/start-anvil.sh. Every on-chain read (reserves,
-// prices, balances) and every transaction (swaps, approvals, leverage ops)
-// flows through Client. NonceManager (nonce.go) ensures concurrent bot
-// goroutines never collide on nonces.
+// prices, balances) and every transaction (swaps, approvals) flows through
+// Client. NonceManager (nonce.go) ensures concurrent bot goroutines never
+// collide on nonces.
 //
 // CONNECTIONS:
 //   - Used by: engine/executor.go (all contract interactions)

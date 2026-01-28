@@ -124,7 +124,7 @@ export interface ImpactCurve {
 // Key event types
 export interface KeyEvent {
   timestamp: string;
-  type: 'trade' | 'liquidation' | 'strategy_trigger';
+  type: 'trade' | 'strategy_trigger';
   description: string;
   severity: 'info' | 'warning' | 'critical';
 }

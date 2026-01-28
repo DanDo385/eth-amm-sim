@@ -35,17 +35,15 @@
 # 1. DEPLOY CONTRACTS
 #    - AppleToken: ERC20 token contract (the "APPL" token)
 #    - AppleAMM: The AMM contract for swapping ETH <-> APPL
-#      * Includes leveraged positions and liquidation mechanics
 #      * Uses ReentrancyGuard and Address.sendValue() for security
 #
 # 2. REDISTRIBUTE ETH via vm.deal:
-#    - Account 0 (LP):     15,000 ETH (10k liquidity + 5k for loans/gas)
+#    - Account 0 (LP):     15,000 ETH (10k liquidity + 5k for gas)
 #    - Accounts 1-29:      1,000 ETH each
 #
 # 3. MINT TOKENS to all Anvil accounts:
 #    - Account 0 (LP):         10,000 APPL (for pool seeding)
-#    - Accounts 1-27, 29:      1,000 APPL each
-#    - Account 28 (Liquidator): 0 APPL (uses ETH only)
+#    - Accounts 1-29:          1,000 APPL each
 #
 # 4. SEED LIQUIDITY POOL
 #    - LP (account 0) deposits 10,000 APPL + 10,000 ETH

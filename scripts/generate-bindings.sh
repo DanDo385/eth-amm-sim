@@ -129,7 +129,6 @@ abigen --abi out/AppleToken.sol/AppleToken.json \
 
 # AppleAMM binding - The core AMM contract
 # Used by: executor.go to execute swaps, read reserves, get prices
-# Includes: Leveraged positions, liquidation, TWAP, volatility
 abigen --abi out/AppleAMM.sol/AppleAMM.json \
        --pkg contracts \
        --type AppleAMM \
