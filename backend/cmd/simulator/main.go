@@ -291,12 +291,6 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 		case config.BotTypeMeanRev:
 			bot, err = bots.NewMeanRevBot(&acc, executor, priceProvider, store)
 
-		case config.BotTypeLeverage:
-			bot, err = bots.NewLeverageBot(&acc, executor, priceProvider, store)
-
-		case config.BotTypeLiquidator:
-			bot, err = bots.NewLiquidatorBot(&acc, executor, priceProvider, store)
-
 		default:
 			log.Printf("Unknown bot type for %s: %s", acc.Nickname, acc.Type)
 			continue

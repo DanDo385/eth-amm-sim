@@ -1,5 +1,5 @@
 // Package config contains account configuration — single source of truth for all
-// 30 simulation accounts.
+// simulation accounts.
 //
 // SYSTEM ROLE:
 // This file defines every account's identity, starting allocation, and trading
@@ -18,9 +18,7 @@
 //	Index 4-6:    MeanRev (EWMA-based mean reversion with z-score triggers)
 //	Index 7-9:    Reserved (unused)
 //	Index 10-24:  Retail (small, frequent noise traders)
-//	Index 25-27:  Leverage (5x, 10x, 25x leveraged long positions)
-//	Index 28:     Liquidator (hunts underwater leverage positions)
-//	Index 29:     User (manual trading from the frontend TradingPanel)
+//	Index 19:     User (manual trading from the frontend TradingPanel)
 package config
 
 import (
@@ -34,12 +32,10 @@ import (
 type BotType string
 
 const (
-	BotTypeLP         BotType = "lp"
-	BotTypeWhale      BotType = "whale"
-	BotTypeMeanRev    BotType = "meanrev"
-	BotTypeRetail     BotType = "retail"
-	BotTypeLeverage   BotType = "leverage"
-	BotTypeLiquidator BotType = "liquidator"
+	BotTypeLP      BotType = "lp"
+	BotTypeWhale   BotType = "whale"
+	BotTypeMeanRev BotType = "meanrev"
+	BotTypeRetail  BotType = "retail"
 
 	// UserAccountIndex is the Anvil account index for the User account (manual trading from frontend)
 	//
@@ -78,11 +74,6 @@ type AccountConfig struct {
 	// Strategy-specific parameters
 	TriggerLevels  []float64 // For meanrev: multiple sigma levels to trade at (e.g., [0.75, 1.0, 1.25])
 	HalfLifeTrades int       // For meanrev: EWMA half-life in trades (decay parameter, e.g., 50 = weight decays to 50% after 50 trades)
-
-	// Leverage parameters (Phase 2)
-	Leverage             int      // Leverage multiplier (5, 10, 25)
-	Collateral           *big.Int // ETH collateral for leveraged positions
-	LiquidationThreshold float64  // Liquidation threshold (e.g., 0.8 = liquidate at 80% of collateral)
 }
 
 // Anvil's deterministic addresses from default mnemonic:
@@ -291,52 +282,7 @@ func init() {
 	}
 
 	// ═══════════════════════════════════════════════════════════════════
-	// LEVERAGED TRADERS (Index 25-27) - Phase 2
-	// Different leverage levels, different liquidation risks
-	// ═══════════════════════════════════════════════════════════════════
-	Accounts = append(Accounts, []AccountConfig{
-		{
-			Index:                25,
-			Nickname:             "Lev5x",
-			Type:                 BotTypeLeverage,
-			StartingApples:       eth(250), // Enough APPL to sell (was 0)
-			Collateral:           eth(50),  // Reduced from 200 - 50 ETH collateral
-			Leverage:             5,        // 5x = 250 ETH notional max
-			LiquidationThreshold: 0.8,      // Liquidate when equity < 80% of collateral (40 ETH)
-		},
-		{
-			Index:                26,
-			Nickname:             "Lev10x",
-			Type:                 BotTypeLeverage,
-			StartingApples:       eth(250), // Enough APPL to sell (was 0)
-			Collateral:           eth(30),  // Reduced from 100 - 30 ETH collateral
-			Leverage:             10,       // 10x = 300 ETH notional max
-			LiquidationThreshold: 0.8,      // Liquidate when equity < 80% of collateral (24 ETH)
-		},
-		{
-			Index:                27,
-			Nickname:             "Lev25x",
-			Type:                 BotTypeLeverage,
-			StartingApples:       eth(250), // Enough APPL to sell (was 0)
-			Collateral:           eth(20),  // Reduced from 40 - 20 ETH collateral
-			Leverage:             25,       // 25x = 500 ETH notional max
-			LiquidationThreshold: 0.8,      // Liquidate when equity < 80% of collateral (16 ETH)
-		},
-	}...)
-
-	// ═══════════════════════════════════════════════════════════════════
-	// LIQUIDATION BOT (Index 28) - Phase 2
-	// ═══════════════════════════════════════════════════════════════════
-	Accounts = append(Accounts, AccountConfig{
-		Index:          28,
-		Nickname:       "LiqBot",
-		Type:           BotTypeLiquidator,
-		StartingApples: eth(0),
-		// LiqBot needs ETH (from Anvil default) to execute liquidations
-	})
-
-	// ═══════════════════════════════════════════════════════════════════
-	// USER ACCOUNT (Index 29)
+	// USER ACCOUNT (Index 19)
 	// Demo account for user trading via frontend
 	// ═══════════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, AccountConfig{

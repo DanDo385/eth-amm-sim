@@ -6,7 +6,7 @@
 // interface in metrics/) rather than importing store/ directly.
 //
 // CONNECTIONS:
-//   - Interface consumers: bots/meanrev.go, bots/leverage.go, bots/liquidator.go
+//   - Interface consumers: bots/meanrev.go
 //   - Implementation: store/memory.go implements PriceDataStore
 //   - Created in: cmd/simulator/main.go → metrics.NewPriceProvider(memStore)
 package metrics

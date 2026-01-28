@@ -59,7 +59,7 @@ type MemoryStore struct {
 // KeyEvent represents a significant event
 type KeyEvent struct {
 	Timestamp   time.Time `json:"timestamp"`
-	Type        string    `json:"type"` // trade, liquidation, strategy_trigger
+	Type        string    `json:"type"` // trade, strategy_trigger
 	Description string    `json:"description"`
 	Severity    string    `json:"severity"` // info, warning, critical
 }

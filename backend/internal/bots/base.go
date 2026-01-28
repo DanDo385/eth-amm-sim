@@ -3,7 +3,7 @@
 // SYSTEM ROLE:
 // BaseBot holds the account config, executor reference, store reference, and
 // private key that every bot needs. It provides utility methods (RandomDelay,
-// RandomSize, Stop) used by whale, retail, meanrev, leverage, and liquidator bots.
+// RandomSize, Stop) used by whale, retail, and meanrev bots.
 //
 // Each bot's Run() method loops until the context is cancelled (session ends).
 // Bots call executor.SwapETHForApples / SwapApplesForETH to submit transactions

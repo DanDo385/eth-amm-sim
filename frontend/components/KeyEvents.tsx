@@ -1,6 +1,6 @@
 // KeyEvents.tsx — Real-time feed of notable simulation events.
 //
-// Shows trades, liquidations, and strategy triggers with severity badges.
+// Shows trades and strategy triggers with severity badges.
 // Events arrive via WebSocket "key_event" messages, dispatched from
 // broadcast.go BroadcastEvent whenever a bot executes a notable action.
 //
@@ -20,7 +20,6 @@ interface KeyEventsProps {
 
 const eventIcons: Record<string, string> = {
   trade: '📊',
-  liquidation: '💥',
   strategy_trigger: '🎯',
 };
 

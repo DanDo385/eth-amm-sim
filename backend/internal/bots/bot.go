@@ -21,11 +21,11 @@
 //
 // The Bot interface is minimal by design — it only exposes lifecycle methods needed
 // by the orchestrator. Bot-specific functionality (trading logic, EWMA state, etc.)
-// is encapsulated in each bot's implementation (whale.go, retail.go, meanrev.go, etc.).
+// is encapsulated in each bot's implementation (whale.go, retail.go, meanrev.go).
 //
 // CONNECTIONS:
 //   - Used by: engine/orchestrator.go (manages bot lifecycle via its own Bot interface)
-//   - Implemented by: All bot types (WhaleBot, RetailBot, MeanRevBot, LeverageBot, LiquidatorBot)
+//   - Implemented by: All bot types (WhaleBot, RetailBot, MeanRevBot)
 //   - Base implementation: base.go provides BaseBot struct with common functionality
 package bots
 
