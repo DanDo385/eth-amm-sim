@@ -185,18 +185,24 @@ contract DeployScript is Script {
         vm.deal(accounts[0], 15000 ether);
         console.log("Setting ETH balance for LP Account 0: 15,000 ETH");
         
-        // Leverage accounts (25-27) get their Collateral amount + 5 ETH for gas
-        // Lev5x (25): 50 ETH collateral + 5 ETH = 55 ETH
-        vm.deal(accounts[25], 55 ether);
-        console.log("Setting ETH balance for Lev5x Account 25: 55 ETH (50 collateral + 5 gas)");
+        // Leverage accounts (25-27) need enough ETH to cover their maximum
+        // volatility-scaled collateral (up to 2x config.Collateral) plus gas.
+        // We over-fund slightly so momentum bots can consistently open positions.
+        //
+        // Lev5x (25): base collateral 50 ETH → up to 100 ETH with scaling.
+        // Fund with 130 ETH to leave visible buffer after multiple trades.
+        vm.deal(accounts[25], 130 ether);
+        console.log("Setting ETH balance for Lev5x Account 25: 130 ETH (supports up to 100 collateral + gas)");
         
-        // Lev10x (26): 30 ETH collateral + 5 ETH = 35 ETH
-        vm.deal(accounts[26], 35 ether);
-        console.log("Setting ETH balance for Lev10x Account 26: 35 ETH (30 collateral + 5 gas)");
+        // Lev10x (26): base collateral 30 ETH → up to 60 ETH with scaling.
+        // Fund with 80 ETH.
+        vm.deal(accounts[26], 80 ether);
+        console.log("Setting ETH balance for Lev10x Account 26: 80 ETH (supports up to 60 collateral + gas)");
         
-        // Lev25x (27): 20 ETH collateral + 5 ETH = 25 ETH
-        vm.deal(accounts[27], 25 ether);
-        console.log("Setting ETH balance for Lev25x Account 27: 25 ETH (20 collateral + 5 gas)");
+        // Lev25x (27): base collateral 20 ETH → up to 40 ETH with scaling.
+        // Fund with 60 ETH.
+        vm.deal(accounts[27], 60 ether);
+        console.log("Setting ETH balance for Lev25x Account 27: 60 ETH (supports up to 40 collateral + gas)");
         
         // All other accounts get 1k ETH
         for (uint i = 1; i < accounts.length; i++) {
@@ -211,9 +217,9 @@ contract DeployScript is Script {
         console.log("\nETH balances set for simulation:");
         console.log("  Account 0 (LP) = 15,000 ETH");
         console.log("  Accounts 1-24, 28-29 = 1,000 ETH each");
-        console.log("  Lev5x (25) = 55 ETH (50 collateral + 5 gas)");
-        console.log("  Lev10x (26) = 35 ETH (30 collateral + 5 gas)");
-        console.log("  Lev25x (27) = 25 ETH (20 collateral + 5 gas)");
+        console.log("  Lev5x (25) = 130 ETH (supports up to 100 collateral + gas)");
+        console.log("  Lev10x (26) = 80 ETH (supports up to 60 collateral + gas)");
+        console.log("  Lev25x (27) = 60 ETH (supports up to 40 collateral + gas)");
         console.log("Note: For actual deployment, ensure account 0 has sufficient ETH for liquidity + gas");
     }
     

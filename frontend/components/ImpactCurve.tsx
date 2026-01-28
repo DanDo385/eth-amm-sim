@@ -26,8 +26,8 @@ interface ImpactCurveProps {
 export function ImpactCurve({ buyData, sellData, candles, session, height = 200 }: ImpactCurveProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const resetPriceRef = useRef<number>(1.0); // Price to reset to (default 1.0)
+  const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const resetPriceRef = useRef<number>(1.0); // Last traded price we center the axis around
   const sessionStartRef = useRef<string | undefined>(undefined);
 
   // Get last traded price from candles (last candle's close price)
@@ -70,7 +70,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       height,
       rightPriceScale: {
         borderColor: '#2d3748',
-        autoScale: false, // Manual control for reset to 1.0
+        autoScale: false, // Manual control: we keep last price centered between 0 and 2.0
         scaleMargins: {
           top: 0.1,
           bottom: 0.1,
@@ -106,10 +106,10 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       },
     });
 
-    const series = chart.addLineSeries({
+    const priceSeries = chart.addLineSeries({
       color: '#3b82f6',
       lineWidth: 2,
-      title: 'Price Impact',
+      title: 'Price vs Trade Size',
       priceLineVisible: false, // Don't show price line
       priceFormat: {
         type: 'price',
@@ -119,18 +119,18 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       lineType: 0, // Line type: 0 = line (continuous), 1 = area, 2 = histogram
     });
 
-    // Add a price line at 1.0 to show the reference price (center of y-axis)
-    series.createPriceLine({
-      price: 1.0,
+    // Add a dashed price line at the reference (last traded) price
+    priceSeries.createPriceLine({
+      price: resetPriceRef.current,
       color: '#9ca3af',
       lineWidth: 1,
       lineStyle: 2, // Dashed
       axisLabelVisible: true,
-      title: 'Current Price (1.00)',
+      title: 'Last Price',
     });
 
     chartRef.current = chart;
-    seriesRef.current = series;
+    priceSeriesRef.current = priceSeries;
 
     // Handle resize
     const handleResize = () => {
@@ -149,85 +149,79 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
 
   // Update data
   useEffect(() => {
-    if (!seriesRef.current || !chartRef.current) return;
+    if (!priceSeriesRef.current || !chartRef.current) return;
     
-    // Use reset price as reference (defaults to 1.0, updates to last traded price)
+    // Use reset price as reference (tracks last traded price)
     const referencePrice = resetPriceRef.current;
     
     if (!referencePrice || referencePrice <= 0) {
       // If no reference price, clear chart
-      seriesRef.current.setData([]);
+      priceSeriesRef.current.setData([]);
       return;
     }
     
     // If no data, clear the chart
     if (buyData.length === 0 && sellData.length === 0) {
-      seriesRef.current.setData([]);
+      priceSeriesRef.current.setData([]);
       return;
     }
     
     // Combine buy and sell data into one series
     // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
-    // Y-axis: Price relative to reference price (normalized)
-    // Add center point at (0, 1.0) representing current spot price with no trade
-    const combinedData: LineData[] = [
-      // Center point: current spot price at trade size 0
+    // Y-axis: Actual execution price in ETH/APPL
+    // Add center point at (0, referencePrice) representing current spot price with no trade
+    const combinedPriceData: LineData[] = [
+      // Center point: last traded price at trade size 0
       {
         time: 0 as Time,
-        value: 1.0, // Normalized reference price (current spot price)
+        value: referencePrice,
       },
       // Buy data (positive x-axis)
       ...buyData
         .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
         .map((p) => ({
           time: p.tradeSize as Time, // Positive for buys
-          value: p.executePrice / referencePrice, // Normalized price
+          value: p.executePrice, // Actual price
         })),
       // Sell data (negative x-axis)
       ...sellData
         .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
         .map((p) => ({
           time: -p.tradeSize as Time, // Negative for sells
-          value: p.executePrice / referencePrice, // Normalized price
+          value: p.executePrice, // Actual price
         })),
     ].sort((a, b) => Number(a.time) - Number(b.time));
 
-    // Center the axes on the last traded price (normalized to 1.0)
-    // The center point is at (0, 1.0) representing current spot price with no trade
-    const centerPrice = 1.0; // Always use 1.0 as center (normalized reference price)
-    
-    // Fixed range centered on 1.0: [0.5, 1.5] or wider if needed
-    // This ensures the center (1.0) is always in the middle of the y-axis
-    const range = 2.0;
-    const yAxisMin = Math.max(0, centerPrice - range / 2); // 0.0
-    const yAxisMax = centerPrice + range / 2; // 2.0
+    // Center the y-axis on the last traded price with global [0.0, 2.0] bounds.
+    // We try to keep a 1.0-wide window around the reference price, clipped to [0, 2].
+    const window = 1.0;
+    let yAxisMin = referencePrice - window / 2;
+    let yAxisMax = referencePrice + window / 2;
+    if (yAxisMin < 0) {
+      yAxisMin = 0;
+      yAxisMax = Math.min(2.0, yAxisMin + window);
+    }
+    if (yAxisMax > 2.0) {
+      yAxisMax = 2.0;
+      yAxisMin = Math.max(0, yAxisMax - window);
+    }
     
     // Find actual min/max values in the data to ensure they're visible
-    const dataValues = combinedData.map(d => d.value);
+    const dataValues = combinedPriceData.map(d => d.value);
     const actualMin = Math.min(...dataValues);
     const actualMax = Math.max(...dataValues);
     
-    // Adjust range if data extends beyond the default range, but keep center at 1.0
+    // Adjust range if data extends beyond the default window, but keep within [0, 2.0]
     let finalYMin = yAxisMin;
     let finalYMax = yAxisMax;
     
     if (actualMin < yAxisMin) {
-      // Data goes below 0, extend range downward but keep center visible
-      finalYMin = Math.max(0, actualMin - 0.1);
+      // Data goes below current min, extend range downward but keep floor at 0
+      finalYMin = Math.max(0, actualMin - 0.05);
     }
     if (actualMax > yAxisMax) {
-      // Data goes above 2.0, extend range upward but keep center visible
-      finalYMax = actualMax + 0.1;
-    }
-    
-    // Ensure center (1.0) is always in the middle of the visible range
-    const currentRange = finalYMax - finalYMin;
-    const centerOffset = centerPrice - (finalYMin + finalYMax) / 2;
-    
-    // Adjust range to center on 1.0
-    if (Math.abs(centerOffset) > 0.01) {
-      finalYMin = Math.max(0, centerPrice - currentRange / 2);
-      finalYMax = centerPrice + currentRange / 2;
+      // Data goes above current max, extend range upward but cap at 2.0
+      finalYMax = Math.min(2.0, actualMax + 0.05);
     }
 
     // Set x-axis range to -500 to +500
@@ -265,17 +259,16 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
     // We add points just outside the visible range to ensure they don't conflict with actual data
     // Use -501 and 501 to avoid duplicates with actual trade data at -500 and 500
     const extendedData = [
-      ...combinedData,
+      ...combinedPriceData,
       // Add points just outside the edges to force the scale
       { time: -501 as Time, value: finalYMin },
       { time: 501 as Time, value: finalYMax },
     ].sort((a, b) => Number(a.time) - Number(b.time)); // Sort by time to ensure ascending order
 
     // Set data with extended points to force the scale range
-    seriesRef.current.setData(extendedData);
+    priceSeriesRef.current.setData(extendedData);
 
     // Set price scale range after data is set
-    // Sliding scale: always centered around current price with range of 2.0
     setTimeout(() => {
       if (!chartRef.current) return;
       
