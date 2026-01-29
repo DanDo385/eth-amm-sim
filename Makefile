@@ -1,9 +1,15 @@
-.PHONY: anvil deploy bindings backend frontend clean test-contracts up down
+.PHONY: anvil deploy bindings backend frontend clean test-contracts up down kill-anvil
+
+# Kill any existing Anvil process
+kill-anvil:
+	@lsof -ti:8545 | xargs kill -9 2>/dev/null || echo "No Anvil process found on port 8545"
 
 # Start local Anvil chain with 30 accounts
 # LP account (0) needs 15k ETH, others need 1k ETH each
+# Note: If port 8545 is in use, run 'make kill-anvil' first
+# Starting with 15000 ETH ensures account 0 has enough for liquidity + gas
 anvil:
-	anvil --accounts 30 --balance 10000
+	anvil --accounts 30 --balance 15000
 
 # Deploy contracts to Anvil (uses scripts/deploy.sh to keep run-latest.json only)
 deploy:

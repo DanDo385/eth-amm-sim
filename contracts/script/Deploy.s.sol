@@ -52,21 +52,19 @@ contract DeployScript is Script {
         console.log("AppleAMM deployed at:", address(amm));
         console.log("Note: Transaction hashes for deployments appear in the transaction log below");
         
+        // Redistribute ETH balances FIRST (before minting to save gas)
+        // Account 0 needs extra ETH (10k for liquidity + gas)
+        // This must happen inside broadcast so it's actually set on-chain
+        redistributeETH(accounts);
+        
         // Mint tokens to all accounts
         mintTokens(accounts);
-        
-        vm.stopBroadcast();
-        
-        // Redistribute ETH balances (using separate broadcast blocks)
-        // Account 0 needs extra ETH (10k for liquidity + gas)
-        redistributeETH(accounts);
         
         // Log account balances table
         logAccountBalances(accounts);
         
-        vm.startBroadcast(deployerKey);
-        
         // Seed initial liquidity (account 0 = LP)
+        // This happens in the same broadcast block so account 0 has the redistributed ETH
         seedLiquidity();
         
         vm.stopBroadcast();
@@ -169,7 +167,7 @@ contract DeployScript is Script {
         
         // Use vm.deal to set balances for simulation
         // Account 0 (LP) needs 15k ETH total (10k for liquidity + 5k for gas)
-        vm.deal(accounts[0], 10000 ether);
+        vm.deal(accounts[0], 15000 ether);
         console.log("Setting ETH balance for LP Account 0: 15,000 ETH");
         
         // All other accounts get 1k ETH

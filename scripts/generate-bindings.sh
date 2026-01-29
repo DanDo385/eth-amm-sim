@@ -79,9 +79,14 @@ set -e # Exit immediately if any command fails
 # Path resolution - these are relative to wherever this script lives
 # $(dirname "$0") = the scripts/ directory
 # ../contracts    = go up one level, then into contracts/
-CONTRACTS_DIR="$(dirname "$0")/../contracts"
-BACKEND_DIR="$(dirname "$0")/../backend"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONTRACTS_DIR="$ROOT_DIR/contracts"
+BACKEND_DIR="$ROOT_DIR/backend"
 BINDINGS_DIR="$BACKEND_DIR/internal/contracts"
+
+# Ensure bindings directory exists
+mkdir -p "$BINDINGS_DIR"
 
 # ==============================================================================
 # STEP 1: Compile Solidity contracts with Forge
@@ -120,19 +125,54 @@ forge build
 
 echo "Generating Go bindings..."
 
+# Helper function to extract ABI from JSON and pass to abigen
+# The JSON files have structure {"abi":[...], "bytecode":{...}}
+# but abigen expects just the ABI array
+generate_binding() {
+    local json_file=$1
+    local pkg=$2
+    local type=$3
+    local out_file=$4
+    
+    # Create temporary ABI file
+    local temp_abi=$(mktemp)
+    
+    # Extract ABI using available tools (prefer jq, fallback to python3)
+    if command -v jq &> /dev/null; then
+        jq '.abi' "$json_file" > "$temp_abi"
+    elif command -v python3 &> /dev/null; then
+        python3 -c "import json, sys; json.dump(json.load(sys.stdin)['abi'], sys.stdout)" < "$json_file" > "$temp_abi"
+    else
+        echo "Error: Neither jq nor python3 found. Please install jq: brew install jq"
+        rm -f "$temp_abi"
+        exit 1
+    fi
+    
+    # Generate binding using extracted ABI
+    abigen --abi "$temp_abi" \
+           --pkg "$pkg" \
+           --type "$type" \
+           --out "$out_file"
+    
+    # Clean up temporary file
+    rm -f "$temp_abi"
+}
+
 # AppleToken binding - ERC20 token with mint capability
 # Used by: backend to check balances, approve spending
-abigen --abi out/AppleToken.sol/AppleToken.json \
-       --pkg contracts \
-       --type AppleToken \
-       --out "$BINDINGS_DIR/apple_token.go"
+# Note: json_file path is relative to CONTRACTS_DIR (where we cd'd to)
+#       out_file path must be absolute since we're in contracts/ directory
+generate_binding "$CONTRACTS_DIR/out/AppleToken.sol/AppleToken.json" \
+                 contracts \
+                 AppleToken \
+                 "$BINDINGS_DIR/apple_token.go"
 
 # AppleAMM binding - The core AMM contract
 # Used by: executor.go to execute swaps, read reserves, get prices
-abigen --abi out/AppleAMM.sol/AppleAMM.json \
-       --pkg contracts \
-       --type AppleAMM \
-       --out "$BINDINGS_DIR/apple_amm.go"
+generate_binding "$CONTRACTS_DIR/out/AppleAMM.sol/AppleAMM.json" \
+                 contracts \
+                 AppleAMM \
+                 "$BINDINGS_DIR/apple_amm.go"
 
 echo "Go bindings generated in $BINDINGS_DIR"
 

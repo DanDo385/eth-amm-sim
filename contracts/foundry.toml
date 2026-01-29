@@ -6,6 +6,11 @@ solc = "0.8.20"
 optimizer = true
 optimizer_runs = 200
 
+# Gas configuration for Anvil (prevents EIP-1559 max fee issues)
+# Anvil uses low gas prices for testing, so we configure accordingly
+gas_price = 1000000000  # 1 gwei (Anvil default)
+gas_limit = 30000000    # 30M gas limit (sufficient for all operations)
+
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "forge-std/=lib/forge-std/src/"
