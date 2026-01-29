@@ -11,7 +11,7 @@ interface ToastProps {
 export function Toast({ visible, message, onClose }: ToastProps) {
   useEffect(() => {
     if (!visible) return;
-    const timer = setTimeout(onClose, 4000);
+    const timer = setTimeout(onClose, 3000); // 3 seconds
     return () => clearTimeout(timer);
   }, [visible, onClose]);
 

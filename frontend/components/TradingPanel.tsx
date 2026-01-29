@@ -67,19 +67,51 @@ export function TradingPanel({ session }: TradingPanelProps) {
 
   const buildToastMessage = (label: string, result: TradeResponse, isBuy: boolean, amount: string) => {
     const dir = isBuy ? 'BUY' : 'SELL';
-    const eth = result.ethAmount ? Number(result.ethAmount) / 1e18 : undefined;
-    const apple = result.appleAmount ? Number(result.appleAmount) / 1e18 : undefined;
     const size = isBuy ? `${amount} ETH` : `${amount} APPL`;
-    const price =
-      result.ethAmount && result.appleAmount && Number(result.appleAmount) > 0
-        ? (Number(result.ethAmount) / Number(result.appleAmount)).toFixed(6)
-        : undefined;
     const shortHash = result.txHash.slice(0, 10);
+
+    // Calculate balance changes with proper signs
+    // For BUY: we spend ETH (negative) and receive APPL (positive)
+    // For SELL: we spend APPL (negative) and receive ETH (positive)
+    let ethChange: string | undefined;
+    let appleChange: string | undefined;
+
+    if (isBuy) {
+      // BUY: ethAmount is the ETH spent (negative change)
+      if (result.ethAmount) {
+        const ethSpent = Number(result.ethAmount) / 1e18;
+        ethChange = `-${ethSpent.toFixed(4)}`;
+      }
+      // appleAmount might not be in response, so we'll show "?" if not available
+      if (result.appleAmount) {
+        const appleReceived = Number(result.appleAmount) / 1e18;
+        appleChange = `+${appleReceived.toFixed(4)}`;
+      } else {
+        appleChange = '?';
+      }
+    } else {
+      // SELL: appleAmount is the APPL spent (negative change)
+      if (result.appleAmount) {
+        const appleSpent = Number(result.appleAmount) / 1e18;
+        appleChange = `-${appleSpent.toFixed(4)}`;
+      }
+      // ethAmount might not be in response, so we'll show "?" if not available
+      if (result.ethAmount) {
+        const ethReceived = Number(result.ethAmount) / 1e18;
+        ethChange = `+${ethReceived.toFixed(4)}`;
+      } else {
+        ethChange = '?';
+      }
+    }
+
+    // Build balance change string
+    const balanceChange = ethChange !== undefined || appleChange !== undefined
+      ? ` | Δ Bal: ${ethChange ?? '?'} ETH / ${appleChange ?? '?'} APPL`
+      : '';
 
     return [
       `${label}: ${dir} ${size}`,
-      price ? `@ ${price} ETH/APPL` : '',
-      eth !== undefined || apple !== undefined ? ` | Δ Bal: ${eth?.toFixed(4) ?? '?'} ETH / ${apple?.toFixed(4) ?? '?'} APPL` : '',
+      balanceChange,
       ` | Tx ${shortHash}...`,
     ]
       .filter(Boolean)

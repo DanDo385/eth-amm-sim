@@ -292,6 +292,22 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get reserves before trade to calculate amount out
+	appleReserveBefore, ethReserveBefore, err := s.executor.GetReserves(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get reserves: %v", err))
+		return
+	}
+
+	// Calculate fee and amount out (same formula as executor)
+	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
+	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
+	
+	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, appleReserveBefore)
+	denominator := new(big.Int).Add(ethReserveBefore, amountInAfterFee)
+	appleAmountOut := new(big.Int).Div(numerator, denominator)
+
 	// Execute trade
 	txHash, err := s.executor.SwapETHForApples(ctx, privateKey, ethAmount)
 	if err != nil {
@@ -306,6 +322,7 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]interface{}{
 		"txHash":       txHash,
 		"ethAmount":    ethAmount.String(),
+		"appleAmount":  appleAmountOut.String(),
 		"ethBalance":   ethBalanceAfter.String(),
 		"appleBalance": appleBalance.String(),
 		"status":       "success",
@@ -378,6 +395,22 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get reserves before trade to calculate amount out
+	appleReserveBefore, ethReserveBefore, err := s.executor.GetReserves(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get reserves: %v", err))
+		return
+	}
+
+	// Calculate fee and amount out (same formula as executor)
+	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
+	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
+	
+	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
+	numerator := new(big.Int).Mul(amountInAfterFee, ethReserveBefore)
+	denominator := new(big.Int).Add(appleReserveBefore, amountInAfterFee)
+	ethAmountOut := new(big.Int).Div(numerator, denominator)
+
 	// Execute trade
 	txHash, err := s.executor.SwapApplesForETH(ctx, privateKey, appleAmount)
 	if err != nil {
@@ -391,6 +424,7 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, map[string]interface{}{
 		"txHash":       txHash,
+		"ethAmount":    ethAmountOut.String(),
 		"appleAmount":  appleAmount.String(),
 		"ethBalance":   ethBalanceAfter.String(),
 		"appleBalance": appleBalanceAfter.String(),

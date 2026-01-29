@@ -121,11 +121,70 @@ echo "Deployment complete!"
 echo "Contract addresses are saved in contracts/broadcast/"
 
 # ==============================================================================
+# Cleanup Foundry cache outputs (keep only run-latest.json)
+# ==============================================================================
+
+CACHE_DIR="cache/Deploy.s.sol/31337"
+if [ -d "$CACHE_DIR" ]; then
+    LATEST_CACHE=""
+    for f in "$CACHE_DIR"/run-*.json; do
+        # Skip if glob didn't match
+        [ -e "$f" ] || continue
+        if [ "$(basename "$f")" = "run-latest.json" ]; then
+            continue
+        fi
+        if [ -z "$LATEST_CACHE" ] || [ "$f" -nt "$LATEST_CACHE" ]; then
+            LATEST_CACHE="$f"
+        fi
+    done
+
+    if [ -n "$LATEST_CACHE" ]; then
+        cp "$LATEST_CACHE" "$CACHE_DIR/run-latest.json"
+    fi
+
+for f in "$CACHE_DIR"/run-*.json; do
+        [ -e "$f" ] || continue
+        if [ "$(basename "$f")" != "run-latest.json" ]; then
+            rm -f "$f"
+        fi
+    done
+fi
+
+# ==============================================================================
+# Cleanup Foundry broadcast outputs (keep only run-latest.json)
+# ==============================================================================
+
+BROADCAST_DIR="broadcast/Deploy.s.sol/31337"
+if [ -d "$BROADCAST_DIR" ]; then
+    LATEST_BROADCAST=""
+    for f in "$BROADCAST_DIR"/run-*.json; do
+        [ -e "$f" ] || continue
+        if [ "$(basename "$f")" = "run-latest.json" ]; then
+            continue
+        fi
+        if [ -z "$LATEST_BROADCAST" ] || [ "$f" -nt "$LATEST_BROADCAST" ]; then
+            LATEST_BROADCAST="$f"
+        fi
+    done
+
+    if [ -n "$LATEST_BROADCAST" ]; then
+        cp "$LATEST_BROADCAST" "$BROADCAST_DIR/run-latest.json"
+    fi
+
+    for f in "$BROADCAST_DIR"/*; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ "$base" != "run-latest.json" ] && [ "$base" != ".gitignore" ] && [ "$base" != ".gitkeep" ] && [ "$base" != "README.md" ]; then
+            rm -f "$f"
+        fi
+    done
+fi
+
+# ==============================================================================
 # Show deployed contract addresses
 # ==============================================================================
 
 # Find the latest broadcast file
-BROADCAST_DIR="broadcast/Deploy.s.sol/31337"
 LATEST_BROADCAST=""
 
 # Check for run-latest.json first (symlink to most recent)

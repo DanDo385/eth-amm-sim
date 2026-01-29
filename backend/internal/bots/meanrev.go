@@ -108,6 +108,12 @@ func (m *MeanRevBot) OnTradeFlow(event metrics.TradeFlowEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Skip events with zero or invalid normalized flow (rTilde would be 0 or invalid)
+	// Normalized flow should be > 0 for meaningful liquidity-normalized returns
+	if event.NormalizedFlow <= 0 || math.IsNaN(event.RTilde) || math.IsInf(event.RTilde, 0) {
+		return
+	}
+
 	// Update EWMA statistics with new rTilde observation
 	m.ewmaState.UpdateEWMA(event.RTilde)
 
@@ -201,25 +207,45 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	if halfLife <= 0 {
 		halfLife = 50 // Default
 	}
-	// Use ~35% of half-life as a minimum requirement.
-	// This slightly extends the warmup/lookback before the bot is allowed to trade.
-	minTradesRequired := int(float64(halfLife) * 0.35)
-	if minTradesRequired < 5 {
-		minTradesRequired = 5 // Minimum of 5 trades to ensure some observation
+	// Use ~20% of half-life as a minimum requirement (reduced from 35% to allow faster trading).
+	// This ensures some observation period but allows bots to trade sooner.
+	minTradesRequired := int(float64(halfLife) * 0.20)
+	if minTradesRequired < 3 {
+		minTradesRequired = 3 // Minimum of 3 trades to ensure some observation
 	}
 
 	if m.tradesSinceTrade < minTradesRequired {
 		return nil, nil
 	}
 
-	// Recalculate z-score using most recent rTilde and current EWMA state
-	// This ensures z-score is always relative to current statistics
-	zScore := m.ewmaState.GetZScore(m.lastRTilde)
-	absZScore := math.Abs(zScore)
+	// Require that we've observed at least one trade (lastRTilde should be set)
+	// If lastRTilde is still 0, we haven't received any trade flow events yet
+	if m.lastRTilde == 0 && m.ewmaState.GetTradeCount() == 0 {
+		return nil, nil
+	}
 
 	// Require non-zero sigma for meaningful z-score
-	if m.ewmaState.GetSigma() == 0 {
+	// Sigma becomes non-zero after variance builds up (typically after 2+ observations)
+	sigma := m.ewmaState.GetSigma()
+	if sigma == 0 {
+		// Log debug info if we have trades but no variance yet
+		if m.ewmaState.GetTradeCount() > 0 {
+			log.Printf("[%s] MeanRev waiting for variance: trades=%d, tradesSinceTrade=%d/%d",
+				m.Nickname(), m.ewmaState.GetTradeCount(), m.tradesSinceTrade, minTradesRequired)
+		}
 		return nil, nil
+	}
+
+	// Recalculate z-score using most recent rTilde and current EWMA state
+	// This ensures z-score is always relative to current statistics
+	mu := m.ewmaState.GetMu()
+	zScore := m.ewmaState.GetZScore(m.lastRTilde)
+	absZScore := math.Abs(zScore)
+	
+	// Debug logging every 10 trades to monitor bot state
+	if m.tradesSinceTrade%10 == 0 {
+		log.Printf("[%s] MeanRev state: trades=%d, tradesSinceTrade=%d/%d, z=%.3f, mu=%.6f, sigma=%.6f, lastRTilde=%.6f",
+			m.Nickname(), m.ewmaState.GetTradeCount(), m.tradesSinceTrade, minTradesRequired, zScore, mu, sigma, m.lastRTilde)
 	}
 
 	// Get trigger levels

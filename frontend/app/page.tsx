@@ -175,8 +175,7 @@ export default function Dashboard() {
           <ImpactCurve 
             buyData={impactData.buy} 
             sellData={impactData.sell} 
-            candles={candles}
-            session={session}
+            lpMetrics={lpMetrics}
           />
         </div>
 

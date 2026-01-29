@@ -1,13 +1,13 @@
-.PHONY: anvil deploy bindings backend frontend clean test-contracts
+.PHONY: anvil deploy bindings backend frontend clean test-contracts up down
 
 # Start local Anvil chain with 30 accounts
 # LP account (0) needs 15k ETH, others need 1k ETH each
 anvil:
-	anvil --accounts 30 --balance 15000
+	anvil --accounts 30 --balance 10000
 
-# Deploy contracts to Anvil
+# Deploy contracts to Anvil (uses scripts/deploy.sh to keep run-latest.json only)
 deploy:
-	cd contracts && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+	./scripts/deploy.sh
 
 # Generate Go bindings from contract ABIs
 bindings:
@@ -41,3 +41,11 @@ contracts-install:
 
 # Full setup
 setup: contracts-install frontend-install bindings
+
+# Launch Anvil + deploy + backend + frontend in separate Terminal windows (macOS)
+up:
+	./scripts/dev-up.sh
+
+# Stop tmux session and all running services
+down:
+	-@tmux kill-session -t eth-amm-sim 2>/dev/null || true
