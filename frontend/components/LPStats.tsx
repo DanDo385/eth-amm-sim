@@ -78,7 +78,7 @@ export function LPStats({ metrics }: LPStatsProps) {
         <MetricCard
           label="Impermanent Loss"
           value={`${formatETH(metrics.impermanentLoss)} ETH`}
-          positive={metrics.impermanentLoss >= 0}
+          positive={false}
         />
         
         <MetricCard

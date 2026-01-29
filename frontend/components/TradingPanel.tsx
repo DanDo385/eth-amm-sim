@@ -14,15 +14,22 @@
 
 import { useState, useEffect } from 'react';
 import { tradeBuy, tradeSell, getUserBalance } from '@/lib/api';
-import type { UserBalance } from '@/types';
+import type { TradeResponse, UserBalance, SessionState } from '@/types';
+import { Toast } from './Toast';
 
-export function TradingPanel() {
+interface TradingPanelProps {
+  session?: SessionState;
+}
+
+export function TradingPanel({ session }: TradingPanelProps) {
   const [balance, setBalance] = useState<UserBalance | null>(null);
   const [buyAmount, setBuyAmount] = useState('');
   const [sellAmount, setSellAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [showToast, setShowToast] = useState(false);
 
   // Load balance on mount and after trades
   const loadBalance = async () => {
@@ -38,10 +45,45 @@ export function TradingPanel() {
     loadBalance();
   }, []);
 
+  // Clear UI state when session resets
+  useEffect(() => {
+    if (session?.status === 'idle' && !session?.startedAt) {
+      setError(null);
+      setSuccess(null);
+      setBuyAmount('');
+      setSellAmount('');
+      // Refresh balance to show current state
+      getUserBalance()
+        .then(setBalance)
+        .catch((err) => console.error('Failed to load balance:', err));
+    }
+  }, [session?.status, session?.startedAt]);
+
   const formatWei = (wei: string): string => {
     const weiBigInt = BigInt(wei);
     const eth = Number(weiBigInt) / 1e18;
     return eth.toFixed(4);
+  };
+
+  const buildToastMessage = (label: string, result: TradeResponse, isBuy: boolean, amount: string) => {
+    const dir = isBuy ? 'BUY' : 'SELL';
+    const eth = result.ethAmount ? Number(result.ethAmount) / 1e18 : undefined;
+    const apple = result.appleAmount ? Number(result.appleAmount) / 1e18 : undefined;
+    const size = isBuy ? `${amount} ETH` : `${amount} APPL`;
+    const price =
+      result.ethAmount && result.appleAmount && Number(result.appleAmount) > 0
+        ? (Number(result.ethAmount) / Number(result.appleAmount)).toFixed(6)
+        : undefined;
+    const shortHash = result.txHash.slice(0, 10);
+
+    return [
+      `${label}: ${dir} ${size}`,
+      price ? `@ ${price} ETH/APPL` : '',
+      eth !== undefined || apple !== undefined ? ` | Δ Bal: ${eth?.toFixed(4) ?? '?'} ETH / ${apple?.toFixed(4) ?? '?'} APPL` : '',
+      ` | Tx ${shortHash}...`,
+    ]
+      .filter(Boolean)
+      .join('');
   };
 
   const handleBuy = async () => {
@@ -56,7 +98,10 @@ export function TradingPanel() {
 
     try {
       const result = await tradeBuy(buyAmount);
-      setSuccess(`Trade successful! Tx: ${result.txHash.slice(0, 10)}...`);
+      const toast = buildToastMessage('User trade', result, true, buyAmount);
+      setToastMessage(toast);
+      setShowToast(true);
+      setSuccess(`Trade successful!`);
       setBuyAmount('');
       await loadBalance();
     } catch (err: any) {
@@ -78,7 +123,10 @@ export function TradingPanel() {
 
     try {
       const result = await tradeSell(sellAmount);
-      setSuccess(`Trade successful! Tx: ${result.txHash.slice(0, 10)}...`);
+      const toast = buildToastMessage('User trade', result, false, sellAmount);
+      setToastMessage(toast);
+      setShowToast(true);
+      setSuccess(`Trade successful!`);
       setSellAmount('');
       await loadBalance();
     } catch (err: any) {
@@ -93,7 +141,7 @@ export function TradingPanel() {
 
   return (
     <div className="bg-surface rounded-lg border border-border p-4">
-      <h2 className="text-lg font-semibold text-white mb-4">User Trading</h2>
+      <h2 className="text-sm font-medium text-white mb-4">User Trading</h2>
 
       {/* Balance Display */}
       <div className="mb-4 space-y-2">
@@ -107,15 +155,10 @@ export function TradingPanel() {
         </div>
       </div>
 
-      {/* Error/Success Messages */}
+      {/* Error Messages */}
       {error && (
         <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded text-red-400 text-sm">
           {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded text-green-400 text-sm">
-          {success}
         </div>
       )}
 
@@ -166,6 +209,11 @@ export function TradingPanel() {
           </button>
         </div>
       </div>
+      <Toast
+        visible={showToast}
+        message={toastMessage}
+        onClose={() => setShowToast(false)}
+      />
     </div>
   );
 }

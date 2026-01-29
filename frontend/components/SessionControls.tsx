@@ -39,7 +39,7 @@ export function SessionControls({ session, isLoading, onStart, onStop, onReset }
   return (
     <div className="bg-surface rounded-lg p-4 border border-border">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Session Control</h2>
+        <h2 className="text-sm font-medium text-white">Session Control</h2>
         <div className="flex items-center space-x-2">
           <span className={`w-2 h-2 rounded-full ${
             isRunning ? 'bg-green-500 animate-pulse' : 

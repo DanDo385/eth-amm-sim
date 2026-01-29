@@ -33,77 +33,77 @@ The system is architected as a three-tier application:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Next.js Frontend                             │
-│                    (localhost:3000)                              │
-│                                                                   │
-│  Components:                                                      │
-│  - PriceChart: OHLC candlestick chart                            │
+│                     Next.js Frontend                            │
+│                    (localhost:3000)                             │
+│                                                                 │
+│  Components:                                                    │
+│  - PriceChart: OHLC candlestick chart                           │
 │  - TWAPChart: TWAP/Std Dev toggle chart                         │
 │  - ImpactCurve: Price impact visualization                      │
 │  - Blotter: Real-time trade feed                                │
-│  - LPStats: Impermanent loss, fees, net PnL                    │
+│  - LPStats: Impermanent loss, fees, net PnL                     │
 │  - AccountMetrics: Per-account performance                      │
-│  - KeyEvents: Large trades, price moves                          │
-│  - SessionControls: Start/stop/reset simulation                │
-│  - TradingPanel: Manual trading for User account               │
-│                                                                   │
-│  Hooks:                                                          │
+│  - KeyEvents: Large trades, price moves                         │
+│  - SessionControls: Start/stop/reset simulation                 │
+│  - TradingPanel: Manual trading for User account                │
+│                                                                 │
+│  Hooks:                                                         │
 │  - useSession: Session lifecycle management                     │
-│  - usePriceData: Candle history and LP metrics                 │
+│  - usePriceData: Candle history and LP metrics                  │
 │  - useWebSocket: Real-time data stream                          │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ HTTP REST + WebSocket
                             │ (localhost:8080)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                       Go Backend                                 │
-│                    (localhost:8080)                              │
-│                                                                   │
-│  Core Components:                                                │
+│                       Go Backend                                │
+│                    (localhost:8080)                             │
+│                                                                 │
+│  Core Components:                                               │
 │  - cmd/simulator/main.go: Entry point, orchestrates all         │
 │  - engine/orchestrator.go: Bot lifecycle management             │
 │  - engine/session.go: Session state (start/stop/reset)          │
-│  - engine/executor.go: Bridge to on-chain contracts              │
+│  - engine/executor.go: Bridge to on-chain contracts             │
 │  - chain/client.go: Ethereum RPC client (go-ethereum)           │
 │  - chain/nonce.go: Transaction nonce management                 │
-│  - store/memory.go: In-memory data store (candles, trades)     │
+│  - store/memory.go: In-memory data store (candles, trades)      │
 │  - server/server.go: HTTP + WebSocket server                    │
 │  - server/handlers.go: REST API endpoints                       │
 │  - server/broadcast.go: WebSocket message broadcasting          │
-│                                                                   │
-│  Trading Bots:                                                   │
-│  - bots/whale.go: Large random trades (100-500 APPL)           │
-│  - bots/retail.go: Small noise trades (1-10 APPL)                │
+│                                                                 │
+│  Trading Bots:                                                  │
+│  - bots/whale.go: Large random trades (100-500 APPL)            │
+│  - bots/retail.go: Small noise trades (1-10 APPL)               │
 │  - bots/meanrev.go: EWMA-based mean reversion                   │
-│                                                                   │
-│  Metrics:                                                        │
-│  - metrics/price.go: OHLC candles, TWAP, volatility            │
-│  - metrics/lp.go: Impermanent loss, fees, net PnL              │
+│                                                                 │
+│  Metrics:                                                       │
+│  - metrics/price.go: OHLC candles, TWAP, volatility             │
+│  - metrics/lp.go: Impermanent loss, fees, net PnL               │
 │  - metrics/account.go: Per-account performance metrics          │
-│  - metrics/ewma.go: Exponential weighted moving average          │
-│  - metrics/impact.go: Price impact curve calculations          │
+│  - metrics/ewma.go: Exponential weighted moving average         │
+│  - metrics/impact.go: Price impact curve calculations           │
 │  - metrics/trade_flow.go: Trade flow events for mean rev        │
-│                                                                   │
-│  Configuration:                                                  │
-│  - config/accounts.go: All 22 accounts and trading params      │
+│                                                                 │
+│  Configuration:                                                 │
+│  - config/accounts.go: All 22 accounts and trading params       │
 │  - config/amm.go: AMM-specific constants                        │
 │  - config/config.go: System-wide configuration                  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ JSON-RPC (localhost:8545)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Anvil                                    │
-│                    (localhost:8545)                              │
-│  Local Ethereum node (Foundry)                                    │
-│                                                                   │
-│  Smart Contracts:                                                │
-│  - AppleToken.sol: ERC20 token (APPL)                            │
-│  - AppleAMM.sol: Constant product AMM with:                      │
-│    • Liquidity provision (add/remove)                            │
+│                         Anvil                                   │
+│                    (localhost:8545)                             │
+│  Local Ethereum node (Foundry)                                  │
+│                                                                 │
+│  Smart Contracts:                                               │
+│  - AppleToken.sol: ERC20 token (APPL)                           │
+│  - AppleAMM.sol: Constant product AMM with:                     │
+│    • Liquidity provision (add/remove)                           │
 │    • Swaps (ETH ↔ APPL) with 0.30% fee                          │
-│    • TWAP and volatility calculations                            │
-│                                                                   │
-│  Accounts: 22 pre-funded accounts (Anvil deterministic)          │
+│    • TWAP and volatility calculations                           │
+│                                                                 │
+│  Accounts: 22 pre-funded accounts (Anvil determinstic)          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

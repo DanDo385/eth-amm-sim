@@ -49,10 +49,10 @@
 #    - LP (account 0) deposits 10,000 APPL + 10,000 ETH
 #    - This creates the initial trading pool with 1:1 price ratio
 #
-# NOTE: The backend config (backend/internal/config/accounts.go) defines
-# PoolApples=10,000 and PoolETH=1,000,000 — these are the backend's
-# expected values and may differ from what Deploy.s.sol actually seeds.
-# Check Deploy.s.sol for the authoritative on-chain pool state.
+# NOTE:
+# Deploy.s.sol is the authoritative on-chain pool state.
+# The backend also reads the actual on-chain reserves on startup to initialize LP metrics,
+# so the UI should reflect 10,000 APPL + 10,000 ETH immediately after deploy.
 #
 # ==============================================================================
 # OUTPUT FILES

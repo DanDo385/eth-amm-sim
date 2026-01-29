@@ -42,6 +42,20 @@ export default function Dashboard() {
   const [priceRange, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
   const sessionStartRef = useRef<string | undefined>(undefined);
 
+  const handleReset = useCallback(
+    async (hardReset: boolean = false) => {
+      // Clear UI state immediately.
+      setTrades([]);
+      setEvents([]);
+
+      // Reset backend session/store, then refetch LP metrics and candles so all
+      // user-facing metrics panels (LP + Account) reflect a clean state.
+      await reset(hardReset);
+      await refreshPriceData();
+    },
+    [reset, refreshPriceData]
+  );
+
   // Track session start and handle reset
   useEffect(() => {
     if (session.startedAt && session.startedAt !== sessionStartRef.current) {
@@ -147,9 +161,9 @@ export default function Dashboard() {
             isLoading={isLoading}
             onStart={start}
             onStop={stop}
-            onReset={reset}
+            onReset={handleReset}
           />
-          <TradingPanel />
+          <TradingPanel session={session} />
           <LPStats metrics={lpMetrics} />
           <AccountMetrics />
         </div>

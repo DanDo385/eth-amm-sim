@@ -108,7 +108,7 @@ func main() {
 		log.Fatalf("AMM pool is empty! Reserves: APPL=%s, ETH=%s. Deploy contracts and seed liquidity first.", apples.String(), eth.String())
 	}
 
-	log.Printf("✓ Contracts verified. Pool reserves: APPL=%s, ETH=%s", apples.String(), eth.String())
+	log.Printf("✓ Contracts verified. Pool reserves: APPL=%.0f, ETH=%.0f", toEther(apples), toEther(eth))
 
 	// Get initial spot price
 	spotPrice, err := executor.GetSpotPrice(ctx)
@@ -317,8 +317,8 @@ func initializeAccountMetrics(memStore *store.MemoryStore) {
 
 // initLPMetrics initializes LP metrics with pool state
 func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
-	// Initial pool: 10,000 APPL + 1,000,000 ETH (from config.PoolApples and config.PoolETH)
-	// Initial price: 100 ETH/APPL
+	// Initialize LP metrics from the actual on-chain pool reserves so the UI
+	// always reflects the deployed state (Deploy.s.sol seeds 10,000 APPL + 10,000 ETH).
 
 	// Get initial fees from contract (should be 0 at start, but track for accuracy)
 	initialFeesApple, initialFeesETH, err := executor.GetTotalFees(ctx)
@@ -328,9 +328,17 @@ func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *sto
 		initialFeesETH = big.NewInt(0)
 	}
 
-	memStore.GetLPMetrics().SetInitialState(config.PoolApples, config.PoolETH)
+	apples, eth, err := executor.GetReserves(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not read initial reserves, falling back to config: %v", err)
+		apples = config.PoolApples
+		eth = config.PoolETH
+	}
+
+	memStore.GetLPMetrics().SetInitialState(apples, eth)
 	memStore.GetLPMetrics().SetInitialFees(initialFeesApple, initialFeesETH)
-	memStore.GetImpactCurve().UpdateReserves(config.PoolApples, config.PoolETH)
+	memStore.GetLPMetrics().UpdateState(apples, eth, initialFeesApple, initialFeesETH)
+	memStore.GetImpactCurve().UpdateReserves(apples, eth)
 }
 
 // pollPricesWithError is the main market data loop. Every 2 seconds it:

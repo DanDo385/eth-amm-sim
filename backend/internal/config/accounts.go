@@ -247,11 +247,13 @@ func init() {
 			Nickname:       "MeanRev3",
 			Type:           BotTypeMeanRev,
 			StartingApples: eth(500), // 500 APPL for selling
-			MaxTradeSize:   eth(100), // Fixed trade size (not percentage-based)
-			MaxPosition:    eth(500),
+			// MeanRev3 should be noticeably larger than MeanRev2 in demos.
+			// Keep this exactly 2x MeanRev2's size.
+			MaxTradeSize: eth(150), // Fixed trade size (not percentage-based)
+			MaxPosition:  eth(500),
 			// Lower extreme thresholds a bit so slow bot still represents large deviations but trades in demos
-			TriggerLevels:  []float64{2.0, 2.5}, // Large: still focuses on big moves, but slightly more active
-			HalfLifeTrades: 87,                  // Slow decay: 87 trades half-life (halved from 175)
+			TriggerLevels:  []float64{1.9, 2.4}, // Large: still focuses on big moves, but slightly more active
+			HalfLifeTrades: 75,                  // Slightly shorter lookback (more responsive)
 		},
 	}
 

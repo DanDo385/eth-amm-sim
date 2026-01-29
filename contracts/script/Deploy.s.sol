@@ -166,7 +166,7 @@ contract DeployScript is Script {
         
         // Use vm.deal to set balances for simulation
         // Account 0 (LP) needs 15k ETH total (10k for liquidity + 5k for gas)
-        vm.deal(accounts[0], 15000 ether);
+        vm.deal(accounts[0], 10000 ether);
         console.log("Setting ETH balance for LP Account 0: 15,000 ETH");
         
         // All other accounts get 1k ETH

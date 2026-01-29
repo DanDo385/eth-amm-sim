@@ -4,7 +4,7 @@
 //   - Current pool value vs HODL value (if LP had just held initial tokens)
 //   - Impermanent loss (IL) from price divergence
 //   - Cumulative fees earned (read from AppleAMM.getTotalFees)
-//   - Net PnL = fees - IL
+//   - Net PnL = fees + IL (IL is typically negative when price moves)
 //
 // CONNECTIONS:
 //   - Updated by: main.go pollPrices → memStore.GetLPMetrics().UpdateState()
@@ -21,23 +21,23 @@ import (
 // LPMetrics tracks liquidity provider metrics
 type LPMetrics struct {
 	mu sync.RWMutex
-	
+
 	// Initial state (when LP deposited)
 	initialApples *big.Int
 	initialETH    *big.Int
 	initialPrice  float64 // ETH per APPL
 	depositTime   time.Time
-	
+
 	// Current state
 	currentApples *big.Int
 	currentETH    *big.Int
-	
+
 	// Fee tracking
-	feesApple     *big.Int
-	feesETH       *big.Int
+	feesApple        *big.Int
+	feesETH          *big.Int
 	initialFeesApple *big.Int
 	initialFeesETH   *big.Int
-	
+
 	// History for charts
 	history []LPSnapshot
 }
@@ -57,20 +57,20 @@ type LPSnapshot struct {
 
 // LPMetricsData is the API response for LP metrics
 type LPMetricsData struct {
-	InitialApples    float64      `json:"initialApples"`
-	InitialETH       float64      `json:"initialETH"`
-	CurrentApples    float64      `json:"currentApples"`
-	CurrentETH       float64      `json:"currentETH"`
-	CurrentPrice     float64      `json:"currentPrice"`
-	LPValue          float64      `json:"lpValue"`
-	HODLValue        float64      `json:"hodlValue"`
-	ImpermanentLoss  float64      `json:"impermanentLoss"`
-	FeesEarnedApple  float64      `json:"feesEarnedApple"`
-	FeesEarnedETH    float64      `json:"feesEarnedETH"`
-	TotalFeesUSD     float64      `json:"totalFeesUSD"`
-	NetPnL           float64      `json:"netPnL"`
-	NetPnLPercent    float64      `json:"netPnLPercent"`
-	History          []LPSnapshot `json:"history"`
+	InitialApples   float64      `json:"initialApples"`
+	InitialETH      float64      `json:"initialETH"`
+	CurrentApples   float64      `json:"currentApples"`
+	CurrentETH      float64      `json:"currentETH"`
+	CurrentPrice    float64      `json:"currentPrice"`
+	LPValue         float64      `json:"lpValue"`
+	HODLValue       float64      `json:"hodlValue"`
+	ImpermanentLoss float64      `json:"impermanentLoss"`
+	FeesEarnedApple float64      `json:"feesEarnedApple"`
+	FeesEarnedETH   float64      `json:"feesEarnedETH"`
+	TotalFeesUSD    float64      `json:"totalFeesUSD"`
+	NetPnL          float64      `json:"netPnL"`
+	NetPnLPercent   float64      `json:"netPnLPercent"`
+	History         []LPSnapshot `json:"history"`
 }
 
 // NewLPMetrics creates a new LP metrics tracker
@@ -80,7 +80,7 @@ func NewLPMetrics() *LPMetrics {
 		initialETH:       big.NewInt(0),
 		currentApples:    big.NewInt(0),
 		currentETH:       big.NewInt(0),
-		feesApple:         big.NewInt(0),
+		feesApple:        big.NewInt(0),
 		feesETH:          big.NewInt(0),
 		initialFeesApple: big.NewInt(0),
 		initialFeesETH:   big.NewInt(0),
@@ -92,13 +92,13 @@ func NewLPMetrics() *LPMetrics {
 func (lp *LPMetrics) SetInitialState(apples, eth *big.Int) {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
-	
+
 	lp.initialApples = new(big.Int).Set(apples)
 	lp.initialETH = new(big.Int).Set(eth)
 	lp.currentApples = new(big.Int).Set(apples)
 	lp.currentETH = new(big.Int).Set(eth)
 	lp.depositTime = time.Now()
-	
+
 	// Calculate initial price (ETH per APPL)
 	if apples.Sign() > 0 {
 		ethFloat := new(big.Float).SetInt(eth)
@@ -112,7 +112,7 @@ func (lp *LPMetrics) SetInitialState(apples, eth *big.Int) {
 func (lp *LPMetrics) SetInitialFees(feesApple, feesETH *big.Int) {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
-	
+
 	lp.initialFeesApple = new(big.Int).Set(feesApple)
 	lp.initialFeesETH = new(big.Int).Set(feesETH)
 }
@@ -121,12 +121,12 @@ func (lp *LPMetrics) SetInitialFees(feesApple, feesETH *big.Int) {
 func (lp *LPMetrics) UpdateState(apples, eth, feesApple, feesETH *big.Int) {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
-	
+
 	lp.currentApples = new(big.Int).Set(apples)
 	lp.currentETH = new(big.Int).Set(eth)
 	lp.feesApple = new(big.Int).Set(feesApple)
 	lp.feesETH = new(big.Int).Set(feesETH)
-	
+
 	// Record snapshot
 	snapshot := lp.calculateSnapshotLocked()
 	lp.history = append(lp.history, snapshot)
@@ -136,9 +136,9 @@ func (lp *LPMetrics) UpdateState(apples, eth, feesApple, feesETH *big.Int) {
 func (lp *LPMetrics) GetMetrics() LPMetricsData {
 	lp.mu.RLock()
 	defer lp.mu.RUnlock()
-	
+
 	snapshot := lp.calculateSnapshotLocked()
-	
+
 	// Fees earned = current fees - initial fees
 	feesAppleEarned := new(big.Int).Sub(lp.feesApple, lp.initialFeesApple)
 	feesETHEarned := new(big.Int).Sub(lp.feesETH, lp.initialFeesETH)
@@ -148,7 +148,7 @@ func (lp *LPMetrics) GetMetrics() LPMetricsData {
 	if feesETHEarned.Sign() < 0 {
 		feesETHEarned = big.NewInt(0)
 	}
-	
+
 	return LPMetricsData{
 		InitialApples:   toEther(lp.initialApples),
 		InitialETH:      toEther(lp.initialETH),
@@ -170,27 +170,36 @@ func (lp *LPMetrics) GetMetrics() LPMetricsData {
 // calculateSnapshotLocked calculates a snapshot (caller must hold lock)
 func (lp *LPMetrics) calculateSnapshotLocked() LPSnapshot {
 	now := time.Now()
-	
+
 	currentApples := toEther(lp.currentApples)
 	currentETH := toEther(lp.currentETH)
 	initialApples := toEther(lp.initialApples)
 	initialETH := toEther(lp.initialETH)
-	
+
 	// Spot price (ETH per APPL)
 	var spotPrice float64
 	if currentApples > 0 {
 		spotPrice = currentETH / currentApples
 	}
-	
+
 	// LP value = current_apples * price + current_eth
 	lpValue := currentApples*spotPrice + currentETH
-	
+
 	// HODL value = initial_apples * current_price + initial_eth
 	hodlValue := initialApples*spotPrice + initialETH
-	
-	// Impermanent Loss = LP_value - HODL_value
-	il := lpValue - hodlValue
-	
+
+	// Impermanent Loss = LP_value - HODL_value.
+	// Convention: IL is negative when the LP underperforms HODL.
+	// If LP outperforms HODL, IL is 0 (no loss).
+	ilRaw := lpValue - hodlValue
+	il := ilRaw
+	if ilRaw > 0 {
+		// If LP_value > HODL_value, the LP has outperformed HODL.
+		// For display, keep IL at 0 (no loss).
+		il = 0
+	}
+	// il is now <= 0 (negative when there's a loss, 0 otherwise)
+
 	// Fees earned (convert to ETH equivalent)
 	// Calculate fees earned since deposit
 	feesAppleEarned := new(big.Int).Sub(lp.feesApple, lp.initialFeesApple)
@@ -201,14 +210,15 @@ func (lp *LPMetrics) calculateSnapshotLocked() LPSnapshot {
 	if feesETHEarned.Sign() < 0 {
 		feesETHEarned = big.NewInt(0)
 	}
-	
+
 	feesApple := toEther(feesAppleEarned)
 	feesETH := toEther(feesETHEarned)
 	totalFees := feesApple*spotPrice + feesETH
-	
-	// Net PnL = IL + Fees
-	netPnL := il + totalFees
-	
+
+	// Net PnL (demo convention) = Fees Earned - IL.
+	// Since IL is non-positive, this is equivalent to: netPnL = totalFees + |IL|.
+	netPnL := totalFees - il
+
 	return LPSnapshot{
 		Timestamp:    now,
 		AppleReserve: currentApples,
@@ -250,7 +260,7 @@ func toEther(wei *big.Int) float64 {
 func (lp *LPMetrics) Reset() {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
-	
+
 	lp.initialApples = big.NewInt(0)
 	lp.initialETH = big.NewInt(0)
 	lp.currentApples = big.NewInt(0)

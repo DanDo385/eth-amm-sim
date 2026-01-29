@@ -1,8 +1,10 @@
 // ImpactCurve.tsx — Price impact visualization for hypothetical trade sizes.
 //
-// Shows price impact curve relative to the last traded price from the APPL/ETH chart.
-// Uses the constant product formula x*y=k. Data is computed by backend metrics/impact.go
-// using current pool reserves, fetched via GET /impact-curve.
+// Shows price impact (slippage) as a function of trade size.
+// Data is computed in the backend (metrics/impact.go) from current reserves and returned
+// as chart-ready points:
+//   - X-axis: trade size (ETH), negative for sells and positive for buys
+//   - Y-axis: impact in basis points (bps), centered at 0 (spot price)
 //
 // CONNECTIONS:
 //   - Backend data:  metrics/impact.go CalculateBuyCurve/CalculateSellCurve
@@ -12,7 +14,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi, LineData, Time } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time, IPriceLine } from 'lightweight-charts';
 import type { ImpactPoint, Candle } from '@/types';
 
 interface ImpactCurveProps {
@@ -27,31 +29,11 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const resetPriceRef = useRef<number>(1.0); // Last traded price we center the axis around
-  const sessionStartRef = useRef<string | undefined>(undefined);
-
-  // Get last traded price from candles (last candle's close price)
+  const spotLineRef = useRef<IPriceLine | null>(null);
+  const spotPriceFromBackend =
+    buyData.find((p) => p.spotPrice > 0)?.spotPrice ?? sellData.find((p) => p.spotPrice > 0)?.spotPrice;
   const lastTradedPrice = candles.length > 0 ? candles[candles.length - 1].close : undefined;
-
-  // Detect reset and update reset price
-  useEffect(() => {
-    if (session.status === 'idle' || !session.startedAt) {
-      // Reset detected - set reset price to 1.0
-      resetPriceRef.current = 1.0;
-      if (sessionStartRef.current !== undefined) {
-        sessionStartRef.current = undefined;
-      }
-    } else if (session.startedAt && session.startedAt !== sessionStartRef.current) {
-      // New session started - capture last traded price as reset price
-      sessionStartRef.current = session.startedAt;
-      if (lastTradedPrice && lastTradedPrice > 0) {
-        resetPriceRef.current = lastTradedPrice;
-      }
-    } else if (lastTradedPrice && lastTradedPrice > 0 && sessionStartRef.current !== undefined) {
-      // Update reset price to current last traded price during session
-      resetPriceRef.current = lastTradedPrice;
-    }
-  }, [session.status, session.startedAt, lastTradedPrice]);
+  const spotPrice = spotPriceFromBackend ?? lastTradedPrice ?? 0;
 
   // Initialize chart
   useEffect(() => {
@@ -70,7 +52,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       height,
       rightPriceScale: {
         borderColor: '#2d3748',
-        autoScale: false, // Manual control: we keep last price centered between 0 and 2.0
+        autoScale: true,
         scaleMargins: {
           top: 0.1,
           bottom: 0.1,
@@ -91,9 +73,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
         },
       },
       localization: {
-        priceFormatter: (price: number) => {
-          return price.toFixed(4);
-        },
+        priceFormatter: (value: number) => value.toFixed(4),
         timeFormatter: (time: Time) => {
           // Custom formatter for x-axis: show quantity instead of date
           const quantity = Number(time);
@@ -109,7 +89,7 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
     const priceSeries = chart.addLineSeries({
       color: '#3b82f6',
       lineWidth: 2,
-      title: 'Price vs Trade Size',
+      title: 'Execution Price vs Trade Size',
       priceLineVisible: false, // Don't show price line
       priceFormat: {
         type: 'price',
@@ -119,14 +99,14 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
       lineType: 0, // Line type: 0 = line (continuous), 1 = area, 2 = histogram
     });
 
-    // Add a dashed price line at the reference (last traded) price
-    priceSeries.createPriceLine({
-      price: resetPriceRef.current,
+    // Dashed baseline at spot price (no trade).
+    spotLineRef.current = priceSeries.createPriceLine({
+      price: 1.0, // updated after mount in data effect
       color: '#9ca3af',
       lineWidth: 1,
       lineStyle: 2, // Dashed
       axisLabelVisible: true,
-      title: 'Last Price',
+      title: 'Spot',
     });
 
     chartRef.current = chart;
@@ -150,72 +130,51 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
   // Update data
   useEffect(() => {
     if (!priceSeriesRef.current || !chartRef.current) return;
-    
-    // Use reset price as reference (tracks last traded price)
-    const referencePrice = resetPriceRef.current;
-    
-    if (!referencePrice || referencePrice <= 0) {
-      // If no reference price, show a flat baseline at 1.0
+
+    const fallbackSpot = spotPrice > 0 ? spotPrice : 1.0;
+
+    // Keep dashed baseline aligned to spot price.
+    spotLineRef.current?.applyOptions({ price: fallbackSpot });
+
+    // If idle, show a flat baseline at spot price.
+    if (session.status === 'idle' || !session.startedAt) {
       const baseline: LineData[] = [
-        { time: -500 as Time, value: 1.0 },
-        { time: 0 as Time, value: 1.0 },
-        { time: 500 as Time, value: 1.0 },
+        { time: -500 as Time, value: fallbackSpot },
+        { time: 0 as Time, value: fallbackSpot },
+        { time: 500 as Time, value: fallbackSpot },
       ];
       priceSeriesRef.current.setData(baseline);
       return;
     }
-    
-    // Combine buy and sell data into one series
-    // X-axis: Trade Size (in ETH) - negative for sells, positive for buys
-    // Y-axis: Price normalized to the reference (last traded) price.
-    // 1.0 = current/last price, <1.0 = cheaper, >1.0 = more expensive.
-    // Add center point at (0, 1.0) representing current spot price with no trade.
-    const combinedPriceData: LineData[] = [
-      // Center point: normalized price 1.0 at trade size 0
-      {
-        time: 0 as Time,
-        value: 1.0,
-      },
-      // Buy data (positive x-axis)
-      ...buyData
-        .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
-        .map((p) => ({
-          time: p.tradeSize as Time, // Positive for buys
-          value: p.executePrice / referencePrice, // Normalized price
-        })),
-      // Sell data (negative x-axis)
-      ...sellData
-        .filter(p => p.tradeSize > 0 && p.tradeSize <= 500 && p.executePrice > 0)
-        .map((p) => ({
-          time: -p.tradeSize as Time, // Negative for sells
-          value: p.executePrice / referencePrice, // Normalized price
-        })),
+
+    // Combine buy and sell curves into a single continuous line around the centered spot price:
+    // - X: trade size in ETH (negative = sell, positive = buy)
+    // - Y: execution price (ETH/APPL), centered visually via the dashed spot baseline
+    const buyPoints = buyData
+      .filter((p) => p.tradeSize > 0 && p.executePrice > 0)
+      .map((p) => ({
+        time: p.tradeSize as Time,
+        value: p.executePrice,
+      }));
+
+    const sellPoints = sellData
+      .filter((p) => p.tradeSize > 0 && p.executePrice > 0)
+      .map((p) => ({
+        time: -p.tradeSize as Time,
+        value: p.executePrice,
+      }));
+
+    const combinedImpactData: LineData[] = [
+      ...sellPoints,
+      { time: 0 as Time, value: fallbackSpot },
+      ...buyPoints,
     ].sort((a, b) => Number(a.time) - Number(b.time));
 
-    // Center the y-axis on 1.0 with global [0.0, 2.0] bounds (normalized price space).
-    const window = 1.0;
-    let yAxisMin = 1.0 - window / 2; // 0.5
-    let yAxisMax = 1.0 + window / 2; // 1.5
-    
-    // Find actual min/max values in the data to ensure they're visible
-    const dataValues = combinedPriceData.map(d => d.value);
-    const actualMin = Math.min(...dataValues);
-    const actualMax = Math.max(...dataValues);
-    
-    // Adjust range if data extends beyond the default window, but keep within [0, 2.0]
-    let finalYMin = yAxisMin;
-    let finalYMax = yAxisMax;
-    
-    if (actualMin < yAxisMin) {
-      // Data goes below current min, extend range downward but keep floor at 0
-      finalYMin = Math.max(0, actualMin - 0.05);
-    }
-    if (actualMax > yAxisMax) {
-      // Data goes above current max, extend range upward but cap at 2.0
-      finalYMax = Math.min(2.0, actualMax + 0.05);
-    }
+    // Set x-axis range to encompass available trade sizes (symmetric if possible)
+    const allSizes = [...buyData, ...sellData].map((p) => Math.abs(p.tradeSize)).filter((v) => v > 0);
+    const maxSize = allSizes.length > 0 ? Math.max(...allSizes) : 500;
+    const range = Math.max(50, Math.min(maxSize, 500));
 
-    // Set x-axis range to -500 to +500
     const timeScale = chartRef.current.timeScale();
     if (timeScale) {
       timeScale.applyOptions({
@@ -228,8 +187,8 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
 
       try {
         timeScale.setVisibleRange({
-          from: -500 as Time,
-          to: 500 as Time,
+          from: (-range) as Time,
+          to: range as Time,
         });
       } catch (e) {
         // Retry after short delay if timeScale is not ready
@@ -237,54 +196,28 @@ export function ImpactCurve({ buyData, sellData, candles, session, height = 200 
           const ts = chartRef.current?.timeScale();
           if (ts) {
             ts.setVisibleRange({
-              from: -500 as Time,
-              to: 500 as Time,
+              from: (-range) as Time,
+              to: range as Time,
             });
           }
         }, 100);
       }
     }
 
-    // Add invisible data points at the min/max to force the scale range
-    // This is a workaround since lightweight-charts doesn't directly support setting min/max
-    // We add points just outside the visible range to ensure they don't conflict with actual data
-    // Use -501 and 501 to avoid duplicates with actual trade data at -500 and 500
-    const extendedData = [
-      ...combinedPriceData,
-      // Add points just outside the edges to force the scale
-      { time: -501 as Time, value: finalYMin },
-      { time: 501 as Time, value: finalYMax },
-    ].sort((a, b) => Number(a.time) - Number(b.time)); // Sort by time to ensure ascending order
-
-    // Set data with extended points to force the scale range
-    priceSeriesRef.current.setData(extendedData);
-
-    // Set price scale range after data is set
-    setTimeout(() => {
-      if (!chartRef.current) return;
-      
-      // Use manual scale with sliding range
-      chartRef.current.priceScale('right').applyOptions({
-        autoScale: false,
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
-      });
-    }, 50);
-  }, [buyData, sellData, lastTradedPrice, session.status, session.startedAt]);
+    priceSeriesRef.current.setData(combinedImpactData);
+  }, [buyData, sellData, session.status, session.startedAt, spotPrice]);
 
   return (
     <div className="bg-surface rounded-lg border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="text-sm font-medium text-white">Price Impact Curve</h3>
         <div className="text-xs text-gray-400">
-          Reference: {resetPriceRef.current.toFixed(4)} ETH/APPL
+          Spot: {spotPrice > 0 ? `${spotPrice.toFixed(4)} ETH/APPL` : '—'}
         </div>
       </div>
       <div ref={containerRef} />
       <div className="px-4 py-2 text-xs text-gray-400 text-center border-t border-border">
-        Price (ETH/APPL) vs Trade Size (ETH) | Dashed line = Last Price (defaults to 1.0)
+        Execution Price (ETH/APPL) vs Trade Size (ETH) | Dashed line = Spot
       </div>
     </div>
   );
