@@ -13,7 +13,11 @@ import "../src/AppleAMM.sol";
  * Account allocation (Anvil accounts 0-29):
  * 0: Deployer/LP - Seeds pool with 10,000 APPL + 10,000 ETH (initial price: 1 ETH/APPL)
  *     Gets 15,000 ETH total (10k liquidity + 5k for gas)
- * 1-29: All other accounts get 1,000 ETH and 1,000 APPL each
+ * 1: User - Manual trading account (1,000 ETH and 1,000 APPL)
+ * 2-16: Retail - 15 retail trading bots (1,000 ETH and 1,000 APPL each)
+ * 17-19: Whale - 3 whale trading bots (1,000 ETH and 1,000 APPL each)
+ * 20-22: MeanRev - 3 mean reversion bots (1,000 ETH and 1,000 APPL each)
+ * 23-29: Reserved - Available for future use (1,000 ETH and 1,000 APPL each)
  */
 contract DeployScript is Script {
     // Anvil default private keys (DO NOT use in production!)
@@ -74,41 +78,47 @@ contract DeployScript is Script {
     function getAnvilAccounts() internal pure returns (address[] memory) {
         address[] memory accounts = new address[](30);
         
-        // These are the default Anvil addresses
-        accounts[0] = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;  // LP
-        accounts[1] = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;  // Whale1
-        accounts[2] = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;  // Whale2
-        accounts[3] = 0x90F79bf6EB2c4f870365E785982E1f101E93b906;  // Whale3
-        accounts[4] = 0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65;  // MeanRev1
-        accounts[5] = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;  // MeanRev2
-        accounts[6] = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;  // MeanRev3
-        accounts[7] = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;  // Reserved
-        accounts[8] = 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f;  // Reserved
-        accounts[9] = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;  // Reserved
+        // These are the default Anvil addresses, reorganized to match new account layout:
+        // 0: LP, 1: User, 2-16: Retail, 17-19: Whale, 20-22: MeanRev, 23-29: Reserved
         
-        // Retail accounts (10-24)
-        accounts[10] = 0xBcd4042DE499D14e55001CcbB24a551F3b954096;
-        accounts[11] = 0x71bE63f3384f5fb98995898A86B02Fb2426c5788;
-        accounts[12] = 0xFABB0ac9d68B0B445fB7357272Ff202C5651694a;
-        accounts[13] = 0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec;
-        accounts[14] = 0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097;
-        accounts[15] = 0xcd3B766CCDd6AE721141F452C550Ca635964ce71;
-        accounts[16] = 0x2546BcD3c84621e976D8185a91A922aE77ECEc30;
-        accounts[17] = 0xbDA5747bFD65F08deb54cb465eB87D40e51B197E;
-        accounts[18] = 0xdD2FD4581271e230360230F9337D5c0430Bf44C0;
-        accounts[19] = 0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199;  // User account
-        accounts[20] = 0x09DB0a93B389bEF724429898f539AEB7ac2Dd55f;
-        accounts[21] = 0x02484cb50AAC86Eae85610D6f4Bf026f30f6627D;
-        accounts[22] = 0x08135Da0A343E492FA2d4282F2AE34c6c5CC1BbE;
-        accounts[23] = 0x5E661B79FE2D3F6cE70F5AAC07d8Cd9abb2743F1;
-        accounts[24] = 0x61097BA76cD906d2ba4FD106E757f7Eb455fc295;
+        accounts[0] = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;  // LP (index 0)
+        accounts[1] = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;  // User (index 1)
         
-        // Reserved accounts (25-29)
-        accounts[25] = 0xDf37F81dAAD2b0327A0A50003740e1C935C70913;
-        accounts[26] = 0x553BC17A05702530097c3677091C5BB47a3a7931;
-        accounts[27] = 0x87BdCE72c06C21cd96219BD8521bDF1F42C78b5e;
-        accounts[28] = 0x40Fc963A729c542424cD800349a7E4Ecc4896624;
-        accounts[29] = 0x9DCCe783B6464611f38631e6C851bf441907c710;
+        // Retail accounts (2-16) - use addresses from indices 2-16
+        accounts[2] = 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC;   // Retail1 (index 2)
+        accounts[3] = 0x90F79bf6EB2c4f870365E785982E1f101E93b906;   // Retail2 (index 3)
+        accounts[4] = 0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65;   // Retail3 (index 4)
+        accounts[5] = 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc;   // Retail4 (index 5)
+        accounts[6] = 0x976EA74026E726554dB657fA54763abd0C3a0aa9;   // Retail5 (index 6)
+        accounts[7] = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955;   // Retail6 (index 7)
+        accounts[8] = 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f;   // Retail7 (index 8)
+        accounts[9] = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;   // Retail8 (index 9)
+        accounts[10] = 0xBcd4042DE499D14e55001CcbB24a551F3b954096;  // Retail9 (index 10)
+        accounts[11] = 0x71bE63f3384f5fb98995898A86B02Fb2426c5788;  // Retail10 (index 11)
+        accounts[12] = 0xFABB0ac9d68B0B445fB7357272Ff202C5651694a;  // Retail11 (index 12)
+        accounts[13] = 0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec;  // Retail12 (index 13)
+        accounts[14] = 0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097;  // Retail13 (index 14)
+        accounts[15] = 0xcd3B766CCDd6AE721141F452C550Ca635964ce71;  // Retail14 (index 15)
+        accounts[16] = 0x2546BcD3c84621e976D8185a91A922aE77ECEc30;  // Retail15 (index 16)
+        
+        // Whale accounts (17-19) - use addresses from indices 17-19
+        accounts[17] = 0xbDA5747bFD65F08deb54cb465eB87D40e51B197E;  // Whale1 (index 17)
+        accounts[18] = 0xdD2FD4581271e230360230F9337D5c0430Bf44C0;  // Whale2 (index 18)
+        accounts[19] = 0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199;  // Whale3 (index 19)
+        
+        // MeanRev accounts (20-22) - use addresses from indices 20-22
+        accounts[20] = 0x09DB0a93B389bEF724429898f539AEB7ac2Dd55f;  // MeanRev1 (index 20)
+        accounts[21] = 0x02484cb50AAC86Eae85610D6f4Bf026f30f6627D;  // MeanRev2 (index 21)
+        accounts[22] = 0x08135Da0A343E492FA2d4282F2AE34c6c5CC1BbE;  // MeanRev3 (index 22)
+        
+        // Reserved accounts (23-29) - use addresses from indices 23-29
+        accounts[23] = 0x5E661B79FE2D3F6cE70F5AAC07d8Cd9abb2743F1;  // Reserved (index 23)
+        accounts[24] = 0x61097BA76cD906d2ba4FD106E757f7Eb455fc295;  // Reserved (index 24)
+        accounts[25] = 0xDf37F81dAAD2b0327A0A50003740e1C935C70913;  // Reserved (index 25)
+        accounts[26] = 0x553BC17A05702530097c3677091C5BB47a3a7931;  // Reserved (index 26)
+        accounts[27] = 0x87BdCE72c06C21cd96219BD8521bDF1F42C78b5e;  // Reserved (index 27)
+        accounts[28] = 0x40Fc963A729c542424cD800349a7E4Ecc4896624;  // Reserved (index 28)
+        accounts[29] = 0x9DCCe783B6464611f38631e6C851bf441907c710;  // Reserved (index 29)
         
         return accounts;
     }
@@ -120,40 +130,33 @@ contract DeployScript is Script {
         token.mint(accounts[0], 10000 * APPLES_DECIMALS);
         console.log("Minting to LP Account 0: 10,000 APPL");
         
-        // All other accounts get 1,000 APPL each
-        // Whales
-        token.mint(accounts[1], 1000 * APPLES_DECIMALS);  // Whale1
-        console.log("Minting to Whale1 Account 1: 1,000 APPL");
-        token.mint(accounts[2], 1000 * APPLES_DECIMALS);  // Whale2
-        console.log("Minting to Whale2 Account 2: 1,000 APPL");
-        token.mint(accounts[3], 1000 * APPLES_DECIMALS);  // Whale3
-        console.log("Minting to Whale3 Account 3: 1,000 APPL");
+        // User account
+        token.mint(accounts[1], 1000 * APPLES_DECIMALS);
+        console.log("Minting to User Account 1: 1,000 APPL");
         
-        // Mean reversion bots
-        token.mint(accounts[4], 1000 * APPLES_DECIMALS);  // MeanRev1
-        console.log("Minting to MeanRev1 Account 4: 1,000 APPL");
-        token.mint(accounts[5], 1000 * APPLES_DECIMALS); // MeanRev2
-        console.log("Minting to MeanRev2 Account 5: 1,000 APPL");
-        token.mint(accounts[6], 1000 * APPLES_DECIMALS); // MeanRev3
-        console.log("Minting to MeanRev3 Account 6: 1,000 APPL");
-        
-        // Accounts 7-9: Reserved
-        for (uint i = 7; i <= 9; i++) {
+        // Retail accounts (2-16)
+        for (uint i = 2; i <= 16; i++) {
             token.mint(accounts[i], 1000 * APPLES_DECIMALS);
         }
-        console.log("Minting to Reserved accounts (7-9): 1,000 APPL each");
+        console.log("Minting to Retail accounts (2-16): 1,000 APPL each");
         
-        // Retail traders (10-24, including User at 19)
-        for (uint i = 10; i <= 24; i++) {
+        // Whale accounts (17-19)
+        for (uint i = 17; i <= 19; i++) {
             token.mint(accounts[i], 1000 * APPLES_DECIMALS);
         }
-        console.log("Minting to Retail accounts (10-24): 1,000 APPL each");
+        console.log("Minting to Whale accounts (17-19): 1,000 APPL each");
         
-        // Reserved accounts (25-29)
-        for (uint i = 25; i <= 29; i++) {
+        // MeanRev accounts (20-22)
+        for (uint i = 20; i <= 22; i++) {
             token.mint(accounts[i], 1000 * APPLES_DECIMALS);
         }
-        console.log("Minting to Reserved accounts (25-29): 1,000 APPL each");
+        console.log("Minting to MeanRev accounts (20-22): 1,000 APPL each");
+        
+        // Reserved accounts (23-29)
+        for (uint i = 23; i <= 29; i++) {
+            token.mint(accounts[i], 1000 * APPLES_DECIMALS);
+        }
+        console.log("Minting to Reserved accounts (23-29): 1,000 APPL each");
         
         console.log("\nTokens minted to all accounts");
     }
@@ -197,27 +200,20 @@ contract DeployScript is Script {
                 console.log("LP 0 - ETH:", ethWhole);
                 console.log("LP 0 - APPL:", applWhole);
             } else if (i == 1) {
-                console.log("Whale1 1 - ETH:", ethWhole);
-                console.log("Whale1 1 - APPL:", applWhole);
-            } else if (i == 2) {
-                console.log("Whale2 2 - ETH:", ethWhole);
-                console.log("Whale2 2 - APPL:", applWhole);
-            } else if (i == 3) {
-                console.log("Whale3 3 - ETH:", ethWhole);
-                console.log("Whale3 3 - APPL:", applWhole);
-            } else if (i == 4) {
-                console.log("MeanRev1 4 - ETH:", ethWhole);
-                console.log("MeanRev1 4 - APPL:", applWhole);
-            } else if (i == 5) {
-                console.log("MeanRev2 5 - ETH:", ethWhole);
-                console.log("MeanRev2 5 - APPL:", applWhole);
-            } else if (i == 6) {
-                console.log("MeanRev3 6 - ETH:", ethWhole);
-                console.log("MeanRev3 6 - APPL:", applWhole);
-            } else if (i >= 7 && i <= 24) {
-                uint256 retailNum = i - 6;
+                console.log("User 1 - ETH:", ethWhole);
+                console.log("User 1 - APPL:", applWhole);
+            } else if (i >= 2 && i <= 16) {
+                uint256 retailNum = i - 1;
                 console.log("Retail", retailNum, "- ETH:", ethWhole);
                 console.log("Retail", retailNum, "- APPL:", applWhole);
+            } else if (i >= 17 && i <= 19) {
+                uint256 whaleNum = i - 16;
+                console.log("Whale", whaleNum, "- ETH:", ethWhole);
+                console.log("Whale", whaleNum, "- APPL:", applWhole);
+            } else if (i >= 20 && i <= 22) {
+                uint256 meanRevNum = i - 19;
+                console.log("MeanRev", meanRevNum, "- ETH:", ethWhole);
+                console.log("MeanRev", meanRevNum, "- APPL:", applWhole);
             } else {
                 console.log("Reserved", i, "- ETH:", ethWhole);
                 console.log("Reserved", i, "- APPL:", applWhole);
@@ -227,18 +223,19 @@ contract DeployScript is Script {
     
     function getAccountNickname(uint256 index) internal pure returns (string memory) {
         if (index == 0) return "LP";
-        if (index == 1) return "Whale1";
-        if (index == 2) return "Whale2";
-        if (index == 3) return "Whale3";
-        if (index == 4) return "MeanRev1";
-        if (index == 5) return "MeanRev2";
-        if (index == 6) return "MeanRev3";
-        if (index >= 7 && index <= 9) return "Reserved";
-        if (index >= 10 && index <= 24) {
-            uint256 retailNum = index - 9;
+        if (index == 1) return "User";
+        if (index >= 2 && index <= 16) {
+            uint256 retailNum = index - 1;
             return string.concat("Retail", vm.toString(retailNum));
         }
-        if (index == 19) return "User";
+        if (index >= 17 && index <= 19) {
+            uint256 whaleNum = index - 16;
+            return string.concat("Whale", vm.toString(whaleNum));
+        }
+        if (index >= 20 && index <= 22) {
+            uint256 meanRevNum = index - 19;
+            return string.concat("MeanRev", vm.toString(meanRevNum));
+        }
         return "Reserved";
     }
     

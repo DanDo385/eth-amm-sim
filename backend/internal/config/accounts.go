@@ -14,11 +14,11 @@
 // ACCOUNT LAYOUT:
 //
 //	Index 0:      LP (liquidity provider, seeds pool, does not trade)
-//	Index 1-3:    Whales (large, infrequent trades)
-//	Index 4-6:    MeanRev (EWMA-based mean reversion with z-score triggers)
-//	Index 7-9:    Reserved (unused)
-//	Index 10-24:  Retail (small, frequent noise traders)
-//	Index 19:     User (manual trading from the frontend TradingPanel)
+//	Index 1:      User (manual trading from the frontend TradingPanel)
+//	Index 2-16:   Retail (15 small, frequent noise traders)
+//	Index 17-19:  Whales (3 large, infrequent traders)
+//	Index 20-22:  MeanRev (3 EWMA-based mean reversion bots with z-score triggers)
+//	Index 23-29:  Reserved (available for future use)
 package config
 
 import (
@@ -39,20 +39,10 @@ const (
 
 	// UserAccountIndex is the Anvil account index for the User account (manual trading from frontend)
 	//
-	// IMPORTANT:
-	// We intentionally map the User account to index 19 (one of the default
-	// Anvil accounts with a known private key). Earlier versions pointed the
-	// User at index 29, but the private key list only contained deterministic
-	// keys for indices 0–19. That mismatch meant the backend was signing
-	// trades with an unfunded key while the frontend was displaying balances
-	// for a different address, causing "Insufficient funds for gas * price +
-	// value" on every manual trade.
-	//
-	// By using index 19 here, the backend and deploy script stay aligned:
-	// - Deploy.s.sol already mints 1,000 APPL and 1,000 ETH to account 19
-	// - Anvil gives account 19 a funded, deterministic private key
-	// - Bots skip the "User" nickname, so this account is reserved for the UI
-	UserAccountIndex = 19
+	// The User account is at index 1, immediately after the LP account.
+	// This provides a clean, logical ordering: LP(0), User(1), then trading bots.
+	// Bots skip the "User" nickname, so this account is reserved for manual trades from the UI.
+	UserAccountIndex = 1
 )
 
 // AccountConfig defines an account's initial state and trading parameters
@@ -164,7 +154,7 @@ var (
 )
 
 func init() {
-	// Build accounts list programmatically
+	// Build accounts list in logical order: LP, User, Retail, Whale, MeanRev
 	Accounts = []AccountConfig{
 		// ═══════════════════════════════════════════════════════════════
 		// LIQUIDITY PROVIDER (Index 0)
@@ -178,127 +168,129 @@ func init() {
 		},
 
 		// ═══════════════════════════════════════════════════════════════
-		// WHALES (Index 1-3)
-		// Large traders with different starting positions
+		// USER ACCOUNT (Index 1)
+		// Demo account for user trading via frontend
 		// ═══════════════════════════════════════════════════════════════
 		{
-			Index:          1,
-			Nickname:       "Whale1",
-			Type:           BotTypeWhale,
-			StartingApples: eth(1000), // Already long, tends to sell
-			MaxTradeSize:   eth(600),  // Increased from 500
-			MaxPosition:    eth(2000),
-			TradeFreqMin:   12, // More frequent (down from 15)
-			TradeFreqMax:   25, // More frequent (down from 30)
-		},
-		{
-			Index:          2,
-			Nickname:       "Whale2",
-			Type:           BotTypeWhale,
-			StartingApples: eth(700), // Enough APPL to sell (was 0)
-			MaxTradeSize:   eth(600), // Increased from 500
-			MaxPosition:    eth(2000),
-			TradeFreqMin:   12, // More frequent (down from 15)
-			TradeFreqMax:   25, // More frequent (down from 30)
-		},
-		{
-			Index:          3,
-			Nickname:       "Whale3",
-			Type:           BotTypeWhale,
-			StartingApples: eth(500), // Partial position, opportunistic
-			MaxTradeSize:   eth(400), // Increased from 300
-			MaxPosition:    eth(1500),
-			TradeFreqMin:   12, // More frequent (down from 15)
-			TradeFreqMax:   25, // More frequent (down from 30)
+			Index:          UserAccountIndex,
+			Nickname:      "User",
+			Type:          BotTypeRetail, // Mark as retail for strategy-compatibility
+			StartingApples: eth(1000),    // 1,000 APPL (matches deployment script)
+			// User account never runs a bot (createBots skips Nickname == "User")
+			// Manual trades only via frontend TradingPanel
 		},
 
 		// ═══════════════════════════════════════════════════════════════
-		// MEAN REVERSION (Index 4-6)
-		// AMM-correct mean reversion using EWMA on liquidity-normalized log returns
-		// Each bot maintains independent EWMA state and trades on z-score thresholds
-		//
-		// MeanRev1: Fast (50 trades half-life), resets EWMA after each trade
-		// MeanRev2: Medium (100 trades half-life), resets levels when z crosses zero
-		// MeanRev3: Large (175 trades half-life), resets levels when z crosses zero
+		// RETAIL (Index 2-16)
+		// 15 small, frequent noise traders
+		// Parameters:
+		//   - MaxTradeSize: Maximum trade size in ETH (15 ETH)
+		//   - TradeFreqMin/Max: Random delay between trades (1-4 seconds)
+		//   - StartingApples: Initial APPL balance (40 APPL)
+		//   - MaxPosition: Maximum total position size (100 ETH equivalent)
 		// ═══════════════════════════════════════════════════════════════
-		{
-			Index:          4,
-			Nickname:       "MeanRev1",
-			Type:           BotTypeMeanRev,
-			StartingApples: eth(100), // 100 APPL for selling
-			MaxTradeSize:   eth(50),  // Fixed trade size (not percentage-based)
-			MaxPosition:    eth(300),
-			TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
-			HalfLifeTrades: 25,                         // Fast decay: 25 trades half-life (halved from 50)
-		},
-		{
-			Index:          5,
-			Nickname:       "MeanRev2",
-			Type:           BotTypeMeanRev,
-			StartingApples: eth(250), // 250 APPL for selling
-			MaxTradeSize:   eth(75),  // Fixed trade size (not percentage-based)
-			MaxPosition:    eth(400),
-			// Slightly lower z-score triggers than original to increase activity without shortening lookback
-			TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate-but-more-frequent thresholds
-			HalfLifeTrades: 50,                       // Medium decay: 50 trades half-life (halved from 100)
-		},
-		{
-			Index:          6,
-			Nickname:       "MeanRev3",
-			Type:           BotTypeMeanRev,
-			StartingApples: eth(500), // 500 APPL for selling
-			// MeanRev3 should be noticeably larger than MeanRev2 in demos.
-			// Keep this exactly 2x MeanRev2's size.
-			MaxTradeSize: eth(150), // Fixed trade size (not percentage-based)
-			MaxPosition:  eth(500),
-			// Lower extreme thresholds a bit so slow bot still represents large deviations but trades in demos
-			TriggerLevels:  []float64{1.9, 2.4}, // Large: still focuses on big moves, but slightly more active
-			HalfLifeTrades: 75,                  // Slightly shorter lookback (more responsive)
-		},
 	}
 
-	// ═══════════════════════════════════════════════════════════════════
-	// RETAIL (Index 10-24)
-	// Generate 15 retail accounts programmatically
-	// ═══════════════════════════════════════════════════════════════════
+	// Generate 15 retail accounts (indices 2-16)
 	for i := 0; i < 15; i++ {
-		index := 10 + i
-
-		// Reserve one funded account for the manual User trader.
-		// We skip creating a Retail bot for UserAccountIndex here and add it
-		// explicitly at the end of Accounts with Nickname "User".
-		if index == UserAccountIndex {
-			continue
-		}
-
 		Accounts = append(Accounts, AccountConfig{
-			Index:          index,
+			Index:          2 + i,
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
-			StartingApples: eth(40), // Increased from 20 - enough for multiple sell trades
-			MaxTradeSize:   eth(15), // Increased from 10
+			StartingApples: eth(40), // Enough for multiple sell trades
+			MaxTradeSize:   eth(15), // Small trade size for noise
 			MaxPosition:    eth(100),
-			TradeFreqMin:   1, // More frequent (down from 2)
-			TradeFreqMax:   4, // More frequent (down from 5)
+			TradeFreqMin:   1, // Very frequent (1-4 seconds)
+			TradeFreqMax:   4,
 		})
 	}
 
-	// ═══════════════════════════════════════════════════════════════════
-	// USER ACCOUNT (Index 19)
-	// Demo account for user trading via frontend
-	// ═══════════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════════════
+	// WHALES (Index 17-19)
+	// 3 large, infrequent traders with different starting positions
+	// Parameters:
+	//   - MaxTradeSize: Maximum trade size in ETH (400-600 ETH)
+	//   - TradeFreqMin/Max: Random delay between trades (12-25 seconds)
+	//   - StartingApples: Initial APPL balance (varies by whale)
+	//   - MaxPosition: Maximum total position size (1500-2000 ETH equivalent)
+	// ═══════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, AccountConfig{
-		Index:    UserAccountIndex,
-		Nickname: "User",
-		// Mark as retail for strategy-compatibility, but createBots in
-		// cmd/simulator/main.go explicitly skips Nickname == "User" so this
-		// account never runs a bot and is reserved for manual trades.
-		Type:           BotTypeRetail,
-		StartingApples: eth(750), // Enough APPL for multiple sell trades
-		// User account starts from the Anvil default ETH allocation (set via
-		// vm.deal in Deploy.s.sol) and is topped up there, so no ETH value
-		// needs to be specified here.
+		Index:          17,
+		Nickname:       "Whale1",
+		Type:           BotTypeWhale,
+		StartingApples: eth(1000), // Already long, tends to sell
+		MaxTradeSize:   eth(600),  // Large trade size
+		MaxPosition:    eth(2000),
+		TradeFreqMin:   12, // Less frequent (12-25 seconds)
+		TradeFreqMax:   25,
 	})
+	Accounts = append(Accounts, AccountConfig{
+		Index:          18,
+		Nickname:       "Whale2",
+		Type:           BotTypeWhale,
+		StartingApples: eth(700), // Enough APPL to sell
+		MaxTradeSize:   eth(600), // Large trade size
+		MaxPosition:    eth(2000),
+		TradeFreqMin:   12,
+		TradeFreqMax:   25,
+	})
+	Accounts = append(Accounts, AccountConfig{
+		Index:          19,
+		Nickname:       "Whale3",
+		Type:           BotTypeWhale,
+		StartingApples: eth(500), // Partial position, opportunistic
+		MaxTradeSize:   eth(400), // Medium-large trade size
+		MaxPosition:    eth(1500),
+		TradeFreqMin:   12,
+		TradeFreqMax:   25,
+	})
+
+	// ═══════════════════════════════════════════════════════════════
+	// MEAN REVERSION (Index 20-22)
+	// 3 EWMA-based mean reversion bots with different sensitivities
+	// Parameters:
+	//   - MaxTradeSize: Trade size in ETH (50-150 ETH, converted to APPL for sells)
+	//   - TriggerLevels: Z-score thresholds (e.g., [0.75, 1.0, 1.25])
+	//   - HalfLifeTrades: EWMA half-life in number of trades (25-75 trades)
+	//   - StartingApples: Initial APPL balance for selling (100-500 APPL)
+	//   - MaxPosition: Maximum total position size (300-500 ETH equivalent)
+	//
+	// MeanRev1: Fast (25 trades half-life), low thresholds → trades frequently
+	// MeanRev2: Medium (50 trades half-life), moderate thresholds
+	// MeanRev3: Slow (75 trades half-life), high thresholds → trades rarely
+	// ═══════════════════════════════════════════════════════════════
+	Accounts = append(Accounts, AccountConfig{
+		Index:          20,
+		Nickname:       "MeanRev1",
+		Type:           BotTypeMeanRev,
+		StartingApples: eth(100), // 100 APPL for selling
+		MaxTradeSize:   eth(50),  // Fixed trade size
+		MaxPosition:    eth(300),
+		TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
+		HalfLifeTrades: 25,                         // Fast decay: 25 trades half-life
+	})
+	Accounts = append(Accounts, AccountConfig{
+		Index:          21,
+		Nickname:       "MeanRev2",
+		Type:           BotTypeMeanRev,
+		StartingApples: eth(250), // 250 APPL for selling
+		MaxTradeSize:   eth(75),  // Fixed trade size
+		MaxPosition:    eth(400),
+		TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate thresholds
+		HalfLifeTrades: 50,                       // Medium decay: 50 trades half-life
+	})
+	Accounts = append(Accounts, AccountConfig{
+		Index:          22,
+		Nickname:       "MeanRev3",
+		Type:           BotTypeMeanRev,
+		StartingApples: eth(500), // 500 APPL for selling
+		MaxTradeSize:   eth(150), // Fixed trade size (2x MeanRev2)
+		MaxPosition:    eth(500),
+		TriggerLevels:  []float64{1.9, 2.4}, // Large: focuses on big moves
+		HalfLifeTrades: 75,                  // Slow decay: 75 trades half-life
+	})
+
+	// Note: Indices 23-29 are reserved for future use
 }
 
 // GetAccount returns the account config for a given nickname

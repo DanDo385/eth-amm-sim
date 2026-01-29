@@ -17,7 +17,7 @@
 # ==============================================================================
 #
 # Account 7:  Lending Pool (receives excess ETH from leverage accounts and user)
-# Account 19: User (keeps 1,000 ETH, sends excess to account 7)
+# Account 1:  User (keeps 1,000 ETH, sends excess to account 7)
 # Account 25: Lev5x  (keeps 130 ETH, sends excess to account 7)
 # Account 26: Lev10x (keeps 80 ETH, sends excess to account 7)
 # Account 27: Lev25x (keeps 60 ETH, sends excess to account 7)
@@ -91,9 +91,9 @@ LEV25X_ADDR="0x87BdCE72c06C21cd96219BD8521bDF1F42C78b5e"
 LEV25X_KEY="0xf3a6b71b94f5cd909fb2dbb287da47badaa6d8bcdc45d595e2884835d8749001"
 LEV25X_TARGET=60
 
-# Account 19 (User) - should keep 1,000 ETH (like other non-leverage accounts)
-USER_ADDR="0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"
-USER_KEY="0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e"
+# Account 1 (User) - should keep 1,000 ETH (like other non-leverage accounts)
+USER_ADDR="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+USER_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 USER_TARGET=1000
 
 RPC_URL="http://localhost:8545"
@@ -163,7 +163,7 @@ echo ""
 transfer_excess "$LEV5X_ADDR" "$LEV5X_KEY" "$LEV5X_TARGET" "Lev5x (Account 25)"
 transfer_excess "$LEV10X_ADDR" "$LEV10X_KEY" "$LEV10X_TARGET" "Lev10x (Account 26)"
 transfer_excess "$LEV25X_ADDR" "$LEV25X_KEY" "$LEV25X_TARGET" "Lev25x (Account 27)"
-transfer_excess "$USER_ADDR" "$USER_KEY" "$USER_TARGET" "User (Account 19)"
+transfer_excess "$USER_ADDR" "$USER_KEY" "$USER_TARGET" "User (Account 1)"
 
 # ==============================================================================
 # Deposit lending pool ETH into AMM contract
@@ -220,7 +220,7 @@ echo ""
 
 user_final=$(echo "scale=2; $(get_balance_eth "$USER_ADDR") / 1000000000000000000" | bc)
 echo "User Account:"
-echo "  User (19): $user_final ETH (target: $USER_TARGET ETH)"
+echo "  User (1): $user_final ETH (target: $USER_TARGET ETH)"
 echo ""
 
 lending_pool_final=$(echo "scale=2; $(get_balance_eth "$LENDING_POOL_ADDR") / 1000000000000000000" | bc)
