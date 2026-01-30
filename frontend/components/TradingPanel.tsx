@@ -12,7 +12,7 @@
 //   - Types:          types/index.ts UserBalance, TradeResponse
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { tradeBuy, tradeSell, getUserBalance } from '@/lib/api';
 import type { TradeResponse, UserBalance, SessionState } from '@/types';
 import { Toast } from './Toast';
@@ -30,6 +30,7 @@ export function TradingPanel({ session }: TradingPanelProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
   const [showToast, setShowToast] = useState(false);
+  const previousStatusRef = useRef<string | undefined>(undefined);
 
   // Load balance on mount and after trades
   const loadBalance = async () => {
@@ -45,18 +46,34 @@ export function TradingPanel({ session }: TradingPanelProps) {
     loadBalance();
   }, []);
 
-  // Clear UI state when session resets
+  // Clear UI state when session resets or becomes idle
   useEffect(() => {
-    if (session?.status === 'idle' && !session?.startedAt) {
-      setError(null);
-      setSuccess(null);
-      setBuyAmount('');
-      setSellAmount('');
-      // Refresh balance to show current state
-      getUserBalance()
-        .then(setBalance)
-        .catch((err) => console.error('Failed to load balance:', err));
+    const currentStatus = session?.status;
+    const isIdle = currentStatus === 'idle' && !session?.startedAt;
+    const wasRunning = previousStatusRef.current === 'running' || previousStatusRef.current === 'completed';
+
+    // Clear everything when session becomes idle (either from reset or initial state)
+    // This ensures UI is clean after reset
+    if (isIdle) {
+      // Only clear if we had a previous state (not on initial mount)
+      // OR if we're explicitly in idle state after being in another state
+      if (previousStatusRef.current === undefined || wasRunning) {
+        // Clear all UI state on reset
+        setError(null);
+        setSuccess(null);
+        setBuyAmount('');
+        setSellAmount('');
+        setToastMessage('');
+        setShowToast(false);
+        // Refresh balance to show current state
+        getUserBalance()
+          .then(setBalance)
+          .catch((err) => console.error('Failed to load balance:', err));
+      }
     }
+
+    // Update previous status
+    previousStatusRef.current = currentStatus;
   }, [session?.status, session?.startedAt]);
 
   const formatWei = (wei: string): string => {

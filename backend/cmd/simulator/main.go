@@ -136,6 +136,19 @@ func main() {
 	// Initialize account metrics
 	initializeAccountMetrics(memStore)
 
+	// Reset User account balances to initial state on startup
+	// This ensures a fresh start every time services restart
+	userAccount := config.GetAccountByIndex(config.UserAccountIndex)
+	if userAccount != nil {
+		log.Println("Resetting User account balances to initial state (1,000 ETH and 1,000 APPL)...")
+		if err := executor.ResetUserAccount(ctx, userAccount.Address()); err != nil {
+			log.Printf("Warning: Failed to reset User account balances on startup: %v", err)
+			log.Println("  User account may have different balances from previous session")
+		} else {
+			log.Println("✓ User account balances reset to 1,000 ETH and 1,000 APPL")
+		}
+	}
+
 	// Initialize LP metrics with initial pool state and fees
 	initLPMetrics(ctx, executor, memStore)
 

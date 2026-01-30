@@ -520,3 +520,113 @@ func (e *Executor) GetETHBalance(ctx context.Context, address common.Address) (*
 func (e *Executor) GetAPPLBalance(ctx context.Context, address common.Address) (*big.Int, error) {
 	return e.tokenContract.BalanceOf(&bind.CallOpts{Context: ctx}, address)
 }
+
+// ResetUserAccount resets the User account's balances to initial state (1,000 ETH and 1,000 APPL)
+// This uses Anvil cheatcodes to set ETH balance and token contract to adjust APPL balance
+func (e *Executor) ResetUserAccount(ctx context.Context, userAddr common.Address) error {
+	initialETH := big.NewInt(1000) // 1,000 ETH in wei
+	initialETH.Mul(initialETH, big.NewInt(1e18))
+	initialAPPL := big.NewInt(1000) // 1,000 APPL in wei
+	initialAPPL.Mul(initialAPPL, big.NewInt(1e18))
+
+	// Set ETH balance using Anvil RPC
+	if err := e.client.SetBalance(ctx, userAddr, initialETH); err != nil {
+		return fmt.Errorf("failed to set ETH balance: %w", err)
+	}
+
+	// Get current APPL balance
+	currentAPPL, err := e.GetAPPLBalance(ctx, userAddr)
+	if err != nil {
+		return fmt.Errorf("failed to get current APPL balance: %w", err)
+	}
+
+	// Calculate difference
+	diff := new(big.Int).Sub(initialAPPL, currentAPPL)
+
+	if diff.Sign() > 0 {
+		// Need to mint more APPL tokens
+		// Get LP account (owner of token contract) to mint
+		lpAccount := config.GetAccountByIndex(0) // LP is account 0
+		if lpAccount == nil {
+			return fmt.Errorf("LP account not found")
+		}
+
+		// Get LP's private key
+		lpPrivateKey, err := crypto.HexToECDSA(lpAccount.PrivateKey())
+		if err != nil {
+			return fmt.Errorf("failed to get LP private key: %w", err)
+		}
+
+		// Get nonce for LP account
+		nonce, err := e.nonceManager.GetAndIncrement(ctx, lpAccount.Address())
+		if err != nil {
+			return fmt.Errorf("failed to get nonce: %w", err)
+		}
+
+		// Create transaction to mint tokens
+		auth, err := e.accountMgr.GetTransactOpts(lpPrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create tx opts: %w", err)
+		}
+		auth.Nonce = big.NewInt(int64(nonce))
+		auth.Context = ctx
+
+		// Mint tokens to user account
+		tx, err := e.tokenContract.Mint(auth, userAddr, diff)
+		if err != nil {
+			return fmt.Errorf("failed to mint tokens: %w", err)
+		}
+
+		// Wait for transaction (optional, but good for consistency)
+		_, err = e.client.TransactionReceipt(ctx, tx.Hash())
+		if err != nil {
+			// Transaction might still be pending, but that's okay
+			log.Printf("Warning: Could not get receipt for mint tx %s: %v", tx.Hash().Hex(), err)
+		}
+	} else if diff.Sign() < 0 {
+		// Need to remove excess APPL tokens
+		// Transfer excess to LP account (effectively removing from User's balance)
+		excess := new(big.Int).Neg(diff)
+
+		// Get user's private key
+		userAccount := config.GetAccountByIndex(config.UserAccountIndex)
+		if userAccount == nil {
+			return fmt.Errorf("user account not found")
+		}
+
+		userPrivateKey, err := crypto.HexToECDSA(userAccount.PrivateKey())
+		if err != nil {
+			return fmt.Errorf("failed to get user private key: %w", err)
+		}
+
+		// Get nonce
+		nonce, err := e.nonceManager.GetAndIncrement(ctx, userAddr)
+		if err != nil {
+			return fmt.Errorf("failed to get nonce: %w", err)
+		}
+
+		// Create transfer transaction to LP account
+		auth, err := e.accountMgr.GetTransactOpts(userPrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create tx opts: %w", err)
+		}
+		auth.Nonce = big.NewInt(int64(nonce))
+		auth.Context = ctx
+
+		// Transfer excess to LP account
+		lpAddr := config.GetAccountByIndex(0).Address()
+		tx, err := e.tokenContract.Transfer(auth, lpAddr, excess)
+		if err != nil {
+			return fmt.Errorf("failed to transfer excess tokens: %w", err)
+		}
+
+		// Wait for transaction
+		_, err = e.client.TransactionReceipt(ctx, tx.Hash())
+		if err != nil {
+			log.Printf("Warning: Could not get receipt for transfer tx %s: %v", tx.Hash().Hex(), err)
+		}
+	}
+	// If diff.Sign() == 0, balances are already correct
+
+	return nil
+}

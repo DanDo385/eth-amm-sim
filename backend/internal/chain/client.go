@@ -14,13 +14,17 @@
 package chain
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // Client wraps the go-ethereum client with helper methods
@@ -72,4 +76,61 @@ func (c *Client) WaitForTx(ctx context.Context, tx *types.Transaction) (*types.R
 // GetBlockNumber returns the current block number
 func (c *Client) GetBlockNumber(ctx context.Context) (uint64, error) {
 	return c.BlockNumber(ctx)
+}
+
+// SetBalance sets the ETH balance of an address using Anvil's setBalance RPC method
+// This is an Anvil-specific cheatcode that allows setting balances directly
+func (c *Client) SetBalance(ctx context.Context, address common.Address, balance *big.Int) error {
+	// Format the balance as a hex string with "0x" prefix
+	balanceHex := fmt.Sprintf("0x%x", balance)
+	if len(balanceHex) < 3 {
+		balanceHex = "0x0"
+	}
+
+	// Use raw HTTP POST to ensure hex strings are sent correctly
+	// The go-ethereum RPC client might serialize parameters in a way that converts hex to decimal
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "anvil_setBalance",
+		"params":  []string{address.Hex(), balanceHex},
+		"id":      1,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResp struct {
+		JSONRPC string      `json:"jsonrpc"`
+		ID      int         `json:"id"`
+		Result  interface{} `json:"result"`
+		Error   *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if rpcResp.Error != nil {
+		return fmt.Errorf("RPC error: %s (code: %d)", rpcResp.Error.Message, rpcResp.Error.Code)
+	}
+
+	return nil
 }

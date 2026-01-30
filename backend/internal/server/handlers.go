@@ -105,19 +105,34 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 	// Reset store (clears trades, events, price metrics, LP metrics)
 	s.store.Reset()
 
-	// If hard reset, also clear account metrics
+	// If hard reset, also clear account metrics and reset LP metrics to zero
 	if hardReset {
-		// Get account metrics manager and reset all accounts
+		// Get account metrics manager and reset all accounts back to initial state
 		accountMgr := s.store.GetAccountMetricsManager()
 		if accountMgr != nil {
 			accountMgr.Reset()
-			log.Println("Hard reset: Account metrics cleared")
+			log.Println("Hard reset: Account metrics reset to initial state")
 		}
+		
+		// Reset LP metrics to zero (don't re-initialize with current pool state)
+		s.store.GetLPMetrics().Reset()
+		log.Println("Hard reset: LP metrics reset to zero")
+		
+		// Reset User account on-chain balances to initial state (1,000 ETH and 1,000 APPL)
+		ctx := context.Background()
+		userAccount := config.GetAccountByIndex(config.UserAccountIndex)
+		if userAccount != nil {
+			if err := s.executor.ResetUserAccount(ctx, userAccount.Address()); err != nil {
+				log.Printf("Warning: Failed to reset User account balances: %v", err)
+			} else {
+				log.Println("Hard reset: User account balances reset to 1,000 ETH and 1,000 APPL")
+			}
+		}
+	} else {
+		// Soft reset: Re-initialize LP metrics with current pool state
+		ctx := context.Background()
+		s.reinitializeLPMetrics(ctx)
 	}
-
-	// Re-initialize LP metrics with current pool state
-	ctx := context.Background()
-	s.reinitializeLPMetrics(ctx)
 
 	// Broadcast updated LP metrics
 	s.BroadcastLPMetrics()

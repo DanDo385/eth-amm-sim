@@ -24,11 +24,17 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
-# Kill existing Anvil process if running
+# Kill existing processes on required ports
 if lsof -ti:8545 >/dev/null 2>&1; then
   echo "Killing existing Anvil process on port 8545..."
   lsof -ti:8545 | xargs kill -9 2>/dev/null || true
   sleep 2
+fi
+
+if lsof -ti:8080 >/dev/null 2>&1; then
+  echo "Killing existing process on port 8080 (backend)..."
+  lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+  sleep 1
 fi
 
 # Kill existing session if it exists

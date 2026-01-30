@@ -1,8 +1,19 @@
-.PHONY: anvil deploy bindings backend frontend clean test-contracts up down kill-anvil
+.PHONY: anvil deploy bindings backend frontend clean test-contracts up down kill-anvil kill-backend kill-all
 
 # Kill any existing Anvil process
 kill-anvil:
 	@lsof -ti:8545 | xargs kill -9 2>/dev/null || echo "No Anvil process found on port 8545"
+
+# Kill any existing backend process
+kill-backend:
+	@lsof -ti:8080 | xargs kill -9 2>/dev/null || echo "No backend process found on port 8080"
+
+# Kill all processes (Anvil, backend, frontend ports)
+kill-all:
+	@lsof -ti:8545 | xargs kill -9 2>/dev/null || true
+	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+	@lsof -ti:3000,3001,3002,3003,3004 | xargs kill -9 2>/dev/null || true
+	@echo "Killed processes on ports 8545, 8080, and 3000-3004"
 
 # Start local Anvil chain with 30 accounts
 # LP account (0) needs 15k ETH, others need 1k ETH each

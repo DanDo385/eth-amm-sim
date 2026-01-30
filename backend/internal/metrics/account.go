@@ -400,11 +400,21 @@ func (m *AccountMetricsManager) GetAllPerformance() []PerformanceData {
 	return result
 }
 
-// Reset resets all account metrics
+// Reset resets all account metrics back to initial state
+// For each account, it resets trades, equity curve, and balances to initial values
 func (m *AccountMetricsManager) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.accounts = make(map[string]*AccountMetrics)
+	
+	// Reset each account back to its stored initial equity
+	// This preserves account existence but clears all trading history
+	for _, am := range m.accounts {
+		// Use the stored initialEquity value that was set when the account was created
+		am.mu.RLock()
+		initialEquity := am.initialEquity
+		am.mu.RUnlock()
+		am.Reset(initialEquity)
+	}
 }
 
 // Helper: round to decimal places
