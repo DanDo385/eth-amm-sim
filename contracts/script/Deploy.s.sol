@@ -15,7 +15,7 @@ import "../src/AppleAMM.sol";
  *     Gets 15,000 ETH total (10k liquidity + 5k for gas)
  * 1: User - Manual trading account (1,000 ETH and 1,000 APPL)
  * 2-16: Retail - 15 retail trading bots (1,000 ETH and 1,000 APPL each)
- * 17-19: Whale - 3 whale trading bots (1,000 ETH and 1,000 APPL each)
+ * 17-19: Whale - 3 whale trading bots (1,000 ETH and 5,000 APPL each)
  * 20-22: MeanRev - 3 mean reversion bots (1,000 ETH and 1,000 APPL each)
  * 23-29: Reserved - Available for future use (1,000 ETH and 1,000 APPL each)
  */
@@ -140,9 +140,9 @@ contract DeployScript is Script {
         
         // Whale accounts (17-19)
         for (uint i = 17; i <= 19; i++) {
-            token.mint(accounts[i], 1000 * APPLES_DECIMALS);
+            token.mint(accounts[i], 5000 * APPLES_DECIMALS);
         }
-        console.log("Minting to Whale accounts (17-19): 1,000 APPL each");
+        console.log("Minting to Whale accounts (17-19): 5,000 APPL each");
         
         // MeanRev accounts (20-22)
         for (uint i = 20; i <= 22; i++) {

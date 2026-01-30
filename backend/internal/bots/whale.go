@@ -1,8 +1,7 @@
-// whale.go — Large opportunistic trader bot (accounts 1-3).
+// whale.go — Large opportunistic trader bot (accounts 17-19).
 //
-// Strategy: Whales decide buy/sell based on their current APPL position.
-// If long (owns APPL), they tend to sell; if short (ETH only), they tend to buy.
-// Trade sizes are large (up to 600 ETH) with longer intervals (12-25s).
+// Strategy: Whales randomly buy or sell with equal probability (no directional bias).
+// Trade sizes are large (up to 600 ETH) with long intervals (45-90s, ~2-4 trades per session).
 // This creates periodic large price impacts visible on the frontend PriceChart.
 //
 // Parameters come from config/accounts.go (MaxTradeSize, TradeFreqMin/Max).
@@ -80,28 +79,8 @@ func (w *WhaleBot) Run(ctx context.Context) {
 	}
 }
 
-// decideSide determines trade direction based on starting position
+// decideSide randomly picks buy or sell with equal probability (no directional bias)
 func (w *WhaleBot) decideSide() engine.TradeSide {
-	startingApples := w.config.StartingApples
-
-	// If started with lots of APPLES, 70% chance to sell
-	eth500 := new(big.Int).Mul(big.NewInt(500), big.NewInt(1e18))
-	if startingApples != nil && startingApples.Cmp(eth500) > 0 {
-		if w.rng.Float64() < 0.7 {
-			return engine.SELL
-		}
-		return engine.BUY
-	}
-
-	// If started with no APPLES, 70% chance to buy
-	if startingApples == nil || startingApples.Sign() == 0 {
-		if w.rng.Float64() < 0.7 {
-			return engine.BUY
-		}
-		return engine.SELL
-	}
-
-	// Otherwise 50/50
 	if w.rng.Float64() < 0.5 {
 		return engine.BUY
 	}

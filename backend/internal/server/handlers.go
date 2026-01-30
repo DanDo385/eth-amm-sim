@@ -126,6 +126,11 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Warning: Failed to reset User account balances: %v", err)
 			} else {
 				log.Println("Hard reset: User account balances reset to 1,000 ETH and 1,000 APPL")
+				// Broadcast user balance reset to notify frontend
+				s.Broadcast(WSMessage{
+					Type: "user_balance_reset",
+					Data: map[string]interface{}{"reset": true},
+				})
 			}
 		}
 	} else {

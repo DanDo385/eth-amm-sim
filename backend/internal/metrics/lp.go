@@ -193,11 +193,11 @@ func (lp *LPMetrics) calculateSnapshotLocked() LPSnapshot {
 	// If LP outperforms HODL, IL is 0 (no loss).
 	ilRaw := lpValue - hodlValue
 	il := ilRaw
-	if ilRaw > 0 {
-		// If LP_value > HODL_value, the LP has outperformed HODL.
-		// For display, keep IL at 0 (no loss).
-		il = 0
-	}
+	// if ilRaw > 0 {
+	// 	// If LP_value > HODL_value, the LP has outperformed HODL.
+	// 	// For display, keep IL at 0 (no loss).
+	// 	il = 0
+	// }
 	// il is now <= 0 (negative when there's a loss, 0 otherwise)
 
 	// Fees earned (convert to ETH equivalent)

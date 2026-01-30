@@ -123,16 +123,16 @@ var AnvilPrivateKeys = []string{
 	"689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd", // 17
 	"de9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0", // 18
 	"df57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e", // 19
-	"8b24eb69a6aae9d2d0e73ca675f7e3dca8e6a89df93e20d3e4049fd8a84b7b0c", // 20
-	"31e52d7d8b04f0df3f7b7e4f1d3cf46e47e31f38f6cb7c1b7f5dfc5b1e7f1d5f", // 21
-	"1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b", // 22
-	"2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c", // 23
-	"3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d", // 24
-	"4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e", // 25
-	"5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f", // 26
-	"6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a", // 27
-	"7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b", // 28
-	"8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c", // 29
+	"eaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d", // 20
+	"c511b2aa70776d4ff1d376e8537903dae36896132c90b91d52c1dfbae267cd8b", // 21
+	"224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e62d2f29a83e4", // 22
+	"4624e0802698b9769f5bdb260a3777fbd4941ad2901f5966b854f953497eec1b", // 23
+	"375ad145df13ed97f8ca8e27bb21ebf2a3819e9e0a06509a812db377e533def7", // 24
+	"18743e59419b01d1d846d97ea070b5a3368a3e7f6f0242cf497e1baac6972427", // 25
+	"e383b226df7c8282489889170b0f68f66af6459261f4833a781acd0804fafe7a", // 26
+	"f3a6b71b94f5cd909fb2dbb287da47badaa6d8bcdc45d595e2884835d8749001", // 27
+	"4e249d317253b9641e477aba8dd5d8f1f7cf5250a5acadd1229693e262720a19", // 28
+	"233c86e887ac435d7f7dc64979d7758d69320906a0d340d2b6518b0fd20aa998", // 29
 }
 
 // eth is a helper to convert whole token amounts to wei (18 decimals)
@@ -197,7 +197,7 @@ func init() {
 			Index:          2 + i,
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
-			StartingApples: eth(40), // Enough for multiple sell trades
+			StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
 			MaxTradeSize:   eth(15), // Small trade size for noise
 			MaxPosition:    eth(100),
 			TradeFreqMin:   1, // Very frequent (1-4 seconds)
@@ -207,42 +207,42 @@ func init() {
 
 	// ═══════════════════════════════════════════════════════════════
 	// WHALES (Index 17-19)
-	// 3 large, infrequent traders with different starting positions
+	// 3 large, infrequent traders with random buy/sell (no directional bias)
 	// Parameters:
 	//   - MaxTradeSize: Maximum trade size in ETH (400-600 ETH)
-	//   - TradeFreqMin/Max: Random delay between trades (12-25 seconds)
-	//   - StartingApples: Initial APPL balance (varies by whale)
+	//   - TradeFreqMin/Max: Random delay between trades (45-90 seconds)
+	//   - StartingApples: Initial APPL balance (5,000 APPL each)
 	//   - MaxPosition: Maximum total position size (1500-2000 ETH equivalent)
 	// ═══════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, AccountConfig{
 		Index:          17,
 		Nickname:       "Whale1",
 		Type:           BotTypeWhale,
-		StartingApples: eth(1000), // Already long, tends to sell
+		StartingApples: eth(5000), // 5,000 APPL (matches deployment script)
 		MaxTradeSize:   eth(600),  // Large trade size
 		MaxPosition:    eth(2000),
-		TradeFreqMin:   12, // Less frequent (12-25 seconds)
-		TradeFreqMax:   25,
+		TradeFreqMin:   45, // Infrequent (~2-4 trades per 180s session)
+		TradeFreqMax:   90,
 	})
 	Accounts = append(Accounts, AccountConfig{
 		Index:          18,
 		Nickname:       "Whale2",
 		Type:           BotTypeWhale,
-		StartingApples: eth(700), // Enough APPL to sell
-		MaxTradeSize:   eth(600), // Large trade size
+		StartingApples: eth(5000), // 5,000 APPL (matches deployment script)
+		MaxTradeSize:   eth(600),  // Large trade size
 		MaxPosition:    eth(2000),
-		TradeFreqMin:   12,
-		TradeFreqMax:   25,
+		TradeFreqMin:   45,
+		TradeFreqMax:   90,
 	})
 	Accounts = append(Accounts, AccountConfig{
 		Index:          19,
 		Nickname:       "Whale3",
 		Type:           BotTypeWhale,
-		StartingApples: eth(500), // Partial position, opportunistic
-		MaxTradeSize:   eth(400), // Medium-large trade size
+		StartingApples: eth(5000), // 5,000 APPL (matches deployment script)
+		MaxTradeSize:   eth(400),  // Medium-large trade size
 		MaxPosition:    eth(1500),
-		TradeFreqMin:   12,
-		TradeFreqMax:   25,
+		TradeFreqMin:   45,
+		TradeFreqMax:   90,
 	})
 
 	// ═══════════════════════════════════════════════════════════════
@@ -252,7 +252,7 @@ func init() {
 	//   - MaxTradeSize: Trade size in ETH (50-150 ETH, converted to APPL for sells)
 	//   - TriggerLevels: Z-score thresholds (e.g., [0.75, 1.0, 1.25])
 	//   - HalfLifeTrades: EWMA half-life in number of trades (25-75 trades)
-	//   - StartingApples: Initial APPL balance for selling (100-500 APPL)
+	//   - StartingApples: Initial APPL balance (1,000 APPL each, matches deployment)
 	//   - MaxPosition: Maximum total position size (300-500 ETH equivalent)
 	//
 	// MeanRev1: Fast (25 trades half-life), low thresholds → trades frequently
@@ -263,7 +263,7 @@ func init() {
 		Index:          20,
 		Nickname:       "MeanRev1",
 		Type:           BotTypeMeanRev,
-		StartingApples: eth(100), // 100 APPL for selling
+		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
 		MaxTradeSize:   eth(50),  // Fixed trade size
 		MaxPosition:    eth(300),
 		TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
@@ -273,7 +273,7 @@ func init() {
 		Index:          21,
 		Nickname:       "MeanRev2",
 		Type:           BotTypeMeanRev,
-		StartingApples: eth(250), // 250 APPL for selling
+		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
 		MaxTradeSize:   eth(75),  // Fixed trade size
 		MaxPosition:    eth(400),
 		TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate thresholds
@@ -283,7 +283,7 @@ func init() {
 		Index:          22,
 		Nickname:       "MeanRev3",
 		Type:           BotTypeMeanRev,
-		StartingApples: eth(500), // 500 APPL for selling
+		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
 		MaxTradeSize:   eth(150), // Fixed trade size (2x MeanRev2)
 		MaxPosition:    eth(500),
 		TriggerLevels:  []float64{1.9, 2.4}, // Large: focuses on big moves

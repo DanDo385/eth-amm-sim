@@ -65,10 +65,11 @@ export function TradingPanel({ session }: TradingPanelProps) {
         setSellAmount('');
         setToastMessage('');
         setShowToast(false);
-        // Refresh balance to show current state
-        getUserBalance()
-          .then(setBalance)
-          .catch((err) => console.error('Failed to load balance:', err));
+        // Refresh balance multiple times to ensure we get the reset values
+        // Backend reset may take a moment, so try a few times
+        loadBalance(); // Immediate refresh
+        setTimeout(() => loadBalance(), 500); // After 500ms
+        setTimeout(() => loadBalance(), 1500); // After 1.5s (in case reset is slow)
       }
     }
 

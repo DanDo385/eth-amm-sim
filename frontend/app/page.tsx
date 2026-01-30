@@ -114,6 +114,9 @@ export default function Dashboard() {
       case 'events':
         setEvents(message.data as KeyEvent[]);
         break;
+      case 'user_balance_reset':
+        // User balance was reset - TradingPanel will handle refresh via session state change
+        break;
     }
   }, [updateFromWS, addCandle, updateLPMetrics]);
 
