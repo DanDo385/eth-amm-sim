@@ -138,6 +138,16 @@ func (s *Server) BroadcastAccountUpdate(nickname string) {
 	}
 }
 
+// BroadcastAllAccountUpdates sends updated performance data for every account.
+// Called after session finalization so the frontend picks up close prices and
+// recalculated PnL/Sharpe.
+func (s *Server) BroadcastAllAccountUpdates() {
+	allPerf := s.store.GetAllAccountPerformance()
+	for i := range allPerf {
+		s.Broadcast(WSMessage{Type: "account_update", Data: &allPerf[i]})
+	}
+}
+
 // BroadcastEvent sends a key event to all clients
 func (s *Server) BroadcastEvent(event interface{}) {
 	s.Broadcast(WSMessage{Type: "key_event", Data: event})

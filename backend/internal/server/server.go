@@ -44,14 +44,18 @@ type Server struct {
 	session  *engine.Session
 	store    *store.MemoryStore
 	executor *engine.Executor
-	
+
 	// WebSocket
 	upgrader    websocket.Upgrader
 	clients     map[*websocket.Conn]bool
 	clientsMu   sync.RWMutex
 	broadcast   chan interface{}
 	broadcastClosed int32 // Atomic flag to track if broadcast channel is closed
-	
+
+	// Session finalization guard — ensures FinalizeAccountsForSession runs
+	// exactly once per session, whether stopped manually or by auto-expire.
+	sessionFinalized int32
+
 	httpServer *http.Server
 }
 
@@ -128,6 +132,11 @@ func (s *Server) Start(addr string) error {
 	// Register session state callback
 	s.session.OnStateChange(func(state engine.SessionState) {
 		s.Broadcast(WSMessage{Type: "session_state", Data: state})
+		// When the session completes (manual stop or auto-expire), finalize
+		// accounts so that close prices and recalculated PnL are available.
+		if state.Status == engine.StatusCompleted {
+			s.finalizeSession()
+		}
 	})
 	
 	log.Printf("Server starting on %s", addr)
@@ -238,6 +247,37 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// finalizeSession fetches the final spot price and finalizes all account
+// metrics (close prices, PnL recalculation, session volatility). It is
+// guarded by an atomic flag so it runs exactly once per session — the first
+// caller wins (manual stop handler or auto-expire callback).
+func (s *Server) finalizeSession() {
+	if !atomic.CompareAndSwapInt32(&s.sessionFinalized, 0, 1) {
+		return // already finalized
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	spotPrice, err := s.executor.GetSpotPrice(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price for session finalization: %v", err)
+		spotPrice = big.NewInt(0)
+	}
+
+	var spotPriceFloat float64
+	if spotPrice != nil && spotPrice.Sign() > 0 {
+		spf := new(big.Float).SetInt(spotPrice)
+		spf.Quo(spf, big.NewFloat(1e18))
+		spotPriceFloat, _ = spf.Float64()
+	}
+
+	log.Printf("Finalizing session: spotPrice=%.6f", spotPriceFloat)
+
+	s.store.FinalizeAccountsForSession(spotPriceFloat)
+	s.BroadcastAllAccountUpdates()
 }
 
 // SetDuration allows setting session duration (for API)

@@ -142,6 +142,7 @@ export interface TradeRecord {
   isBuy: boolean;
   size: number;
   price: number;
+  closePrice: number;
   appleAmount: number;
   pnl: number;
   equity: number;

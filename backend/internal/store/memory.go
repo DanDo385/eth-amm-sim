@@ -20,6 +20,7 @@ package store
 
 import (
 	"log"
+	"math"
 	"math/big"
 	"sync"
 	"time"
@@ -121,7 +122,8 @@ func (s *MemoryStore) GetOrCreateAccountMetrics(nickname string, address common.
 }
 
 func (s *MemoryStore) GetAllAccountPerformance() []metrics.PerformanceData {
-	return s.accountMetrics.GetAllPerformance()
+	vol := s.currentSessionVol()
+	return s.accountMetrics.GetAllPerformanceWithVol(vol)
 }
 
 func (s *MemoryStore) GetAccountPerformance(nickname string) *metrics.PerformanceData {
@@ -129,8 +131,18 @@ func (s *MemoryStore) GetAccountPerformance(nickname string) *metrics.Performanc
 	if am == nil {
 		return nil
 	}
-	perf := am.GetPerformance()
+	vol := s.currentSessionVol()
+	perf := am.GetPerformance(vol)
 	return &perf
+}
+
+// currentSessionVol returns the session volatility. If a finalized value has
+// been stored it is used; otherwise it is computed live from current candles.
+func (s *MemoryStore) currentSessionVol() float64 {
+	if v := s.accountMetrics.GetSessionVolatility(); v > 0 {
+		return v
+	}
+	return computeSessionDailyVol(s.priceMetrics.GetCandles())
 }
 
 func (s *MemoryStore) GetAccountMetricsManager() *metrics.AccountMetricsManager {
@@ -143,8 +155,15 @@ func (s *MemoryStore) ResetAccountsForSession(getBalance func(nickname string) (
 	s.accountMetrics.ResetForSession(getBalance, currentSpotPrice)
 }
 
-// FinalizeAccountsForSession finalizes all accounts using the final spot price at session end
+// FinalizeAccountsForSession finalizes all accounts using the final spot price at session end.
+// It also computes and stores the session-level daily volatility from price candles
+// so that the Sharpe ratio uses a consistent market-level denominator.
 func (s *MemoryStore) FinalizeAccountsForSession(finalSpotPrice float64) {
+	// Compute session volatility from candle data before finalizing accounts
+	candles := s.priceMetrics.GetCandles()
+	sessionVol := computeSessionDailyVol(candles)
+	s.accountMetrics.SetSessionVolatility(sessionVol)
+
 	s.accountMetrics.FinalizeSession(finalSpotPrice)
 }
 
@@ -329,6 +348,60 @@ func (s *MemoryStore) Reset() {
 	// Note: We don't reset accountMetrics here - they persist across sessions
 	s.trades = make([]engine.Trade, 0)
 	s.events = make([]KeyEvent, 0) // Clear Key Events on reset
+}
+
+// computeSessionDailyVol calculates the daily volatility (%) from candle close
+// prices observed during the session. Uses the same approach as TWAPChart.tsx:
+//
+//	dailyVol = stdDev(returns) * sqrt(periodsPerDay) * 100
+//
+// where periodsPerDay is derived from the average candle interval.
+func computeSessionDailyVol(candles []metrics.Candle) float64 {
+	if len(candles) < 3 {
+		return 0
+	}
+
+	// Calculate log returns between consecutive candle closes
+	returns := make([]float64, 0, len(candles)-1)
+	for i := 1; i < len(candles); i++ {
+		prev := candles[i-1].Close
+		curr := candles[i].Close
+		if prev > 0 {
+			returns = append(returns, (curr-prev)/prev)
+		}
+	}
+	if len(returns) < 2 {
+		return 0
+	}
+
+	// Standard deviation of returns
+	var sum float64
+	for _, r := range returns {
+		sum += r
+	}
+	mean := sum / float64(len(returns))
+	var variance float64
+	for _, r := range returns {
+		d := r - mean
+		variance += d * d
+	}
+	variance /= float64(len(returns))
+	stdDev := math.Sqrt(variance)
+
+	// Estimate periods per day from candle timestamps
+	first := candles[0].Timestamp
+	last := candles[len(candles)-1].Timestamp
+	elapsed := last.Sub(first).Seconds()
+	if elapsed <= 0 {
+		return stdDev * math.Sqrt(1440) * 100
+	}
+	avgInterval := elapsed / float64(len(candles)-1)
+	if avgInterval <= 0 {
+		return stdDev * math.Sqrt(1440) * 100
+	}
+	periodsPerDay := 86400.0 / avgInterval
+
+	return stdDev * math.Sqrt(periodsPerDay) * 100
 }
 
 // Compile-time assertion that MemoryStore implements metrics.PriceDataStore

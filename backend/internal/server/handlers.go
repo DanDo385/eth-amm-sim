@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"eth-amm-sim/internal/config"
@@ -45,6 +46,9 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 	if body.Duration > 0 {
 		s.session.SetDuration(time.Duration(body.Duration) * time.Second)
 	}
+
+	// Reset finalization guard for the new session
+	atomic.StoreInt32(&s.sessionFinalized, 0)
 
 	// Use request context with timeout for RPC calls only
 	rpcCtx, rpcCancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -128,32 +132,14 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
-	// Use request context with timeout
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	
 	if err := s.session.Stop(); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Get final spot price at session end for performance finalization
-	spotPrice, err := s.executor.GetSpotPrice(ctx)
-	if err != nil {
-		log.Printf("Warning: Could not get spot price for session stop: %v", err)
-		spotPrice = big.NewInt(0)
-	}
-	
-	// Convert spot price to float64
-	var spotPriceFloat float64
-	if spotPrice != nil && spotPrice.Sign() > 0 {
-		spotPriceBigFloat := new(big.Float).SetInt(spotPrice)
-		spotPriceBigFloat.Quo(spotPriceBigFloat, big.NewFloat(1e18))
-		spotPriceFloat, _ = spotPriceBigFloat.Float64()
-	}
-	
-	// Finalize all accounts using final spot price
-	s.store.FinalizeAccountsForSession(spotPriceFloat)
+	// Finalize accounts (atomic guard ensures this runs only once even if
+	// the OnStateChange callback also fires).
+	s.finalizeSession()
 
 	// Record session stop event
 	event := store.KeyEvent{

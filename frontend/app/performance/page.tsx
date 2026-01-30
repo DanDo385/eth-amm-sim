@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import type { PerformanceData, WSMessage, EquityPoint } from '@/types';
 import * as api from '@/lib/api';
@@ -116,15 +116,33 @@ export default function PerformancePage() {
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Handle WebSocket messages
+  // Re-fetch trigger: bumped when the session stops so the REST call
+  // picks up finalized data (close prices, recalculated PnL).
+  const [fetchTrigger, setFetchTrigger] = useState(0);
+
+  // Use a ref for selected so the WS callback identity stays stable
+  // and doesn't cause WebSocket reconnections when the dropdown changes.
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+
+  // Handle WebSocket messages — stable identity (no deps on selected)
   const handleWSMessage = useCallback((message: WSMessage) => {
     if (message.type === 'account_update') {
       const data = message.data as PerformanceData;
-      if (data.nickname === selected) {
+      if (data.nickname === selectedRef.current) {
         setPerformance(data);
       }
     }
-  }, [selected]);
+    // When the session stops, trigger a re-fetch so we pick up
+    // finalized close prices and recalculated PnL/Sharpe.
+    // 1s delay ensures the backend has finished finalization before we fetch.
+    if (message.type === 'session_state') {
+      const state = message.data as { status?: string };
+      if (state.status === 'completed' || state.status === 'idle') {
+        setTimeout(() => setFetchTrigger((n) => n + 1), 1000);
+      }
+    }
+  }, []);
 
   useWebSocket(handleWSMessage);
 
@@ -133,7 +151,7 @@ export default function PerformancePage() {
     api.getAccounts().then(setAccounts).catch(console.error);
   }, []);
 
-  // Fetch selected account performance
+  // Fetch selected account performance (also re-runs when session stops)
   useEffect(() => {
     if (!selected) return;
 
@@ -142,7 +160,7 @@ export default function PerformancePage() {
       .then(setPerformance)
       .catch(console.error)
       .finally(() => setIsLoading(false));
-  }, [selected]);
+  }, [selected, fetchTrigger]);
 
   const formatPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
   const formatNumber = (value: number) => value.toFixed(2);
@@ -195,13 +213,13 @@ export default function PerformancePage() {
             <KPITile
               label="Sharpe Ratio"
               value={formatNumber(performance.sharpeRatio)}
-              subValue="Risk-adjusted return"
+              subValue="Return / session vol"
               positive={performance.sharpeRatio > 0}
             />
             <KPITile
-              label="Volatility"
-              value={formatPercent(performance.volatility * 100)}
-              subValue="Annualized std dev"
+              label="Daily Volatility"
+              value={`${formatNumber(performance.volatility)}%`}
+              subValue="Session realized vol"
             />
             <KPITile
               label="Max Drawdown"
@@ -251,6 +269,7 @@ export default function PerformancePage() {
                     <th className="px-4 py-2 text-left">Side</th>
                     <th className="px-4 py-2 text-right">Size</th>
                     <th className="px-4 py-2 text-right">Price</th>
+                    <th className="px-4 py-2 text-right">Close</th>
                     <th className="px-4 py-2 text-right">PnL</th>
                     <th className="px-4 py-2 text-right">Equity</th>
                   </tr>
@@ -258,7 +277,7 @@ export default function PerformancePage() {
                 <tbody className="divide-y divide-border">
                   {performance.trades.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                         No trades recorded
                       </td>
                     </tr>
@@ -279,6 +298,9 @@ export default function PerformancePage() {
                         </td>
                         <td className="px-4 py-2 text-right text-gray-300">
                           {trade.price.toFixed(4)}
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-300">
+                          {trade.closePrice > 0 ? trade.closePrice.toFixed(4) : '—'}
                         </td>
                         <td className={`px-4 py-2 text-right font-medium ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(4)}

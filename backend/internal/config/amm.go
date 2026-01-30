@@ -14,8 +14,13 @@ const (
 	LargeTradeThresholdETH    = 100.0
 	CriticalTradeThresholdETH = 300.0
 
-	// Initial account equity (in ETH)
-	InitialAccountEquityETH = 10000
+	// Initial account equity (in ETH) — normalized starting balance for performance
+	// tracking: 1,000 ETH + 1,000 APPL (valued at spot price, ~2,000 ETH at 1:1).
+	InitialAccountEquityETH = 2000
+
+	// Normalized starting balances for session performance tracking
+	NormalizedStartingETH  = 1000.0
+	NormalizedStartingAPPL = 1000.0
 
 	// Memory bounds for store (prevent unbounded growth)
 	MaxTrades = 50000
