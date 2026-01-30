@@ -16,11 +16,11 @@ kill-all:
 	@echo "Killed processes on ports 8545, 8080, and 3000-3004"
 
 # Start local Anvil chain with 30 accounts
-# LP account (0) needs 15k ETH, others need 1k ETH each
+# LP account (0) needs 30k ETH, others need 1k ETH each
 # Note: If port 8545 is in use, run 'make kill-anvil' first
-# Starting with 15000 ETH ensures account 0 has enough for liquidity + gas
+# Starting with 30000 ETH ensures account 0 has enough for liquidity + gas
 anvil:
-	anvil --accounts 30 --balance 15000
+	anvil --accounts 30 --balance 30000
 
 # Deploy contracts to Anvil (uses scripts/deploy.sh to keep run-latest.json only)
 deploy:

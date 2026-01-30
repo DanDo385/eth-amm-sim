@@ -19,6 +19,7 @@
 package store
 
 import (
+	"log"
 	"math/big"
 	"sync"
 	"time"
@@ -136,6 +137,17 @@ func (s *MemoryStore) GetAccountMetricsManager() *metrics.AccountMetricsManager 
 	return s.accountMetrics
 }
 
+// ResetAccountsForSession resets all accounts to track session-only performance
+// Requires a function to get current balances for each account and current spot price
+func (s *MemoryStore) ResetAccountsForSession(getBalance func(nickname string) (ethBalance, applBalance float64, err error), currentSpotPrice float64) {
+	s.accountMetrics.ResetForSession(getBalance, currentSpotPrice)
+}
+
+// FinalizeAccountsForSession finalizes all accounts using the final spot price at session end
+func (s *MemoryStore) FinalizeAccountsForSession(finalSpotPrice float64) {
+	s.accountMetrics.FinalizeSession(finalSpotPrice)
+}
+
 // Impact curve methods
 
 func (s *MemoryStore) GetImpactCurve() *metrics.ImpactCurve {
@@ -165,6 +177,12 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 	// Update account metrics for this trade
 	// Get or create account metrics
 	am := s.accountMetrics.GetOrCreate(trade.Nickname, trade.Trader, config.InitialAccountEquityETH)
+	
+	// Only record trades during an active session
+	if !am.IsSessionActive() {
+		// Not in a session, skip recording this trade for performance metrics
+		return
+	}
 
 	// Convert trade amounts to float64
 	// For BUY: amountIn is ETH (wei), amountOut is APPL (wei)
@@ -173,9 +191,17 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 	amountInFloat.Quo(amountInFloat, big.NewFloat(1e18))
 	amountIn, _ := amountInFloat.Float64()
 
-	amountOutFloat := new(big.Float).SetInt(trade.AmountOut)
-	amountOutFloat.Quo(amountOutFloat, big.NewFloat(1e18))
-	amountOut, _ := amountOutFloat.Float64()
+	// Check for nil AmountOut before converting
+	var amountOut float64
+	if trade.AmountOut != nil {
+		amountOutFloat := new(big.Float).SetInt(trade.AmountOut)
+		amountOutFloat.Quo(amountOutFloat, big.NewFloat(1e18))
+		amountOut, _ = amountOutFloat.Float64()
+	} else {
+		// Log warning when trade data is incomplete
+		log.Printf("Warning: Trade %s has nil AmountOut, using 0", trade.TxHash)
+		amountOut = 0
+	}
 
 	// Get current spot price for mark-to-market valuation
 	// Use the most recent price from price metrics
@@ -185,9 +211,15 @@ func (s *MemoryStore) RecordTrade(trade engine.Trade) {
 		currentSpotPrice = candles[len(candles)-1].Close
 	} else {
 		// Fallback: use execution price if no price history yet
-		priceFloat := new(big.Float).SetInt(trade.Price)
-		priceFloat.Quo(priceFloat, big.NewFloat(1e18))
-		currentSpotPrice, _ = priceFloat.Float64()
+		if trade.Price != nil {
+			priceFloat := new(big.Float).SetInt(trade.Price)
+			priceFloat.Quo(priceFloat, big.NewFloat(1e18))
+			currentSpotPrice, _ = priceFloat.Float64()
+		} else {
+			// If both price history and trade price are unavailable, use 0
+			log.Printf("Warning: Trade %s has nil Price and no price history, using 0", trade.TxHash)
+			currentSpotPrice = 0
+		}
 	}
 
 	// Record trade with actual amounts and current spot price

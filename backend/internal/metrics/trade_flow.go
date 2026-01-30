@@ -57,6 +57,9 @@ type TradeFlowTracker struct {
 	
 	// Global trade counter (excludes MeanRev bot's own trades)
 	tradeCount int
+	
+	// Semaphore to limit concurrent notification goroutines (prevent unbounded growth)
+	notifySem chan struct{}
 }
 
 // TradeFlowSubscriber interface for bots that want to observe trade flow
@@ -68,8 +71,9 @@ type TradeFlowSubscriber interface {
 // NewTradeFlowTracker creates a new trade flow tracker
 func NewTradeFlowTracker() *TradeFlowTracker {
 	return &TradeFlowTracker{
-		events:     make([]TradeFlowEvent, 0),
+		events:      make([]TradeFlowEvent, 0),
 		subscribers: make([]TradeFlowSubscriber, 0),
+		notifySem:   make(chan struct{}, 50), // Limit to 50 concurrent notification goroutines
 	}
 }
 
@@ -161,18 +165,26 @@ func (tft *TradeFlowTracker) RecordTrade(
 	// This ensures MeanRev bots only observe external market flow, not their own trades
 	for _, sub := range tft.subscribers {
 		if sub.GetNickname() != trade.Nickname {
-			// Increment trade count for this subscriber (external trade)
-			tft.tradeCount++
-			// Notify subscriber
-			sub := sub // Capture loop variable
+		// Increment trade count for this subscriber (external trade)
+		tft.tradeCount++
+		// Notify subscriber
+		sub := sub // Capture loop variable
+		// Acquire semaphore slot (non-blocking if full to prevent unbounded growth)
+		select {
+		case tft.notifySem <- struct{}{}:
 			go func() {
 				defer func() {
+					<-tft.notifySem // Release semaphore slot
 					if r := recover(); r != nil {
 						log.Printf("Trade flow subscriber %s panicked: %v", sub.GetNickname(), r)
 					}
 				}()
 				sub.OnTradeFlow(event)
 			}()
+		default:
+			// Semaphore full - log warning and skip this notification to prevent goroutine leak
+			log.Printf("Warning: Trade flow notification semaphore full, skipping notification to %s", sub.GetNickname())
+		}
 		}
 	}
 }

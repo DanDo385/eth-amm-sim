@@ -210,8 +210,8 @@ func (m *MeanRevBot) checkMeanReversionSignal() (*engine.TradeSide, *big.Int) {
 	// Use ~20% of half-life as a minimum requirement (reduced from 35% to allow faster trading).
 	// This ensures some observation period but allows bots to trade sooner.
 	minTradesRequired := int(float64(halfLife) * 0.20)
-	if minTradesRequired < 3 {
-		minTradesRequired = 3 // Minimum of 3 trades to ensure some observation
+	if minTradesRequired < 25 {
+		minTradesRequired = 25 // Minimum of 3 trades to ensure some observation
 	}
 
 	if m.tradesSinceTrade < minTradesRequired {

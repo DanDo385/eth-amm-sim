@@ -1,311 +1,37 @@
-# ============================================================
-
-# Cursor Rules — eth-amm-sim
-
-# ============================================================
-
-# Purpose:
-
-# Portfolio-grade DeFi AMM simulation showcasing:
-
-# - AMM mechanics
-
-# - Market microstructure
-
-# - TradFi-style risk metrics
-
-# - Go concurrency + Solidity integration
-
-#
-
-# This is a DEMO-FIRST project.
-
-# Visual clarity and conceptual correctness > production rigor.
-
-# ============================================================
-
-# ------------------------------------------------------------
-
-# GENERAL BEHAVIOR
-
-# ------------------------------------------------------------
-
-* Prefer clear, readable code over clever abstractions.
-* Prefer deletion over abstraction.
-* Do NOT introduce unnecessary frameworks, patterns, or layers.
-* Avoid premature optimization.
-* Avoid enterprise-grade patterns:
-
-  * repositories
-  * factories
-  * DI containers
-* This is NOT a long-lived open-source project.
-
-# ------------------------------------------------------------
-
-# ABSOLUTE CONSTRAINTS
-
-# ------------------------------------------------------------
-
-* DO NOT change the frontend UI layout, styling, or component structure.
-* DO NOT add new features.
-* DO NOT keep "future use" code.
-* DO NOT leave commented-out code behind.
-* DO NOT silently ignore goroutine lifecycle issues.
-
-# ------------------------------------------------------------
-
-# LEVERAGE & LIQUIDATION — HARD BAN
-
-# ------------------------------------------------------------
-
-The following concepts must NOT exist anywhere in the codebase:
-
-* leverage
-* margin
-* collateral
-* liquidation
-* liquidator
-* borrowed ETH
-* equity <= 0 logic
-* leveraged positions
-* margin requirements
-
-If found:
-→ delete the file, logic, metrics, events, and references entirely.
-
-Files that MUST NOT exist:
-
-* backend/internal/bots/leverage.go
-* backend/internal/bots/liquidator.go
-
-No placeholders. No stubs. No TODOs.
-
-# ------------------------------------------------------------
-
-# ARCHITECTURE RULES
-
-# ------------------------------------------------------------
-
-## Solidity Contracts
-
-* Must be simple, explicit, and heavily commented.
-* Prefer clarity over gas micro-optimizations.
-* Use OpenZeppelin's ReentrancyGuard for state-changing functions.
-* Use Address.sendValue() for ETH transfers (never `.call{value:}`).
-* No upgradeability patterns.
-* No proxy contracts.
-* No governance systems.
-
-## Go Backend
-
-* Use standard library + go-ethereum only.
-* Favor small packages with obvious responsibilities.
-* Concurrency must be explicit:
-
-  * goroutines
-  * channels
-  * mutexes
-* Do NOT hide concurrency behind abstractions.
-
-## Frontend
-
-* Next.js App Router only.
-* Tailwind CSS for layout.
-* TradingView Lightweight Charts for charts.
-* No state management libraries (Redux, Zustand, etc.).
-* Keep components dumb; logic lives in hooks.
-* Chart components may transform data for display only.
-* Use useMemo for expensive computations (TWAP, rolling std dev).
-
-# ------------------------------------------------------------
-
-# CONCURRENCY & GOROUTINES (CRITICAL)
-
-# ------------------------------------------------------------
-
-* Every goroutine must belong to a clear lifecycle:
-
-  * session
-  * bot
-  * server
-
-* Use `errgroup.Group` for:
-
-  * bot orchestration
-  * polling loops
-  * background workers
-
-* All goroutines MUST:
-
-  * respect context cancellation
-  * terminate cleanly on session stop/reset
-  * surface errors through errgroup
-
-No orphaned goroutines. Ever.
-
-# ------------------------------------------------------------
-
-# METRICS & FINANCE RULES (IMPORTANT)
-
-# ------------------------------------------------------------
-
-* All financial metrics must be computed in the Go backend.
-* Frontend only displays metrics — it must NOT calculate them.
-* Use TradFi terminology:
-
-  * Sharpe ratio
-  * Volatility
-  * Max drawdown
-  * Equity curve
-  * PnL (realized vs unrealized)
-* Prefer mathematically correct implementations over shortcuts.
-* Assume risk-free rate = 0 for Sharpe.
-
-# ------------------------------------------------------------
-
-# PRICE IMPACT CURVE — STRICT DEFINITION
-
-# ------------------------------------------------------------
-
-The price impact curve MUST:
-
-* Be rendered as a LINE (not scatter)
-* X-axis = trade size (quantity)
-* Y-axis = execution price or price delta
-* Be re-centered around the CURRENT spot price
-
-Backend:
-
-* Calculate impact using current reserves
-* Simulate incremental buys AND sells
-* Return chart-ready data (frontend must not derive math)
-
-Frontend:
-
-* Render without changing layout or styling
-* No hardcoded offsets
-* No hidden UI math
-
-This chart explains AMM slippage — keep it mathematically honest.
-
-# ------------------------------------------------------------
-
-# BOT & SIMULATION RULES
-
-# ------------------------------------------------------------
-
-* Bots must:
-
-  * Implement the Bot interface
-  * Run inside goroutines
-  * Respect context cancellation
-
-* Randomness:
-
-  * Seeded and reproducible where possible
-
-* Behavior intent:
-
-  * Whales visibly move the market
-  * Retail adds noise, not dominance
-  * Mean reversion trades deviations, not trends
-
-# ------------------------------------------------------------
-
-# PHASING & TODOs
-
-# ------------------------------------------------------------
-
-* TODO comments must be explicitly marked:
-  // TODO (Phase X):
-
-* Phase 1–2 code:
-
-  * Runnable
-  * Demo-ready
-
-* Phase 3+ code:
-
-  * May be stubbed
-  * Must not break builds
-
-# ------------------------------------------------------------
-
-# TESTING RULES
-
-# ------------------------------------------------------------
-
-## Solidity
-
-* Minimal Foundry tests for core invariants
-* Correctness > coverage
-
-## Go
-
-* Tests only where logic is non-trivial:
-
-  * NonceManager
-  * Metrics calculations
-* No full integration tests
-
-# ------------------------------------------------------------
-
-# DOCUMENTATION
-
-# ------------------------------------------------------------
-
-* Prefer inline comments over external docs.
-* README must explain:
-
-  * What the system demonstrates
-  * How to run the demo
-  * What to look for visually
-
-# ------------------------------------------------------------
-
-# WHAT NOT TO DO
-
-# ------------------------------------------------------------
-
-* Do NOT:
-
-  * Add Docker, Kubernetes, or CI pipelines
-  * Introduce databases (Postgres, Redis, etc.)
-  * Add auth, users, or permissions
-  * Add new frontend trading controls
-  * Over-abstract metrics pipelines
-
-# ------------------------------------------------------------
-
-# COMPLETION CHECKLIST
-
-# ------------------------------------------------------------
-
-Before concluding any task:
-
-* `go build ./...` passes
-* frontend type-checks
-* simulation runs
-* UI unchanged
-* no leverage or liquidation references remain
-* codebase is smaller and simpler than before
-
-When finished, summarize:
-
-1. Files deleted
-2. Files modified
-3. Assumptions made
-4. Optional improvements NOT implemented
-
-# ------------------------------------------------------------
-
-# FINAL GUIDING PRINCIPLE
-
-# ------------------------------------------------------------
-
-If a hiring manager watches a 2–3 minute demo video:
-
-* They should understand what is happening
-* They should see price move, LP PnL change, and risk metrics update
-* They should immediately recognize TradFi + DeFi fluency
+# eth-amm-sim .cursorrules
+# Demo-first AMM simulator. Clarity and explicit logic over production rigor.
+
+## Principles
+- Prefer simple, readable code over abstractions.
+- Keep data flow visible (logs + in-memory state).
+- Avoid new frameworks, layers, or indirection unless explicitly requested.
+- Demo value > completeness. Small changes over big rewrites.
+
+## Scope (current system)
+- Local Anvil chain with AppleToken + AppleAMM.
+- Go backend polls chain every 2s and streams over WebSocket.
+- Bots run per session and stop on context cancel.
+- Frontend is Next.js App Router + Tailwind + lightweight-charts.
+
+## Go backend rules
+- Use context for all RPC calls; add timeouts for external calls.
+- Use errgroup for coordinating long-lived goroutines.
+- Tie goroutines to session/server lifecycles; no orphaned workers.
+- Return errors to the caller; log only at boundaries.
+
+## Solidity rules
+- Keep contracts minimal and readable; no proxies/upgradeability.
+- Use ReentrancyGuard for state-changing functions.
+- Use Address.sendValue for ETH transfers.
+
+## Frontend rules
+- Hooks own data fetching/state; components are mostly presentational.
+- Do not compute financial metrics in the frontend.
+
+## Out of scope unless requested
+- Databases, auth, background job systems.
+- Leverage, margin, liquidation mechanics.
+
+## Documentation
+- README must match current behavior, parameters, and endpoints.
+- If you change bots, metrics, or routes, update README and frontend types.

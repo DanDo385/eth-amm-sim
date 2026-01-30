@@ -28,6 +28,7 @@ import (
 	"math/big"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"eth-amm-sim/internal/engine"
@@ -49,6 +50,7 @@ type Server struct {
 	clients     map[*websocket.Conn]bool
 	clientsMu   sync.RWMutex
 	broadcast   chan interface{}
+	broadcastClosed int32 // Atomic flag to track if broadcast channel is closed
 	
 	httpServer *http.Server
 }
@@ -147,7 +149,10 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	
 	// Close broadcast channel (this will stop the broadcast goroutine)
-	close(s.broadcast)
+	// Use atomic flag to prevent double-close and check in Broadcast method
+	if atomic.CompareAndSwapInt32(&s.broadcastClosed, 0, 1) {
+		close(s.broadcast)
+	}
 	
 	// Shutdown HTTP server
 	return s.httpServer.Shutdown(ctx)
@@ -155,6 +160,11 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // Broadcast sends a message to all WebSocket clients
 func (s *Server) Broadcast(msg interface{}) {
+	// Check if channel is closed before sending
+	if atomic.LoadInt32(&s.broadcastClosed) == 1 {
+		return // Channel is closed, silently drop message
+	}
+	
 	select {
 	case s.broadcast <- msg:
 	default:

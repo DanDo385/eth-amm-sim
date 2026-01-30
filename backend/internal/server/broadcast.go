@@ -33,9 +33,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Register client
 	s.clientsMu.Lock()
 	s.clients[conn] = true
+	clientCount := len(s.clients)
 	s.clientsMu.Unlock()
 	
-	log.Printf("WebSocket client connected. Total clients: %d", len(s.clients))
+	log.Printf("WebSocket client connected. Total clients: %d", clientCount)
 	
 	// Send initial state
 	s.sendInitialState(conn)
@@ -89,9 +90,10 @@ func (s *Server) handleConnection(conn *websocket.Conn) {
 	defer func() {
 		s.clientsMu.Lock()
 		delete(s.clients, conn)
+		clientCount := len(s.clients)
 		s.clientsMu.Unlock()
 		conn.Close()
-		log.Printf("WebSocket client disconnected. Total clients: %d", len(s.clients))
+		log.Printf("WebSocket client disconnected. Total clients: %d", clientCount)
 	}()
 	
 	// Configure ping/pong for connection health

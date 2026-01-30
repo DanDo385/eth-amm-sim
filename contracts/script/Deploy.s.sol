@@ -11,8 +11,8 @@ import "../src/AppleAMM.sol";
  * @notice Deploys AppleToken and AppleAMM, then seeds with initial liquidity
  * 
  * Account allocation (Anvil accounts 0-29):
- * 0: Deployer/LP - Seeds pool with 10,000 APPL + 10,000 ETH (initial price: 1 ETH/APPL)
- *     Gets 15,000 ETH total (10k liquidity + 5k for gas)
+ * 0: Deployer/LP - Seeds pool with 25,000 APPL + 25,000 ETH (initial price: 1 ETH/APPL)
+ *     Gets 30,000 ETH total (25k liquidity + 5k for gas)
  * 1: User - Manual trading account (1,000 ETH and 1,000 APPL)
  * 2-16: Retail - 15 retail trading bots (1,000 ETH and 1,000 APPL each)
  * 17-19: Whale - 3 whale trading bots (1,000 ETH and 5,000 APPL each)
@@ -125,8 +125,8 @@ contract DeployScript is Script {
         console.log("\n=== Minting Tokens ===");
         
         // LP gets tokens for seeding pool
-        token.mint(accounts[0], 10000 * APPLES_DECIMALS);
-        console.log("Minting to LP Account 0: 10,000 APPL");
+        token.mint(accounts[0], 25000 * APPLES_DECIMALS);
+        console.log("Minting to LP Account 0: 25,000 APPL");
         
         // User account
         token.mint(accounts[1], 1000 * APPLES_DECIMALS);
@@ -166,9 +166,9 @@ contract DeployScript is Script {
         console.log("      Gas price varies by network conditions (Anvil uses low prices for testing)\n");
         
         // Use vm.deal to set balances for simulation
-        // Account 0 (LP) needs 15k ETH total (10k for liquidity + 5k for gas)
-        vm.deal(accounts[0], 15000 ether);
-        console.log("Setting ETH balance for LP Account 0: 15,000 ETH");
+        // Account 0 (LP) needs 30k ETH total (25k for liquidity + 5k for gas)
+        vm.deal(accounts[0], 30000 ether);
+        console.log("Setting ETH balance for LP Account 0: 30,000 ETH");
         
         // All other accounts get 1k ETH
         for (uint i = 1; i < accounts.length; i++) {
@@ -177,7 +177,7 @@ contract DeployScript is Script {
         console.log("Setting ETH balance for accounts 1-29: 1,000 ETH each");
         
         console.log("\nETH balances set for simulation:");
-        console.log("  Account 0 (LP) = 15,000 ETH");
+        console.log("  Account 0 (LP) = 30,000 ETH");
         console.log("  Accounts 1-29 = 1,000 ETH each");
         console.log("Note: For actual deployment, ensure account 0 has sufficient ETH for liquidity + gas");
     }
@@ -238,13 +238,13 @@ contract DeployScript is Script {
     }
     
     function seedLiquidity() internal {
-        // LP seeds pool with 10,000 APPL + 10,000 ETH
+        // LP seeds pool with 25,000 APPL + 25,000 ETH
         // Initial price = 1 ETH/APPL (1:1 ratio)
         // Large pool size needed for whale trades (500-600 APPL clips)
-        token.approve(address(amm), 10000 * APPLES_DECIMALS);
-        amm.addLiquidity{value: 10000 ether}(10000 * APPLES_DECIMALS);
-        
-        console.log("Pool seeded with 10,000 APPL + 10,000 ETH (initial price: 1 ETH/APPL)");
+        token.approve(address(amm), 25000 * APPLES_DECIMALS);
+        amm.addLiquidity{value: 25000 ether}(25000 * APPLES_DECIMALS);
+
+        console.log("Pool seeded with 25,000 APPL + 25,000 ETH (initial price: 1 ETH/APPL)");
     }
     
     function logState() internal view {

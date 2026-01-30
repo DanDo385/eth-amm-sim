@@ -133,8 +133,8 @@ func main() {
 	// Create bots using config-driven approach
 	createBots(executor, orchestrator, priceProvider, memStore)
 
-	// Initialize account metrics
-	initializeAccountMetrics(memStore)
+	// Initialize account metrics with actual on-chain balances
+	initializeAccountMetrics(ctx, executor, memStore)
 
 	// Reset User account balances to initial state on startup
 	// This ensures a fresh start every time services restart
@@ -231,38 +231,46 @@ func main() {
 		return nil
 	})
 
+	// Add shutdown handler to errgroup - triggers when context is cancelled
+	eg.Go(func() error {
+		<-egCtx.Done()
+		log.Println("\n=== Shutting down gracefully ===")
+		
+		// Stop active sessions
+		log.Println("Stopping active sessions...")
+		if session.IsRunning() {
+			if stopErr := session.Stop(); stopErr != nil {
+				log.Printf("Error stopping session: %v", stopErr)
+			}
+			// Give bots a moment to finish
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		// Stop server with timeout
+		log.Println("Stopping HTTP server...")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+
+		if stopErr := srv.Stop(shutdownCtx); stopErr != nil {
+			log.Printf("Error shutting down server: %v", stopErr)
+			return fmt.Errorf("server shutdown error: %w", stopErr)
+		}
+		log.Println("✓ Server stopped gracefully")
+		return nil
+	})
+
 	log.Println("Server running. Press Ctrl+C to stop gracefully...")
 
 	// Wait for shutdown signal or service error
 	go func() {
 		<-sigCh
-		log.Println("\n=== Shutting down gracefully ===")
 		mainCancel() // Cancel context to stop all services
 	}()
 
 	// Wait for errgroup (will return first error or nil if context cancelled)
 	serviceErr := eg.Wait()
 
-	// Perform graceful shutdown
-	log.Println("Stopping active sessions...")
-	if session.IsRunning() {
-		if stopErr := session.Stop(); stopErr != nil {
-			log.Printf("Error stopping session: %v", stopErr)
-		}
-		// Give bots a moment to finish
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	// Stop server with timeout
-	log.Println("Stopping HTTP server...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-
-	if stopErr := srv.Stop(shutdownCtx); stopErr != nil {
-		log.Printf("Error shutting down server: %v", stopErr)
-	} else {
-		log.Println("✓ Server stopped gracefully")
-	}
+	log.Println("=== Shutdown complete ===")
 
 	log.Println("=== Shutdown complete ===")
 
@@ -320,11 +328,55 @@ func createBots(executor *engine.Executor, orchestrator *engine.Orchestrator, pr
 	log.Printf("Created %d bots", orchestrator.BotCount())
 }
 
-// initializeAccountMetrics initializes metrics for all accounts
-func initializeAccountMetrics(memStore *store.MemoryStore) {
+// initializeAccountMetrics initializes metrics for all accounts using actual on-chain balances
+func initializeAccountMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
+	// Get current spot price for mark-to-market valuation
+	spotPrice, err := executor.GetSpotPrice(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price for account initialization: %v", err)
+		log.Printf("Falling back to config InitialAccountEquityETH for all accounts")
+		spotPrice = nil
+	}
+
 	for _, acc := range config.Accounts {
-		// Initial equity from config
-		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address(), config.InitialAccountEquityETH)
+		var initialEquity float64
+
+		if spotPrice != nil && spotPrice.Sign() > 0 {
+			// Read actual on-chain balances
+			ethBalance, err := executor.GetETHBalance(ctx, acc.Address())
+			if err != nil {
+				log.Printf("Warning: Could not get ETH balance for %s: %v, using config default", acc.Nickname, err)
+				initialEquity = config.InitialAccountEquityETH
+			} else {
+				appleBalance, err := executor.GetAPPLBalance(ctx, acc.Address())
+				if err != nil {
+					log.Printf("Warning: Could not get APPL balance for %s: %v, using config default", acc.Nickname, err)
+					initialEquity = config.InitialAccountEquityETH
+				} else {
+					// Calculate initial equity: ethBalance + (appleBalance * spotPrice)
+					// Convert from wei to ETH/APPL
+					ethFloat := new(big.Float).SetInt(ethBalance)
+					ethFloat.Quo(ethFloat, big.NewFloat(1e18))
+					eth, _ := ethFloat.Float64()
+
+					appleFloat := new(big.Float).SetInt(appleBalance)
+					appleFloat.Quo(appleFloat, big.NewFloat(1e18))
+					apple, _ := appleFloat.Float64()
+
+					// Spot price is ETH per APPL (scaled by 1e18)
+					spotPriceFloat := new(big.Float).SetInt(spotPrice)
+					spotPriceFloat.Quo(spotPriceFloat, big.NewFloat(1e18))
+					price, _ := spotPriceFloat.Float64()
+
+					initialEquity = eth + (apple * price)
+				}
+			}
+		} else {
+			// Fallback to config if we can't get spot price
+			initialEquity = config.InitialAccountEquityETH
+		}
+
+		memStore.GetOrCreateAccountMetrics(acc.Nickname, acc.Address(), initialEquity)
 	}
 }
 
@@ -386,7 +438,8 @@ func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.
 			return
 		case <-ticker.C:
 		}
-		pollCtx := context.Background()
+		// Use the parent context for RPC calls so cancellation propagates
+		pollCtx := ctx
 
 		// Get current price
 		price, err := executor.GetSpotPrice(pollCtx)

@@ -144,13 +144,13 @@ func eth(n int64) *big.Int {
 var Accounts []AccountConfig
 
 // Pool configuration
-// On-chain pool seeded in Deploy.s.sol with 10,000 ETH / 10,000 APPL.
+// On-chain pool seeded in Deploy.s.sol with 25,000 ETH / 25,000 APPL.
 // Backend previously assumed a 1M/10K pool (100 ETH/APPL) for Phase 2 metrics,
 // but for the demo we want the config to exactly mirror the deployed reserves
 // so LP value/price lines up between Go metrics and the Solidity AMM.
 var (
-	PoolApples = eth(10000) // LP deposits 10,000 APPLES
-	PoolETH    = eth(10000) // LP deposits 10,000 ETH (price starts at 1.0 ETH/APPL)
+	PoolApples = eth(25000) // LP deposits 25,000 APPLES
+	PoolETH    = eth(25000) // LP deposits 25,000 ETH (price starts at 1.0 ETH/APPL)
 )
 
 func init() {
@@ -163,7 +163,7 @@ func init() {
 			Index:          0,
 			Nickname:       "LP",
 			Type:           BotTypeLP,
-			StartingApples: eth(10000), // 10,000 for pool (owns the AMM reserves)
+			StartingApples: eth(25000), // 25,000 for pool (owns the AMM reserves)
 			// LP doesn't trade, so no trading params needed
 		},
 
@@ -267,7 +267,7 @@ func init() {
 		MaxTradeSize:   eth(50),  // Fixed trade size
 		MaxPosition:    eth(300),
 		TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
-		HalfLifeTrades: 25,                         // Fast decay: 25 trades half-life
+		HalfLifeTrades: 50,                         // Fast decay: 25 trades half-life
 	})
 	Accounts = append(Accounts, AccountConfig{
 		Index:          21,
@@ -277,7 +277,7 @@ func init() {
 		MaxTradeSize:   eth(75),  // Fixed trade size
 		MaxPosition:    eth(400),
 		TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate thresholds
-		HalfLifeTrades: 50,                       // Medium decay: 50 trades half-life
+		HalfLifeTrades: 100,                       // Medium decay: 50 trades half-life
 	})
 	Accounts = append(Accounts, AccountConfig{
 		Index:          22,
@@ -287,7 +287,7 @@ func init() {
 		MaxTradeSize:   eth(150), // Fixed trade size (2x MeanRev2)
 		MaxPosition:    eth(500),
 		TriggerLevels:  []float64{1.9, 2.4}, // Large: focuses on big moves
-		HalfLifeTrades: 75,                  // Slow decay: 75 trades half-life
+		HalfLifeTrades: 150,                  // Slow decay: 75 trades half-life
 	})
 
 	// Note: Indices 23-29 are reserved for future use

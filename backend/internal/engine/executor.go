@@ -84,6 +84,9 @@ type Executor struct {
 	// Nickname lookup
 	nicknames   map[common.Address]string
 	nicknamesMu sync.RWMutex
+
+	// Semaphore to limit concurrent callback goroutines (prevent unbounded growth)
+	callbackSem chan struct{}
 }
 
 // NewExecutor creates a new trade executor
@@ -106,6 +109,7 @@ func NewExecutor(
 		ammContract:   ammContract,
 		tokenContract: tokenContract,
 		nicknames:     make(map[common.Address]string),
+		callbackSem:   make(chan struct{}, 100), // Limit to 100 concurrent callback goroutines
 	}
 }
 
@@ -142,14 +146,22 @@ func (e *Executor) emitTrade(trade *Trade) {
 
 	for _, cb := range callbacks {
 		cb := cb // Capture loop variable
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("Trade callback panicked: %v", r)
-				}
+		// Acquire semaphore slot (non-blocking if full to prevent unbounded growth)
+		select {
+		case e.callbackSem <- struct{}{}:
+			go func() {
+				defer func() {
+					<-e.callbackSem // Release semaphore slot
+					if r := recover(); r != nil {
+						log.Printf("Trade callback panicked: %v", r)
+					}
+				}()
+				cb(trade)
 			}()
-			cb(trade)
-		}()
+		default:
+			// Semaphore full - log warning and skip this callback to prevent goroutine leak
+			log.Printf("Warning: Callback semaphore full, skipping trade callback (trade: %s)", trade.TxHash)
+		}
 	}
 }
 
@@ -189,16 +201,16 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
 
-	err = e.client.SendTransaction(ctx, signedTx)
-	if err != nil {
-		return "", fmt.Errorf("failed to send tx: %w", err)
-	}
-
 	// Calculate amount out and price using constant product formula
 	// Get reserves BEFORE the trade (for trade flow tracking)
 	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
 	if err != nil {
-		// If we can't get reserves, still record trade without amounts
+		// If we can't get reserves, we can't calculate trade details
+		// Still send the transaction, but record minimal trade
+		err = e.client.SendTransaction(ctx, signedTx)
+		if err != nil {
+			return "", fmt.Errorf("failed to send tx: %w", err)
+		}
 		trade := &Trade{
 			TxHash:    signedTx.Hash().Hex(),
 			Trader:    addr,
@@ -209,6 +221,11 @@ func (e *Executor) SwapETHForApples(ctx context.Context, privateKey *ecdsa.Priva
 		}
 		e.emitTrade(trade)
 		return signedTx.Hash().Hex(), nil
+	}
+
+	err = e.client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
 
 	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)
@@ -311,16 +328,16 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
 
-	err = e.client.SendTransaction(ctx, signedTx)
-	if err != nil {
-		return "", fmt.Errorf("failed to send tx: %w", err)
-	}
-
 	// Calculate amount out and price using constant product formula
 	// Get reserves BEFORE the trade (for trade flow tracking)
 	appleReserveBefore, ethReserveBefore, err := e.GetReserves(ctx)
 	if err != nil {
-		// If we can't get reserves, still record trade without amounts
+		// If we can't get reserves, we can't calculate trade details
+		// Still send the transaction, but record minimal trade
+		err = e.client.SendTransaction(ctx, signedTx)
+		if err != nil {
+			return "", fmt.Errorf("failed to send tx: %w", err)
+		}
 		trade := &Trade{
 			TxHash:    signedTx.Hash().Hex(),
 			Trader:    addr,
@@ -331,6 +348,11 @@ func (e *Executor) SwapApplesForETH(ctx context.Context, privateKey *ecdsa.Priva
 		}
 		e.emitTrade(trade)
 		return signedTx.Hash().Hex(), nil
+	}
+
+	err = e.client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to send tx: %w", err)
 	}
 
 	// Calculate price BEFORE trade: price = ethReserve / appleReserve (ETH per APPL)

@@ -120,7 +120,22 @@ func (w *WhaleBot) executeTrade(ctx context.Context, side engine.TradeSide, size
 		txHash, err = w.executor.SwapETHForApples(ctx, w.privateKey, size)
 	} else {
 		// Sell: swap APPLES for ETH
-		txHash, err = w.executor.SwapApplesForETH(ctx, w.privateKey, size)
+		// Convert ETH notional to APPL amount
+		spotPrice, err := w.executor.GetSpotPrice(ctx)
+		if err != nil || spotPrice == nil || spotPrice.Sign() == 0 {
+			log.Printf("[%s] Cannot execute SELL: failed to get spot price: %v", w.Nickname(), err)
+			return
+		}
+		
+		// Convert ETH size to APPL: appleAmount = ethAmount / price
+		// spotPrice is ETH per APPL (scaled by 1e18), so APPL = (ETH * 1e18) / spotPrice
+		sizeFloat := new(big.Float).SetInt(size)
+		priceFloat := new(big.Float).SetInt(spotPrice)
+		priceFloat.Quo(priceFloat, big.NewFloat(1e18)) // Convert from wei to ETH
+		appleAmount := new(big.Float).Quo(sizeFloat, priceFloat)
+		appleAmountInt, _ := appleAmount.Int(nil)
+		
+		txHash, err = w.executor.SwapApplesForETH(ctx, w.privateKey, appleAmountInt)
 	}
 
 	if err != nil {

@@ -46,13 +46,66 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 		s.session.SetDuration(time.Duration(body.Duration) * time.Second)
 	}
 
-	ctx := context.Background()
+	// Use request context with timeout for RPC calls only
+	rpcCtx, rpcCancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer rpcCancel()
 
 	// Re-initialize LP metrics with current pool state when starting a new session
 	// This ensures each session starts with a fresh baseline
-	s.reinitializeLPMetrics(ctx)
+	s.reinitializeLPMetrics(rpcCtx)
 
-	if err := s.session.Start(ctx); err != nil {
+	// Get current spot price for session reset
+	spotPrice, err := s.executor.GetSpotPrice(rpcCtx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price for session start: %v", err)
+		spotPrice = big.NewInt(0)
+	}
+	
+	// Convert spot price to float64
+	var spotPriceFloat float64
+	if spotPrice != nil && spotPrice.Sign() > 0 {
+		spotPriceBigFloat := new(big.Float).SetInt(spotPrice)
+		spotPriceBigFloat.Quo(spotPriceBigFloat, big.NewFloat(1e18))
+		spotPriceFloat, _ = spotPriceBigFloat.Float64()
+	}
+
+	// Reset all accounts for session-only performance tracking
+	// Create a function to get balances for each account
+	getBalance := func(nickname string) (ethBalance, applBalance float64, err error) {
+		// Find account by nickname
+		acc := config.GetAccount(nickname)
+		if acc == nil {
+			return 0, 0, fmt.Errorf("account not found: %s", nickname)
+		}
+		
+		// Get balances from executor (use RPC context with timeout)
+		ethBal, err := s.executor.GetETHBalance(rpcCtx, acc.Address())
+		if err != nil {
+			return 0, 0, err
+		}
+		
+		applBal, err := s.executor.GetAPPLBalance(rpcCtx, acc.Address())
+		if err != nil {
+			return 0, 0, err
+		}
+		
+		// Convert from wei to ETH/APPL
+		ethFloat := new(big.Float).SetInt(ethBal)
+		ethFloat.Quo(ethFloat, big.NewFloat(1e18))
+		ethBalance, _ = ethFloat.Float64()
+		
+		applFloat := new(big.Float).SetInt(applBal)
+		applFloat.Quo(applFloat, big.NewFloat(1e18))
+		applBalance, _ = applFloat.Float64()
+		
+		return ethBalance, applBalance, nil
+	}
+	
+	s.store.ResetAccountsForSession(getBalance, spotPriceFloat)
+
+	// Start session with background context (not request context)
+	// The session manages its own timeout based on duration
+	if err := s.session.Start(context.Background()); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -75,10 +128,32 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
+	// Use request context with timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	
 	if err := s.session.Stop(); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Get final spot price at session end for performance finalization
+	spotPrice, err := s.executor.GetSpotPrice(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price for session stop: %v", err)
+		spotPrice = big.NewInt(0)
+	}
+	
+	// Convert spot price to float64
+	var spotPriceFloat float64
+	if spotPrice != nil && spotPrice.Sign() > 0 {
+		spotPriceBigFloat := new(big.Float).SetInt(spotPrice)
+		spotPriceBigFloat.Quo(spotPriceBigFloat, big.NewFloat(1e18))
+		spotPriceFloat, _ = spotPriceBigFloat.Float64()
+	}
+	
+	// Finalize all accounts using final spot price
+	s.store.FinalizeAccountsForSession(spotPriceFloat)
 
 	// Record session stop event
 	event := store.KeyEvent{
@@ -119,7 +194,8 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 		log.Println("Hard reset: LP metrics reset to zero")
 		
 		// Reset User account on-chain balances to initial state (1,000 ETH and 1,000 APPL)
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
 		userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 		if userAccount != nil {
 			if err := s.executor.ResetUserAccount(ctx, userAccount.Address()); err != nil {
@@ -135,7 +211,8 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Soft reset: Re-initialize LP metrics with current pool state
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
 		s.reinitializeLPMetrics(ctx)
 	}
 
@@ -253,7 +330,9 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 // User trading handlers
 
 func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	// Use request context with timeout for external RPC calls
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 
 	// Parse request body
 	var req struct {
@@ -350,7 +429,9 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	// Use request context with timeout for external RPC calls
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 
 	// Parse request body
 	var req struct {
@@ -453,7 +534,9 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetUserBalance(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	// Use request context with timeout for external RPC calls
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
 
 	// Get user account
 	userAccount := config.GetAccountByIndex(config.UserAccountIndex)

@@ -72,78 +72,68 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
     return data;
   }, [sessionCandles]);
 
-  // Calculate rolling standard deviation from last 100 trades
+  // Calculate 60s rolling daily volatility
   const stdDevData = useMemo(() => {
-    if (sessionTrades.length < 100) return []; // Only start after 100 trades
+    if (sessionCandles.length < 2) return []; // Need at least 2 candles to calculate returns
     
     const data: LineData[] = [];
-    const windowSize = 100;
+    const windowSeconds = 60; // 60-second rolling window
     
-    // Extract prices from trades (convert from wei to ETH)
-    const prices = sessionTrades
-      .map((t) => {
-        if (!t.price) return null;
-        return parseFloat(t.price) / 1e18;
-      })
-      .filter((p): p is number => p !== null);
-    
-    if (prices.length < windowSize) return [];
-    
-    // Use a Map to deduplicate timestamps (keep last value for each timestamp)
-    const timeValueMap = new Map<number, number>();
-    
-    // Calculate rolling std dev
-    for (let i = windowSize - 1; i < prices.length; i++) {
-      const window = prices.slice(i - windowSize + 1, i + 1);
+    // Calculate returns from candle closes
+    // Returns = (price_t - price_{t-1}) / price_{t-1}
+    const returns: Array<{ time: number; return: number }> = [];
+    for (let i = 1; i < sessionCandles.length; i++) {
+      const prevPrice = sessionCandles[i - 1].close;
+      const currPrice = sessionCandles[i].close;
+      const currTime = new Date(sessionCandles[i].timestamp).getTime();
       
-      // Calculate mean
-      const mean = window.reduce((sum, p) => sum + p, 0) / window.length;
+      if (prevPrice > 0) {
+        const returnValue = (currPrice - prevPrice) / prevPrice;
+        returns.push({
+          time: currTime,
+          return: returnValue,
+        });
+      }
+    }
+    
+    if (returns.length < 2) return [];
+    
+    // Calculate rolling volatility for each candle
+    for (let i = 0; i < sessionCandles.length; i++) {
+      const currentTime = new Date(sessionCandles[i].timestamp).getTime();
+      const cutoffTime = currentTime - windowSeconds * 1000;
       
-      // Calculate variance
-      const variance = window.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / window.length;
+      // Get all returns within the 60s window
+      const windowReturns = returns
+        .filter((r) => r.time >= cutoffTime && r.time <= currentTime)
+        .map((r) => r.return);
       
-      // Standard deviation
+      if (windowReturns.length < 2) continue; // Need at least 2 returns to calculate std dev
+      
+      // Calculate mean return
+      const meanReturn = windowReturns.reduce((sum, r) => sum + r, 0) / windowReturns.length;
+      
+      // Calculate variance of returns
+      const variance = windowReturns.reduce(
+        (sum, r) => sum + Math.pow(r - meanReturn, 2),
+        0
+      ) / windowReturns.length;
+      
+      // Standard deviation of returns
       const stdDev = Math.sqrt(variance);
       
-      const trade = sessionTrades[i];
-      if (trade) {
-        const time = new Date(trade.timestamp).getTime() / 1000;
-        // Store in map (will overwrite if duplicate timestamp exists)
-        timeValueMap.set(time, stdDev);
-      }
-    }
-    
-    // Convert map to array and sort by time
-    const sortedData = Array.from(timeValueMap.entries())
-      .map(([time, value]) => ({
-        time: time as Time,
-        value,
-      }))
-      .sort((a, b) => Number(a.time) - Number(b.time));
-    
-    // If there are still duplicates (same second), add small increments
-    const deduplicatedData: LineData[] = [];
-    let increment = 0;
-    let lastTime = -Infinity;
-    
-    for (const point of sortedData) {
-      let time = Number(point.time);
-      if (time === lastTime) {
-        // Add small increment to make timestamp unique
-        increment += 0.001;
-        time += increment;
-      } else {
-        increment = 0; // Reset increment when time changes
-      }
-      deduplicatedData.push({
-        time: time as Time,
-        value: point.value,
+      // Scale to daily volatility: sqrt(1440 periods per day) * 100 for percentage
+      // 1440 = 86400 seconds per day / 60 seconds per period
+      const dailyVol = stdDev * Math.sqrt(1440) * 100;
+      
+      data.push({
+        time: (currentTime / 1000) as Time,
+        value: dailyVol,
       });
-      lastTime = time;
     }
     
-    return deduplicatedData;
-  }, [sessionTrades]);
+    return data;
+  }, [sessionCandles]);
 
   // Reset chart when session changes
   useEffect(() => {
@@ -197,7 +187,12 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
     const series = chart.addLineSeries({
       color: '#3b82f6',
       lineWidth: 2,
-      title: metricType === 'twap' ? 'TWAP' : 'Rolling Std Dev (100 trades)',
+      title: metricType === 'twap' ? 'TWAP' : '60s Rolling Daily Vol (%)',
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
 
     chartRef.current = chart;
@@ -231,10 +226,20 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
       seriesRef.current.setData(data);
     }
 
-    // Update series color and title
+    // Update series color, title, and price format
     seriesRef.current.applyOptions({
       color: metricType === 'twap' ? '#3b82f6' : '#f59e0b',
-      title: metricType === 'twap' ? 'TWAP' : 'Rolling Std Dev (100 trades)',
+      title: metricType === 'twap' ? 'TWAP' : '60s Rolling Daily Vol (%)',
+      priceFormat: metricType === 'stddev' 
+        ? {
+            type: 'custom',
+            formatter: (price: number) => `${price.toFixed(2)}%`,
+          }
+        : {
+            type: 'price',
+            precision: 2,
+            minMove: 0.01,
+          },
     });
 
     // Set time range to match session
@@ -261,13 +266,11 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
     }
   }, [twapData, stdDevData, metricType, session.startedAt, session.duration]);
 
-  const hasEnoughTrades = sessionTrades.length >= 100;
-
   return (
     <div className="bg-surface rounded-lg border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="text-sm font-medium text-white">
-          {metricType === 'twap' ? 'TWAP (60s window)' : 'Rolling Std Dev (100 trades)'}
+          {metricType === 'twap' ? 'TWAP (60s window)' : '60s Rolling Daily Vol (%)'}
         </h3>
         <div className="flex items-center space-x-2">
           <button
@@ -287,17 +290,17 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
                 ? 'bg-amber-600 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
-            disabled={!hasEnoughTrades}
-            title={!hasEnoughTrades ? 'Requires 100+ trades' : ''}
+            disabled={sessionCandles.length < 2}
+            title={sessionCandles.length < 2 ? 'Requires 2+ candles' : ''}
           >
-            Std Dev
+            Daily Vol (%)
           </button>
         </div>
       </div>
       <div ref={containerRef} />
-      {metricType === 'stddev' && !hasEnoughTrades && (
+      {metricType === 'stddev' && sessionCandles.length < 2 && (
         <div className="px-4 py-2 text-xs text-amber-400 text-center border-t border-border">
-          Waiting for 100 trades... ({sessionTrades.length}/100)
+          Waiting for candle data... ({sessionCandles.length}/2)
         </div>
       )}
     </div>

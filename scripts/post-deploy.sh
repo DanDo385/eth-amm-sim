@@ -5,7 +5,7 @@
 #
 # PURPOSE:
 # Adjusts leverage account balances after deployment to ensure realistic
-# liquidation risk. Anvil starts all accounts with 15,000 ETH, but leverage
+# liquidation risk. Anvil starts all accounts with 30,000 ETH, but leverage
 # accounts should have constrained capital (130, 80, 60 ETH respectively).
 #
 # This script:

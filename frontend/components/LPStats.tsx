@@ -1,14 +1,3 @@
-// LPStats.tsx — Liquidity provider performance metrics display.
-//
-// Shows pool reserves, impermanent loss, fees earned, and net PnL.
-// Data flows from the backend's metrics/lp.go calculations, which track
-// how the LP position performs vs simply holding the initial assets.
-//
-// CONNECTIONS:
-//   - Backend data:  metrics/lp.go LPData (IL, fees, net PnL calculations)
-//   - WebSocket msg: "lp_metrics" from broadcast.go BroadcastLPMetrics
-//   - REST fallback: GET /lp/metrics via hooks/usePriceData.ts
-//   - Types:         types/index.ts LPMetrics, LPSnapshot
 'use client';
 
 import type { LPMetrics } from '@/types';
@@ -41,60 +30,57 @@ function MetricCard({ label, value, subValue, positive }: {
 
 export function LPStats({ metrics }: LPStatsProps) {
   if (!metrics) {
-    return (
-      <div className="bg-surface rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium text-white mb-4">LP Metrics</h3>
-        <div className="text-gray-500 text-center py-4">Loading...</div>
-      </div>
-    );
+    return <div className="text-gray-500 text-center py-4">Loading…</div>;
   }
 
-  const formatETH = (value: number) => value.toFixed(2);
-  const formatPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
-  const formatPrice = (value: number) => value.toFixed(4);
+  const f = (v: number | undefined | null) => {
+    if (v === undefined || v === null || isNaN(v)) return '0.00';
+    return v.toFixed(2);
+  };
+  const pct = (v: number | undefined | null) => {
+    if (v === undefined || v === null || isNaN(v)) return '+0.00%';
+    return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+  };
+  const isPositive = (v: number | undefined | null): boolean => {
+    if (v === undefined || v === null || isNaN(v)) return false;
+    return v >= 0;
+  };
 
   return (
-    <div className="bg-surface rounded-lg border border-border">
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white">LP Metrics</h3>
-        <span className="text-xs text-gray-400">
-          Spot: {formatPrice(metrics.currentPrice)} ETH
-        </span>
-      </div>
-      
-      <div className="p-4 grid grid-cols-2 gap-3">
+    <div className="bg-surface rounded-lg border border-border p-4 grid grid-cols-2 gap-3">
+      <MetricCard
+        label="LP Value"
+        value={`${f(metrics.lpValue)} ETH`}
+        subValue={`HODL: ${f(metrics.hodlValue)} ETH`}
+      />
+
+      <MetricCard
+        label="Impermanent Loss (Price Only)"
+        value={`${f(metrics.theoreticalIL)} ETH`}
+        subValue="AMM rebalancing drag"
+        positive={false}
+      />
+
+      <MetricCard
+        label="LP vs HODL PnL"
+        value={`${f(metrics.lpVsHodlPnL)} ETH`}
+        subValue="Path dependent"
+        positive={isPositive(metrics.lpVsHodlPnL)}
+      />
+
+      <MetricCard
+        label="Fees Earned"
+        value={`${f(metrics.totalFeesUSD)} ETH`}
+        positive={isPositive(metrics.totalFeesUSD)}
+      />
+
+      <div className="col-span-2">
         <MetricCard
-          label="Pool Reserves"
-          value={`${formatETH(metrics.currentApples)} APPL`}
-          subValue={`${formatETH(metrics.currentETH)} ETH`}
+          label="Net PnL"
+          value={`${f(metrics.netPnL)} ETH`}
+          subValue={pct(metrics.netPnLPercent)}
+          positive={isPositive(metrics.netPnL)}
         />
-        
-        <MetricCard
-          label="LP Value"
-          value={`${formatETH(metrics.lpValue)} ETH`}
-          subValue={`HODL: ${formatETH(metrics.hodlValue)} ETH`}
-        />
-        
-        <MetricCard
-          label="Impermanent Loss"
-          value={`${formatETH(metrics.impermanentLoss)} ETH`}
-          positive={false}
-        />
-        
-        <MetricCard
-          label="Fees Earned"
-          value={`${formatETH(metrics.totalFeesUSD)} ETH`}
-          positive={metrics.totalFeesUSD > 0}
-        />
-        
-        <div className="col-span-2">
-          <MetricCard
-            label="Net PnL"
-            value={`${formatETH(metrics.netPnL)} ETH`}
-            subValue={formatPercent(metrics.netPnLPercent)}
-            positive={metrics.netPnL >= 0}
-          />
-        </div>
       </div>
     </div>
   );

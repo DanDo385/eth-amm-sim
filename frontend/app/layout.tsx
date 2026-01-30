@@ -4,6 +4,14 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'ETH-AMM-SIM | DeFi Market Simulator',
   description: 'Portfolio-grade DeFi AMM simulation with TradFi analytics',
+  icons: {
+    icon: [
+      { url: '/icon.png', type: 'image/png' },
+      { url: '/favicon.ico', type: 'image/x-icon' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icon.png',
+  },
 }
 
 export default function RootLayout({
