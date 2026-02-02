@@ -350,18 +350,20 @@ func (s *MemoryStore) Reset() {
 	s.events = make([]KeyEvent, 0) // Clear Key Events on reset
 }
 
-// computeSessionDailyVol calculates the daily volatility (%) from candle close
-// prices observed during the session. Uses the same approach as TWAPChart.tsx:
+// computeSessionDailyVol calculates the realized session volatility (%) from
+// candle close prices observed during the session.
 //
-//	dailyVol = stdDev(returns) * sqrt(periodsPerDay) * 100
+//	sessionVol = stdDev(returns) * sqrt(N) * 100
 //
-// where periodsPerDay is derived from the average candle interval.
+// where N is the number of return observations in the session. This measures
+// the actual dispersion of the session's total return rather than extrapolating
+// to a full 24-hour day (which would be misleading for short simulation runs).
 func computeSessionDailyVol(candles []metrics.Candle) float64 {
 	if len(candles) < 3 {
 		return 0
 	}
 
-	// Calculate log returns between consecutive candle closes
+	// Calculate simple returns between consecutive candle closes
 	returns := make([]float64, 0, len(candles)-1)
 	for i := 1; i < len(candles); i++ {
 		prev := candles[i-1].Close
@@ -388,20 +390,11 @@ func computeSessionDailyVol(candles []metrics.Candle) float64 {
 	variance /= float64(len(returns))
 	stdDev := math.Sqrt(variance)
 
-	// Estimate periods per day from candle timestamps
-	first := candles[0].Timestamp
-	last := candles[len(candles)-1].Timestamp
-	elapsed := last.Sub(first).Seconds()
-	if elapsed <= 0 {
-		return stdDev * math.Sqrt(1440) * 100
-	}
-	avgInterval := elapsed / float64(len(candles)-1)
-	if avgInterval <= 0 {
-		return stdDev * math.Sqrt(1440) * 100
-	}
-	periodsPerDay := 86400.0 / avgInterval
-
-	return stdDev * math.Sqrt(periodsPerDay) * 100
+	// Scale by sqrt(N) to get the session's realized total-return volatility.
+	// This represents the expected dispersion of the cumulative return over
+	// the session, which is intuitive: a session where price ranges 12%
+	// peak-to-trough will report roughly that magnitude.
+	return stdDev * math.Sqrt(float64(len(returns))) * 100
 }
 
 // Compile-time assertion that MemoryStore implements metrics.PriceDataStore

@@ -22,7 +22,7 @@ interface SessionControlsProps {
   onReset: (hardReset?: boolean) => void;
 }
 
-export function SessionControls({ session, isLoading, onStart, onStop, onReset }: SessionControlsProps) {
+export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }: SessionControlsProps) => {
   const [duration, setDuration] = useState(180);
   
   const isRunning = session.status === 'running';
@@ -113,4 +113,4 @@ export function SessionControls({ session, isLoading, onStart, onStop, onReset }
       </div>
     </div>
   );
-}
+};

@@ -6,12 +6,12 @@ interface LPStatsProps {
   metrics: LPMetrics | null;
 }
 
-function MetricCard({ label, value, subValue, positive }: {
+const MetricCard = ({ label, value, subValue, positive }: {
   label: string;
   value: string;
   subValue?: string;
   positive?: boolean;
-}) {
+}) => {
   return (
     <div className="bg-surface-light rounded-lg p-3">
       <div className="text-xs text-gray-400 mb-1">{label}</div>
@@ -26,9 +26,9 @@ function MetricCard({ label, value, subValue, positive }: {
       )}
     </div>
   );
-}
+};
 
-export function LPStats({ metrics }: LPStatsProps) {
+export const LPStats = ({ metrics }: LPStatsProps) => {
   if (!metrics) {
     return <div className="text-gray-500 text-center py-4">Loading…</div>;
   }
@@ -84,4 +84,4 @@ export function LPStats({ metrics }: LPStatsProps) {
       </div>
     </div>
   );
-}
+};

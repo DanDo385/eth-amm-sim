@@ -8,7 +8,7 @@ interface ToastProps {
   onClose: () => void;
 }
 
-export function Toast({ visible, message, onClose }: ToastProps) {
+export const Toast = ({ visible, message, onClose }: ToastProps) => {
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(onClose, 3000); // 3 seconds
@@ -24,5 +24,4 @@ export function Toast({ visible, message, onClose }: ToastProps) {
       </div>
     </div>
   );
-}
-
+};

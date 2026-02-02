@@ -23,7 +23,7 @@ interface TWAPChartProps {
 
 type MetricType = 'twap' | 'stddev';
 
-export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartProps) {
+export const TWAPChart = ({ candles, trades, session, height = 200 }: TWAPChartProps) => {
   const [metricType, setMetricType] = useState<MetricType>('twap');
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -305,4 +305,4 @@ export function TWAPChart({ candles, trades, session, height = 200 }: TWAPChartP
       )}
     </div>
   );
-}
+};

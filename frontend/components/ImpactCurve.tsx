@@ -78,7 +78,7 @@ const inferReservesFromImpact = (buyData: ImpactPoint[], sellData: ImpactPoint[]
   return { apples: applesReserve, eth: ethReserve, source: 'impact' };
 };
 
-export function ImpactCurve({ buyData, sellData, lpMetrics, height = 280 }: ImpactCurveProps) {
+export const ImpactCurve = ({ buyData, sellData, lpMetrics, height = 280 }: ImpactCurveProps) => {
   const reserves = useMemo<Reserves | null>(() => {
     if (lpMetrics && lpMetrics.currentApples > 0 && lpMetrics.currentETH > 0) {
       return { apples: lpMetrics.currentApples, eth: lpMetrics.currentETH, source: 'lp' };
@@ -319,4 +319,4 @@ export function ImpactCurve({ buyData, sellData, lpMetrics, height = 280 }: Impa
       </div>
     </div>
   );
-}
+};

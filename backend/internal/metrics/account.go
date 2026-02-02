@@ -71,17 +71,19 @@ type EquityPoint struct {
 
 // PerformanceData is the API response for account performance
 type PerformanceData struct {
-	Nickname     string        `json:"nickname"`
-	Address      string        `json:"address"`
-	TotalReturn  float64       `json:"totalReturn"`
-	TotalPnL     float64       `json:"totalPnL"`
-	Volatility   float64       `json:"volatility"`
-	SharpeRatio  float64       `json:"sharpeRatio"`
-	MaxDrawdown  float64       `json:"maxDrawdown"`
-	WinRate      float64       `json:"winRate"`
-	TradeCount   int           `json:"tradeCount"`
-	EquityCurve  []EquityPoint `json:"equityCurve"`
-	Trades       []TradeRecord `json:"trades"`
+	Nickname    string        `json:"nickname"`
+	Address     string        `json:"address"`
+	TotalReturn float64       `json:"totalReturn"`  // Portfolio equity change (%)
+	TotalPnL    float64       `json:"totalPnL"`     // Portfolio equity change (ETH) = position + trading
+	PositionPnL float64       `json:"positionPnL"`  // APPL inventory mark-to-market (ETH)
+	TradingPnL  float64       `json:"tradingPnL"`   // Sum of per-trade PnLs (ETH)
+	Volatility  float64       `json:"volatility"`
+	SharpeRatio float64       `json:"sharpeRatio"`
+	MaxDrawdown float64       `json:"maxDrawdown"`
+	WinRate     float64       `json:"winRate"`
+	TradeCount  int           `json:"tradeCount"`
+	EquityCurve []EquityPoint `json:"equityCurve"`
+	Trades      []TradeRecord `json:"trades"`
 }
 
 // NewAccountMetrics creates a new account metrics tracker
@@ -208,18 +210,22 @@ func (am *AccountMetrics) GetPerformance(sessionVol float64) PerformanceData {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 
-	totalReturn := am.calculateTotalReturn()
-	totalPnL := am.calculateTotalPnL()
-	sharpe := am.calculateSharpe(totalReturn, sessionVol)
+	tradingPnL := am.sumTradePnL()
+	portfolioPnL := am.calculatePortfolioPnL()
+	positionPnL := portfolioPnL - tradingPnL
+	tradingReturn := am.calculateTradingReturn()
+	sharpe := am.calculateSharpe(tradingReturn, sessionVol)
 	maxDD := am.calculateMaxDrawdown()
 	winRate := am.calculateWinRate()
 
 	return PerformanceData{
 		Nickname:    am.nickname,
 		Address:     am.address.Hex(),
-		TotalReturn: totalReturn,
-		TotalPnL:    totalPnL,
-		Volatility:  sessionVol, // Same session-level daily vol used in Sharpe denominator
+		TotalReturn: tradingReturn,
+		TotalPnL:    portfolioPnL,
+		PositionPnL: positionPnL,
+		TradingPnL:  tradingPnL,
+		Volatility:  sessionVol,
 		SharpeRatio: sharpe,
 		MaxDrawdown: maxDD,
 		WinRate:     winRate,
@@ -229,25 +235,26 @@ func (am *AccountMetrics) GetPerformance(sessionVol float64) PerformanceData {
 	}
 }
 
-// calculateTotalReturn returns the total return percentage.
-// Return is calculated relative to the full starting portfolio value
-// (1,000 ETH + 1,000 APPL = 2,000 ETH equivalent at price 1.0).
-func (am *AccountMetrics) calculateTotalReturn() float64 {
+// calculateTradingReturn returns the trading return percentage.
+// This is the sum of per-trade PnLs divided by the starting portfolio value.
+// It reflects only the active trading performance, not the initial position
+// mark-to-market. Sharpe ratio and other return metrics use this value.
+func (am *AccountMetrics) calculateTradingReturn() float64 {
 	var baseEquity float64
 	if am.sessionStarted && am.sessionStartEquity > 0 {
 		baseEquity = am.sessionStartEquity
 	} else {
 		baseEquity = am.initialEquity
 	}
-	if baseEquity == 0 || len(am.equityCurve) == 0 {
+	if baseEquity == 0 {
 		return 0
 	}
-	currentEquity := am.equityCurve[len(am.equityCurve)-1].Equity
-	return ((currentEquity - baseEquity) / baseEquity) * 100
+	return (am.sumTradePnL() / baseEquity) * 100
 }
 
-// calculateTotalPnL returns the absolute PnL in ETH
-func (am *AccountMetrics) calculateTotalPnL() float64 {
+// calculatePortfolioPnL returns the total portfolio equity change in ETH.
+// This equals positionPnL + tradingPnL.
+func (am *AccountMetrics) calculatePortfolioPnL() float64 {
 	if len(am.equityCurve) == 0 {
 		return 0
 	}
@@ -258,6 +265,15 @@ func (am *AccountMetrics) calculateTotalPnL() float64 {
 		baseEquity = am.initialEquity
 	}
 	return am.equityCurve[len(am.equityCurve)-1].Equity - baseEquity
+}
+
+// sumTradePnL returns the sum of all per-trade PnL values.
+func (am *AccountMetrics) sumTradePnL() float64 {
+	var total float64
+	for _, t := range am.trades {
+		total += t.PnL
+	}
+	return total
 }
 
 // calculateTradeReturns computes per-trade percentage returns from trade PnL

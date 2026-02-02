@@ -6,7 +6,7 @@ import type { PerformanceData, WSMessage, EquityPoint } from '@/types';
 import * as api from '@/lib/api';
 
 // Simple equity chart component
-function EquityChart({ data, height = 200 }: { data: EquityPoint[]; height?: number }) {
+const EquityChart = ({ data, height = 200 }: { data: EquityPoint[]; height?: number }) => {
   if (data.length < 2) {
     return (
       <div 
@@ -46,10 +46,10 @@ function EquityChart({ data, height = 200 }: { data: EquityPoint[]; height?: num
       </svg>
     </div>
   );
-}
+};
 
 // Drawdown chart component
-function DrawdownChart({ data, height = 100 }: { data: EquityPoint[]; height?: number }) {
+const DrawdownChart = ({ data, height = 100 }: { data: EquityPoint[]; height?: number }) => {
   if (data.length < 2) {
     return (
       <div 
@@ -84,16 +84,16 @@ function DrawdownChart({ data, height = 100 }: { data: EquityPoint[]; height?: n
       </svg>
     </div>
   );
-}
+};
 
 // KPI Tile component
-function KPITile({ label, value, subValue, positive, large }: {
+const KPITile = ({ label, value, subValue, positive, large }: {
   label: string;
   value: string;
   subValue?: string;
   positive?: boolean;
   large?: boolean;
-}) {
+}) => {
   return (
     <div className={`bg-surface rounded-lg border border-border p-4 ${large ? 'col-span-2' : ''}`}>
       <div className="text-sm text-gray-400 mb-1">{label}</div>
@@ -108,9 +108,9 @@ function KPITile({ label, value, subValue, positive, large }: {
       )}
     </div>
   );
-}
+};
 
-export default function PerformancePage() {
+const PerformancePage = () => {
   const [accounts, setAccounts] = useState<PerformanceData[]>([]);
   const [selected, setSelected] = useState<string>('');
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
@@ -199,25 +199,39 @@ export default function PerformancePage() {
           {/* KPI Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <KPITile
-              label="Total Return"
+              label="Trading Return"
               value={formatPercent(performance.totalReturn)}
+              subValue="Trading PnL / starting equity"
               positive={performance.totalReturn >= 0}
               large
             />
             <KPITile
+              label="Trading PnL"
+              value={`${formatNumber(performance.tradingPnL)} ETH`}
+              subValue="Sum of per-trade PnL"
+              positive={performance.tradingPnL >= 0}
+              large
+            />
+            <KPITile
+              label="Position PnL"
+              value={`${formatNumber(performance.positionPnL)} ETH`}
+              subValue="APPL inventory mark-to-market"
+              positive={performance.positionPnL >= 0}
+            />
+            <KPITile
               label="Total PnL"
               value={`${formatNumber(performance.totalPnL)} ETH`}
+              subValue="Position + Trading"
               positive={performance.totalPnL >= 0}
-              large
             />
             <KPITile
               label="Sharpe Ratio"
               value={formatNumber(performance.sharpeRatio)}
-              subValue="Return / session vol"
+              subValue="Trading return / vol"
               positive={performance.sharpeRatio > 0}
             />
             <KPITile
-              label="Daily Volatility"
+              label="Volatility"
               value={`${formatNumber(performance.volatility)}%`}
               subValue="Session realized vol"
             />
@@ -334,4 +348,6 @@ export default function PerformancePage() {
       </div>
     </div>
   );
-}
+};
+
+export default PerformancePage;

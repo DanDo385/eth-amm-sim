@@ -22,7 +22,7 @@ interface AccountMetricsProps {
   onSelect?: (nickname: string) => void;
 }
 
-export function AccountMetrics({ accounts: propAccounts, selectedNickname, onSelect }: AccountMetricsProps) {
+export const AccountMetrics = ({ accounts: propAccounts, selectedNickname, onSelect }: AccountMetricsProps) => {
   const [accounts, setAccounts] = useState<PerformanceData[]>(propAccounts || []);
   const [selected, setSelected] = useState<string>(selectedNickname || '');
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
@@ -128,4 +128,4 @@ export function AccountMetrics({ accounts: propAccounts, selectedNickname, onSel
       </div>
     </div>
   );
-}
+};

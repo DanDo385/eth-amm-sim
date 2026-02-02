@@ -153,6 +153,8 @@ export interface PerformanceData {
   address: string;
   totalReturn: number;
   totalPnL: number;
+  positionPnL: number;
+  tradingPnL: number;
   volatility: number;
   sharpeRatio: number;
   maxDrawdown: number;

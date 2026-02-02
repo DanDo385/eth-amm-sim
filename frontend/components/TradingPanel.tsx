@@ -21,7 +21,7 @@ interface TradingPanelProps {
   session?: SessionState;
 }
 
-export function TradingPanel({ session }: TradingPanelProps) {
+export const TradingPanel = ({ session }: TradingPanelProps) => {
   const [balance, setBalance] = useState<UserBalance | null>(null);
   const [buyAmount, setBuyAmount] = useState('');
   const [sellAmount, setSellAmount] = useState('');
@@ -266,4 +266,4 @@ export function TradingPanel({ session }: TradingPanelProps) {
       />
     </div>
   );
-}
+};

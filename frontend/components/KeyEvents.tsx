@@ -29,7 +29,7 @@ const severityColors: Record<string, string> = {
   critical: 'text-red-400',
 };
 
-export function KeyEvents({ events, height = 200 }: KeyEventsProps) {
+export const KeyEvents = ({ events, height = 200 }: KeyEventsProps) => {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString();
@@ -68,4 +68,4 @@ export function KeyEvents({ events, height = 200 }: KeyEventsProps) {
       </div>
     </div>
   );
-}
+};

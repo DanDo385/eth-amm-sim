@@ -33,7 +33,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import type { Trade, KeyEvent, WSMessage, Candle, LPMetrics, ImpactPoint } from '@/types';
 import * as api from '@/lib/api';
 
-export default function Dashboard() {
+const Dashboard = () => {
   const { session, isLoading, start, stop, reset, updateFromWS } = useSession();
   const { candles, lpMetrics, addCandle, updateLPMetrics, refresh: refreshPriceData } = usePriceData();
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -125,15 +125,23 @@ export default function Dashboard() {
   // Fetch initial data
   useEffect(() => {
     // Fetch more trades to ensure we get all session trades
-    api.getTrades(1000).then(setTrades).catch(console.error);
-    api.getEvents(20).then(setEvents).catch(console.error);
-    api.getImpactCurve().then(setImpactData).catch(console.error);
+    api.getTrades(1000)
+      .then((data) => setTrades(data as Trade[]))
+      .catch(console.error);
+    api.getEvents(20)
+      .then((data) => setEvents(data as KeyEvent[]))
+      .catch(console.error);
+    api.getImpactCurve()
+      .then((data) => setImpactData(data as { buy: ImpactPoint[]; sell: ImpactPoint[] }))
+      .catch(console.error);
   }, []);
 
   // Refresh impact curve when LP metrics change
   useEffect(() => {
     if (lpMetrics) {
-      api.getImpactCurve().then(setImpactData).catch(console.error);
+      api.getImpactCurve()
+        .then((data) => setImpactData(data as { buy: ImpactPoint[]; sell: ImpactPoint[] }))
+        .catch(console.error);
     }
   }, [lpMetrics?.currentApples, lpMetrics?.currentETH]);
 
@@ -198,4 +206,6 @@ export default function Dashboard() {
       </div>
     </div>
   );
-}
+};
+
+export default Dashboard;

@@ -21,7 +21,7 @@ interface BlotterProps {
   height?: number; // Height in pixels (defaults to 350 to match PriceChart)
 }
 
-export function Blotter({ trades, maxRows, height = 350 }: BlotterProps) {
+export const Blotter = ({ trades, maxRows, height = 350 }: BlotterProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   
@@ -143,4 +143,4 @@ export function Blotter({ trades, maxRows, height = 350 }: BlotterProps) {
       </div>
     </div>
   );
-}
+};

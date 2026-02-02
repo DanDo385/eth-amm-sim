@@ -80,7 +80,7 @@ export async function getTrades(limit?: number) {
 }
 
 export async function getImpactCurve() {
-  return fetchAPI<import('@/types').ImpactCurve>('/impact-curve');
+  return fetchAPI('/impact-curve');
 }
 
 export async function getEvents(limit?: number) {

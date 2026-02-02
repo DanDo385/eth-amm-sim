@@ -22,7 +22,7 @@ interface PriceChartProps {
   onPriceRangeChange?: (range: { min: number; max: number }) => void;
 }
 
-export function PriceChart({ candles, session, height = 300, onPriceRangeChange }: PriceChartProps) {
+export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange }: PriceChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -187,4 +187,4 @@ export function PriceChart({ candles, session, height = 300, onPriceRangeChange 
       <div ref={containerRef} />
     </div>
   );
-}
+};
