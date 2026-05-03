@@ -2,6 +2,15 @@
 
 Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer in crypto/blockchain. It wires Solidity contracts to a Go execution engine and a Next.js dashboard so you can explain protocol mechanics, real-time data pipelines, and system design tradeoffs in one cohesive project.
 
+## Portfolio demo package
+
+- Loom guide: [`DEMO_GUIDE.md`](./DEMO_GUIDE.md)
+- Recommended video length: 180 seconds
+- Portfolio tag: `sim`
+- Best GIF loop: start bots → whale row pulses → price/TWAP/LP panels move
+- Thumbnail hook: `AMM EXECUTION LAB`
+
+
 ## Why this project exists
 This repo is intentionally built for demoability:
 - Clear, inspectable end-to-end flow (contracts -> backend -> UI).

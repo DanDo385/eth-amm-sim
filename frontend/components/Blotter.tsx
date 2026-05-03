@@ -78,6 +78,12 @@ export const Blotter = ({ trades, maxRows, height = 350 }: BlotterProps) => {
     return date.toLocaleTimeString();
   };
 
+  const rowClassName = (trade: Trade) => {
+    const sideClass = trade.isBuy ? 'trade-row-buy' : 'trade-row-sell';
+    const isWhale = trade.nickname?.toLowerCase().includes('whale');
+    return isWhale ? `${sideClass} trade-row-whale` : sideClass;
+  };
+
   return (
     <div className="bg-surface rounded-lg border border-border">
       <div className="px-4 py-3 border-b border-border">
@@ -110,7 +116,7 @@ export const Blotter = ({ trades, maxRows, height = 350 }: BlotterProps) => {
               displayTrades.map((trade, i) => (
                 <tr 
                   key={trade.txHash || i} 
-                  className={trade.isBuy ? 'trade-row-buy' : 'trade-row-sell'}
+                  className={rowClassName(trade)}
                 >
                   <td className="px-3 py-2 text-gray-300">
                     {formatTime(trade.timestamp)}

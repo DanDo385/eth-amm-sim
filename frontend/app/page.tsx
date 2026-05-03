@@ -20,6 +20,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
 import { TradingPanel } from '@/components/TradingPanel';
+import { LoomDemoDirector } from '@/components/LoomDemoDirector';
 import { PriceChart } from '@/components/PriceChart';
 import { TWAPChart } from '@/components/TWAPChart';
 import { Blotter } from '@/components/Blotter';
@@ -162,6 +163,9 @@ const Dashboard = () => {
           </span>
         </div>
       </div>
+
+      {/* Demo spine for Loom/GIF recording */}
+      <LoomDemoDirector />
 
       {/* Main Grid - Using 15 columns for wider layout */}
       <div className="grid grid-cols-15 gap-6">

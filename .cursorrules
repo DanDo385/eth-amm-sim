@@ -1,37 +1,5 @@
-# eth-amm-sim .cursorrules
-# Demo-first AMM simulator. Clarity and explicit logic over production rigor.
+# Cursor shim
 
-## Principles
-- Prefer simple, readable code over abstractions.
-- Keep data flow visible (logs + in-memory state).
-- Avoid new frameworks, layers, or indirection unless explicitly requested.
-- Demo value > completeness. Small changes over big rewrites.
+Canonical instructions live in AGENTS.md.
 
-## Scope (current system)
-- Local Anvil chain with AppleToken + AppleAMM.
-- Go backend polls chain every 2s and streams over WebSocket.
-- Bots run per session and stop on context cancel.
-- Frontend is Next.js App Router + Tailwind + lightweight-charts.
-
-## Go backend rules
-- Use context for all RPC calls; add timeouts for external calls.
-- Use errgroup for coordinating long-lived goroutines.
-- Tie goroutines to session/server lifecycles; no orphaned workers.
-- Return errors to the caller; log only at boundaries.
-
-## Solidity rules
-- Keep contracts minimal and readable; no proxies/upgradeability.
-- Use ReentrancyGuard for state-changing functions.
-- Use Address.sendValue for ETH transfers.
-
-## Frontend rules
-- Hooks own data fetching/state; components are mostly presentational.
-- Do not compute financial metrics in the frontend.
-
-## Out of scope unless requested
-- Databases, auth, background job systems.
-- Leverage, margin, liquidation mechanics.
-
-## Documentation
-- README must match current behavior, parameters, and endpoints.
-- If you change bots, metrics, or routes, update README and frontend types.
+Read AGENTS.md first. Do not duplicate or diverge from it here.
