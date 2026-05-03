@@ -35,7 +35,7 @@ The whale trade is the visual moment, not the whole thesis. The stronger thesis 
 
 1. Start the Loom launcher:
 
-   cd /Users/openclaw/eth-amm-sim
+   cd /Users/openclaw/Code/eth-amm-sim
    make demo-120
 
 2. Open the app in a clean browser window at `http://localhost:3000`.

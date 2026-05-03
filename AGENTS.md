@@ -48,6 +48,6 @@ local chain -> contracts -> Go/geth execution -> real-time state -> risk/market 
 Before reporting success after code changes:
 
 ```bash
-cd /Users/openclaw/eth-amm-sim/frontend
+cd /Users/openclaw/Code/eth-amm-sim/frontend
 npm run build
 ```
