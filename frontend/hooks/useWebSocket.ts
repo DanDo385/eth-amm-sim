@@ -28,7 +28,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
 
   // Add a message handler
