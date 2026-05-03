@@ -161,33 +161,43 @@ export const TradingPanel = ({ session }: TradingPanelProps) => {
     }
   };
 
+  const executeSell = async (amount: string, label = 'User trade') => {
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await tradeSell(amount);
+      const toast = buildToastMessage(label, result, false, amount);
+      setToastMessage(toast);
+      setShowToast(true);
+      setSuccess(`${label} successful!`);
+      setSellAmount('');
+      await loadBalance();
+    } catch (err: any) {
+      setError(err.message || `${label} failed`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSell = async () => {
     if (!sellAmount || parseFloat(sellAmount) <= 0) {
       setError('Please enter a valid APPL amount');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    await executeSell(sellAmount);
+  };
 
-    try {
-      const result = await tradeSell(sellAmount);
-      const toast = buildToastMessage('User trade', result, false, sellAmount);
-      setToastMessage(toast);
-      setShowToast(true);
-      setSuccess(`Trade successful!`);
-      setSellAmount('');
-      await loadBalance();
-    } catch (err: any) {
-      setError(err.message || 'Trade failed');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleMarketShock = async () => {
+    const shockSize = '500';
+    await executeSell(shockSize, 'Market shock');
   };
 
   const ethBalance = balance ? formatWei(balance.ethBalance) : '0.0000';
   const appleBalance = balance ? formatWei(balance.appleBalance) : '0.0000';
+  const canShockPool = session?.status === 'running' && Number(appleBalance) >= 500 && !isLoading;
 
   return (
     <div className="bg-surface rounded-lg border border-border p-4">
@@ -234,6 +244,22 @@ export const TradingPanel = ({ session }: TradingPanelProps) => {
             Buy
           </button>
         </div>
+      </div>
+
+      {/* Demo shock */}
+      <div className="mb-4 rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-purple-200">Loom visual beat</div>
+        <p className="mt-1 text-xs leading-5 text-gray-300">
+          Trigger this around 1:25 after normal bots are running. It creates the reliable price-impact moment for the recording.
+          The button unlocks once the session is running and the user wallet has at least 500 APPL.
+        </p>
+        <button
+          onClick={handleMarketShock}
+          disabled={!canShockPool}
+          className="mt-3 w-full rounded bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Shock Pool: sell 500 APPL
+        </button>
       </div>
 
       {/* Sell Section */}

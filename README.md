@@ -5,10 +5,14 @@ Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer
 ## Portfolio demo package
 
 - Loom guide: [`DEMO_GUIDE.md`](./DEMO_GUIDE.md)
-- Recommended video length: 180 seconds
+- Recommended launcher: `make demo-120`
+- Recommended video length: 120 seconds primary, 180 seconds deep cut
 - Portfolio tag: `sim`
-- Best GIF loop: start bots → whale row pulses → price/TWAP/LP panels move
+- Best GIF loop: start bots → Shock Pool → price/TWAP/LP panels move
 - Thumbnail hook: `AMM EXECUTION LAB`
+- Loom link: TBD
+- Preview MP4/GIF: TBD
+- Architecture image: dashboard includes a built-in Show Architecture panel
 
 
 ## Why this project exists

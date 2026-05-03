@@ -33,20 +33,19 @@ The whale trade is the visual moment, not the whole thesis. The stronger thesis 
 
 ## What to run before recording
 
-1. Start the repo using the normal workflow from the README.
-2. Start the frontend:
+1. Start the Loom launcher:
 
-   cd /Users/openclaw/eth-amm-sim/frontend
-   npm run dev
+   cd /Users/openclaw/eth-amm-sim
+   make demo-120
 
-3. Open the app in a clean browser window.
-4. Zoom browser to 90-100% so the Loom Demo Director, chart, blotter, and LP panels fit.
-5. Reset the session before recording.
-6. Start the simulation.
-7. Let a few normal bot/retail trades appear first.
-8. Trigger or wait for the whale scenario.
-9. Keep the trade blotter, price chart, TWAP, reserves, and LP metrics visible when the whale row pulses.
-10. Close by comparing simulation boundaries to real market infrastructure.
+2. Open the app in a clean browser window at `http://localhost:3000`.
+3. Zoom browser to 90-100% so the Loom Demo Director, Show Architecture panel, chart, blotter, and LP panels fit.
+4. Reset the session before recording.
+5. Click Start. The dashboard now defaults to a 120-second session for recording.
+6. Let a few normal bot/retail trades appear first.
+7. Around 1:25, click **Shock Pool: sell 500 APPL** for the deterministic price-impact moment.
+8. Keep the trade blotter, price chart, TWAP, reserves, and LP metrics visible when the shock lands.
+9. Close by comparing simulation boundaries to real market infrastructure.
 
 ## Step-by-step 180-second Loom
 

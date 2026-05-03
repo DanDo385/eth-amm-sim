@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
 import { TradingPanel } from '@/components/TradingPanel';
 import { LoomDemoDirector } from '@/components/LoomDemoDirector';
+import { DemoArchitecturePanel } from '@/components/DemoArchitecturePanel';
 import { PriceChart } from '@/components/PriceChart';
 import { TWAPChart } from '@/components/TWAPChart';
 import { Blotter } from '@/components/Blotter';
@@ -178,6 +179,7 @@ const Dashboard = () => {
             onStop={stop}
             onReset={handleReset}
           />
+          <DemoArchitecturePanel />
           <TradingPanel session={session} />
           <LPStats metrics={lpMetrics} />
           <AccountMetrics />

@@ -1,4 +1,4 @@
-.PHONY: anvil deploy bindings backend frontend clean test-contracts up down kill-anvil kill-backend kill-all
+.PHONY: anvil deploy bindings backend frontend clean test-contracts up demo-120 down kill-anvil kill-backend kill-all
 
 # Kill any existing Anvil process
 kill-anvil:
@@ -61,6 +61,12 @@ setup: contracts-install frontend-install bindings
 
 # Launch Anvil + deploy + backend + frontend in separate Terminal windows (macOS)
 up:
+	./scripts/dev-up.sh
+
+# Loom-ready deterministic demo launcher. Frontend defaults to a 120 second session.
+demo-120: kill-all
+	@echo "Starting Loom demo mode: Anvil + deploy + Go backend + Next.js frontend"
+	@echo "Open http://localhost:3000, click Start, then use Shock Pool around 1:25."
 	./scripts/dev-up.sh
 
 # Stop tmux session and all running services

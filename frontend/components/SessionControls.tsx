@@ -23,7 +23,7 @@ interface SessionControlsProps {
 }
 
 export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }: SessionControlsProps) => {
-  const [duration, setDuration] = useState(180);
+  const [duration, setDuration] = useState(120);
   
   const isRunning = session.status === 'running';
   const isCompleted = session.status === 'completed';
@@ -52,6 +52,9 @@ export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }
       {/* Duration input */}
       <div className="mb-4">
         <label className="block text-sm text-gray-400 mb-1">Duration (seconds)</label>
+        <div className="mb-2 rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[11px] leading-4 text-cyan-200">
+          Loom default: 120 seconds. One clean pass, one retake max.
+        </div>
         <input
           type="number"
           value={duration}
