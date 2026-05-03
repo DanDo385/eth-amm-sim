@@ -8,7 +8,7 @@ Do not add separate root-level `.cursorrules`, `CLAUDE.md`, `GEMINI.md`, or tool
 
 `eth-amm-sim` is a portfolio-grade AMM execution simulation. It demonstrates a local EVM-compatible chain, Foundry/Anvil deployment, immutable Solidity contracts, Go/geth execution infrastructure, bot behavior, WebSocket streaming, and a Next.js dashboard for AMM observability.
 
-Portfolio lane: `sim`.
+Demo focus: AMM execution lab.
 
 ## Demo principle
 

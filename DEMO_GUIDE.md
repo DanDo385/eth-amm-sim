@@ -1,7 +1,7 @@
 # Loom Demo Guide: eth-amm-sim
 
 Status: optimized for a natural 180-second project walkthrough.
-Portfolio tag: sim
+Demo focus: AMM execution lab
 Primary repo URL: https://github.com/DanDo385/eth-amm-sim
 
 ## Core story
@@ -16,7 +16,7 @@ One-liner:
 A production-shaped DeFi simulation where Solidity contracts, Go execution infrastructure, and a real-time dashboard expose how AMM trades move price, liquidity, TWAP, and LP risk.
 
 Positioning:
-This is the `sim` lane. It is not a cartoon explainer and it is not a mainnet trading bot. It is a controlled simulation that proves the software shape of DeFi execution infrastructure.
+This is not a cartoon explainer and it is not a mainnet trading bot. It is a controlled AMM execution lab that proves the software shape of DeFi execution infrastructure.
 
 ## What the Loom should feel like
 

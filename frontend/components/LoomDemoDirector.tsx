@@ -39,8 +39,8 @@ export function LoomDemoDirector() {
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-300">
-          <div className="font-semibold text-white">Portfolio tag</div>
-          <div className="text-slate-400">sim</div>
+          <div className="font-semibold text-white">Demo focus</div>
+          <div className="text-slate-400">AMM execution lab</div>
           <div className="mt-2 font-semibold text-white">Best GIF loop</div>
           <div className="text-slate-400">Start bots → whale row pulses → price/TWAP/LP panels move</div>
         </div>
