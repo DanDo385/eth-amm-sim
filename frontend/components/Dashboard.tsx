@@ -20,7 +20,7 @@ import type { Trade, KeyEvent, WSMessage, Candle, LPMetrics, ImpactPoint, Sessio
 import * as api from '@/lib/api';
 
 export default function Dashboard() {
-  const { session, isLoading, start, stop, reset, updateFromWS } = useSession();
+  const { session, isLoading, error: sessionError, start, stop, reset, updateFromWS } = useSession();
   const { candles, lpMetrics, addCandle, updateLPMetrics, refresh: refreshPriceData } = usePriceData();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [events, setEvents] = useState<KeyEvent[]>([]);
@@ -141,6 +141,7 @@ export default function Dashboard() {
           <SessionControls
             session={session}
             isLoading={isLoading}
+            error={sessionError}
             onStart={start}
             onStop={stop}
             onReset={handleReset}

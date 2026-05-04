@@ -126,8 +126,9 @@ Why Go is especially well-suited here:
 
 ## Prerequisites
 - **Foundry** (forge, anvil)
-- **Go** 1.21+
-- **Node.js** 18+ (npm)
+- **Go** 1.26+ (matches `backend/go.mod`; use `GOTOOLCHAIN=auto` if your local toolchain is older)
+- **Node.js** 20+ (npm)
+- **Next.js** in this repo tracks a **canary** release (see `frontend/package.json`); pin to a stable release if you need maximum reproducibility for interviews.
 - **tmux** (optional but recommended for `make up`)
 - **abigen** (from go-ethereum) for Go contract bindings
 - **jq** or **python3** for ABI extraction in `scripts/generate-bindings.sh`
@@ -190,6 +191,10 @@ make backend
 make frontend
 ```
 
+## Frontend checks
+
+From `frontend/`, `npm run lint` runs **`tsc --noEmit`** (the Next canary CLI in this repo does not ship `next lint`).
+
 ## Useful Make Targets
 - `make setup` - install deps and generate bindings
 - `make anvil` - start local chain on :8545
@@ -206,6 +211,23 @@ make frontend
 - **AMM constants & thresholds**: `backend/internal/config/amm.go`
 - **Chain + session defaults**: `backend/internal/config/config.go`
 
+### Backend security (optional, for non-local demos)
+
+By default the Go server uses **permissive CORS and WebSocket origin checks** so local `localhost` / LAN demos work without extra setup.
+
+To restrict browser origins, set a comma-separated allowlist:
+
+```bash
+export ETH_AMM_SIM_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+```
+
+When this variable is set, requests with an `Origin` header not in the list receive **403** (REST and WebSocket upgrade).
+
+### Health endpoints
+
+- `GET /healthz` — process liveness: `uptime_seconds`, `ws_clients`, `broadcast_queue_len`
+- `GET /readyz` — same payload once the HTTP server has started (503 only if called before startup, which is unusual in normal operation)
+
 Common knobs:
 - Session duration
 - Bot frequency and max trade size
@@ -213,6 +235,8 @@ Common knobs:
 - Volatility and LP metrics behavior
 
 ## API Endpoints (REST)
+- GET  `/healthz` — liveness JSON (`uptime_seconds`, `ws_clients`, `broadcast_queue_len`)
+- GET  `/readyz` — readiness JSON (same shape once the server has started)
 - POST `/session/start` (optional body: `{ "duration": 300 }`)
 - POST `/session/stop`
 - POST `/session/reset` (query: `?hard=true` for hard reset)
@@ -231,6 +255,8 @@ Common knobs:
 ## WebSocket
 - [ws://localhost:8080/stream](ws://localhost:8080/stream)
 - Message types: `trade`, `price`, `lp_metrics`, `key_event`, `session_state`, `account_update`, `trades`, `candles`, `events`.
+
+If logs show **broadcast queue full** or the UI stops updating while the backend still runs, you usually have a **stale or slow WebSocket client** (background browser tab, full TCP buffers). Close extra tabs, hard-refresh the dashboard, or set `ETH_AMM_SIM_ALLOWED_ORIGINS` correctly. See [docs/SESSION_BOT_LIFECYCLE.md](docs/SESSION_BOT_LIFECYCLE.md) for session vs process lifetime.
 
 ## Demo Walkthrough (5 minutes)
 1. `make up` and open [http://localhost:3000](http://localhost:3000).

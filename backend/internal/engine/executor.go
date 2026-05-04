@@ -95,10 +95,15 @@ func NewExecutor(
 	nonceManager *chain.NonceManager,
 	ammAddress common.Address,
 	tokenAddress common.Address,
-) *Executor {
-	// Create contract bindings
-	ammContract, _ := contracts.NewAppleAMM(ammAddress, client.Client)
-	tokenContract, _ := contracts.NewAppleToken(tokenAddress, client.Client)
+) (*Executor, error) {
+	ammContract, err := contracts.NewAppleAMM(ammAddress, client.Client)
+	if err != nil {
+		return nil, fmt.Errorf("apple AMM binding: %w", err)
+	}
+	tokenContract, err := contracts.NewAppleToken(tokenAddress, client.Client)
+	if err != nil {
+		return nil, fmt.Errorf("apple token binding: %w", err)
+	}
 
 	return &Executor{
 		client:        client,
@@ -110,7 +115,7 @@ func NewExecutor(
 		tokenContract: tokenContract,
 		nicknames:     make(map[common.Address]string),
 		callbackSem:   make(chan struct{}, 100), // Limit to 100 concurrent callback goroutines
-	}
+	}, nil
 }
 
 // SetNickname sets the nickname for an address

@@ -6,7 +6,7 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build && node -e \"console.log('\\n  Built. Run: npm run start  →  http://localhost:3000  (backend must be on :8080)\\n')\"",
     "start": "next start -H 0.0.0.0",
-    "lint": "next lint"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "lightweight-charts": "^4.1.0",

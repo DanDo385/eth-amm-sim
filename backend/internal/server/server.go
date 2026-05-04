@@ -27,6 +27,8 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,28 +53,35 @@ type Server struct {
 	clientsMu   sync.RWMutex
 	broadcast   chan interface{}
 	broadcastClosed int32 // Atomic flag to track if broadcast channel is closed
+	// Rate-limit noisy "channel full" logs when the writer falls behind.
+	broadcastDropLogMu   sync.Mutex
+	lastBroadcastDropLog time.Time
 
 	// Session finalization guard — ensures FinalizeAccountsForSession runs
 	// exactly once per session, whether stopped manually or by auto-expire.
 	sessionFinalized int32
 
 	httpServer *http.Server
+
+	// allowedOrigins: if non-nil, only these Origin values may use CORS and WS.
+	// When nil, permissive dev mode (any origin). Set ETH_AMM_SIM_ALLOWED_ORIGINS.
+	allowedOrigins map[string]struct{}
+	startedAt      time.Time
 }
 
 // NewServer creates a new server
 func NewServer(session *engine.Session, store *store.MemoryStore, executor *engine.Executor) *Server {
 	s := &Server{
-		router:   mux.NewRouter(),
-		session:  session,
-		store:    store,
-		executor: executor,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for development
-			},
-		},
-		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan interface{}, 100),
+		router:         mux.NewRouter(),
+		session:        session,
+		store:          store,
+		executor:       executor,
+		clients:        make(map[*websocket.Conn]bool),
+		broadcast:      make(chan interface{}, 1024),
+		allowedOrigins: parseAllowedOriginsFromEnv(),
+	}
+	s.upgrader.CheckOrigin = func(r *http.Request) bool {
+		return s.webSocketOriginOK(r)
 	}
 
 	session.SetOnSessionEnded(func() {
@@ -83,10 +92,47 @@ func NewServer(session *engine.Session, store *store.MemoryStore, executor *engi
 	return s
 }
 
+func parseAllowedOriginsFromEnv() map[string]struct{} {
+	raw := strings.TrimSpace(os.Getenv("ETH_AMM_SIM_ALLOWED_ORIGINS"))
+	if raw == "" {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		o := strings.TrimSpace(part)
+		if o != "" {
+			out[o] = struct{}{}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *Server) originAllowed(origin string) bool {
+	if len(s.allowedOrigins) == 0 {
+		return true
+	}
+	if origin == "" {
+		return true
+	}
+	_, ok := s.allowedOrigins[origin]
+	return ok
+}
+
+func (s *Server) webSocketOriginOK(r *http.Request) bool {
+	return s.originAllowed(r.Header.Get("Origin"))
+}
+
 // setupRoutes configures all HTTP routes
 func (s *Server) setupRoutes() {
-	// Enable CORS
-	s.router.Use(corsMiddleware)
+	s.router.Use(func(next http.Handler) http.Handler {
+		return s.corsMiddleware(next)
+	})
+
+	s.router.HandleFunc("/healthz", s.handleHealthz).Methods("GET", "OPTIONS")
+	s.router.HandleFunc("/readyz", s.handleReadyz).Methods("GET", "OPTIONS")
 	
 	// Session endpoints
 	s.router.HandleFunc("/session/start", s.handleSessionStart).Methods("POST", "OPTIONS")
@@ -118,6 +164,9 @@ func (s *Server) setupRoutes() {
 
 // Start starts the HTTP server
 func (s *Server) Start(addr string) error {
+	if s.startedAt.IsZero() {
+		s.startedAt = time.Now()
+	}
 	s.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: s.router,
@@ -149,6 +198,8 @@ func (s *Server) Stop(ctx context.Context) error {
 	s.clientsMu.Lock()
 	clientCount := len(s.clients)
 	for client := range s.clients {
+		// Unblock ReadMessage in handleConnection so HTTP Shutdown does not hang.
+		_ = client.SetReadDeadline(time.Now())
 		client.Close()
 		delete(s.clients, client)
 	}
@@ -177,32 +228,41 @@ func (s *Server) Broadcast(msg interface{}) {
 	select {
 	case s.broadcast <- msg:
 	default:
-		log.Println("Broadcast channel full, dropping message")
+		s.broadcastDropLogMu.Lock()
+		if time.Since(s.lastBroadcastDropLog) > 5*time.Second {
+			log.Printf("broadcast: outbound queue full, dropping (writer blocked or clients too slow; see write deadline in runBroadcast)")
+			s.lastBroadcastDropLog = time.Now()
+		}
+		s.broadcastDropLogMu.Unlock()
 	}
 }
 
 // runBroadcast handles broadcasting messages to all clients
 func (s *Server) runBroadcast() {
+	const writeWait = 3 * time.Second
 	for msg := range s.broadcast {
 		data, err := json.Marshal(msg)
 		if err != nil {
 			log.Printf("Error marshaling broadcast: %v", err)
 			continue
 		}
-		
-		// Collect failed clients during read-locked iteration
-		var failed []*websocket.Conn
+
 		s.clientsMu.RLock()
-		for client := range s.clients {
+		clients := make([]*websocket.Conn, 0, len(s.clients))
+		for c := range s.clients {
+			clients = append(clients, c)
+		}
+		s.clientsMu.RUnlock()
+
+		var failed []*websocket.Conn
+		for _, client := range clients {
+			_ = client.SetWriteDeadline(time.Now().Add(writeWait))
 			err := client.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
-				log.Printf("Error sending to client: %v", err)
 				failed = append(failed, client)
 			}
 		}
-		s.clientsMu.RUnlock()
-		
-		// Delete failed clients under write lock
+
 		if len(failed) > 0 {
 			s.clientsMu.Lock()
 			for _, client := range failed {
@@ -220,20 +280,65 @@ type WSMessage struct {
 	Data interface{} `json:"data"`
 }
 
-// CORS middleware
-func corsMiddleware(next http.Handler) http.Handler {
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		permissive := len(s.allowedOrigins) == 0
+
+		if permissive {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			if origin != "" && !s.originAllowed(origin) {
+				if r.Method == http.MethodOptions {
+					http.Error(w, "origin not allowed", http.StatusForbidden)
+					return
+				}
+				http.Error(w, "origin not allowed", http.StatusForbidden)
+				return
+			}
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
-		if r.Method == "OPTIONS" {
+
+		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	s.clientsMu.RLock()
+	n := len(s.clients)
+	s.clientsMu.RUnlock()
+
+	qLen := len(s.broadcast)
+
+	uptime := int64(0)
+	if !s.startedAt.IsZero() {
+		uptime = int64(time.Since(s.startedAt).Seconds())
+	}
+
+	respondJSON(w, map[string]interface{}{
+		"status":               "ok",
+		"uptime_seconds":       uptime,
+		"ws_clients":           n,
+		"broadcast_queue_len":  qLen,
+	})
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if s.startedAt.IsZero() {
+		respondError(w, http.StatusServiceUnavailable, "server not started")
+		return
+	}
+	s.handleHealthz(w, r)
 }
 
 // Helper functions

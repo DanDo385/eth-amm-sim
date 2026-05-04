@@ -17,12 +17,13 @@ import type { SessionState } from '@/types';
 interface SessionControlsProps {
   session: SessionState;
   isLoading: boolean;
+  error?: string | null;
   onStart: (duration: number) => void;
   onStop: () => void;
   onReset: (hardReset?: boolean) => void;
 }
 
-export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }: SessionControlsProps) => {
+export const SessionControls = ({ session, isLoading, error, onStart, onStop, onReset }: SessionControlsProps) => {
   const [duration, setDuration] = useState(120);
   
   const isRunning = session.status === 'running';
@@ -39,6 +40,15 @@ export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }
   
   return (
     <div className="bg-surface rounded-lg p-4 border border-border">
+      {error && (
+        <div
+          className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-medium text-white">Session Control</h2>
         <div className="flex items-center space-x-2">

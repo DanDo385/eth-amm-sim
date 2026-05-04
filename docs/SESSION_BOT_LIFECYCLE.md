@@ -68,3 +68,15 @@ Optional: watch backend logs for your bot nicknames; session 2 should show susta
 
 Treat each session as: **new context in, cancel out**.  
 Do not store **one-way** shutdown state on long-lived bot objects unless you **reset** it at the start of every session.
+
+## WebSocket broadcast backpressure (operator notes)
+
+The Go server fans out updates on a **bounded outbound queue** and applies **per-connection write deadlines** so one slow browser tab cannot block the whole simulator indefinitely.
+
+If you still see **queue full** log lines:
+
+1. Close duplicate dashboard tabs (each opens `/stream`).
+2. Hard-refresh the UI after a long idle period.
+3. Confirm `ETH_AMM_SIM_ALLOWED_ORIGINS` includes the exact browser origin when using a strict allowlist (otherwise the browser may retry in a bad state).
+
+For JSON snapshots, use REST (`GET /trades`, `GET /session/state`) if you need a guaranteed read while debugging WebSocket delivery.

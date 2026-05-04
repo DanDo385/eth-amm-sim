@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -40,7 +41,14 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Body != nil {
-		json.NewDecoder(r.Body).Decode(&body)
+		defer r.Body.Close()
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&body); err != nil {
+			if err != io.EOF {
+				respondError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+				return
+			}
+		}
 	}
 
 	if body.Duration > 0 {

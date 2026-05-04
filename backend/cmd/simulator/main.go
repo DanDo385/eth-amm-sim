@@ -92,7 +92,10 @@ func main() {
 
 	// Initialize components
 	nonceManager := chain.NewNonceManager(client)
-	executor := engine.NewExecutor(client, nonceManager, cfg.AMMAddress, cfg.TokenAddress)
+	executor, err := engine.NewExecutor(client, nonceManager, cfg.AMMAddress, cfg.TokenAddress)
+	if err != nil {
+		log.Fatalf("Failed to create executor: %v", err)
+	}
 
 	// Verify contracts are deployed and initialized
 	ctx := context.Background()
@@ -269,8 +272,6 @@ func main() {
 
 	// Wait for errgroup (will return first error or nil if context cancelled)
 	serviceErr := eg.Wait()
-
-	log.Println("=== Shutdown complete ===")
 
 	log.Println("=== Shutdown complete ===")
 

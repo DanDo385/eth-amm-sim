@@ -80,6 +80,7 @@ export function useSession() {
   // Update session state from WebSocket
   const updateFromWS = useCallback((state: SessionState) => {
     setSession(state);
+    setError(null);
   }, []);
 
   // Poll for elapsed time when running
