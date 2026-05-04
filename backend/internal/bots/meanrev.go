@@ -157,9 +157,6 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 		case <-ctx.Done():
 			log.Printf("[%s] MeanRev bot stopped (context cancelled)", m.Nickname())
 			return
-		case <-m.stopCh:
-			log.Printf("[%s] MeanRev bot stopped", m.Nickname())
-			return
 		default:
 			// Check for trading signals more frequently (reduced delay for faster response)
 			// Use shorter delay: 0.5-1.5 seconds instead of configured TradeFreqMin/Max
@@ -167,8 +164,6 @@ func (m *MeanRevBot) Run(ctx context.Context) {
 			delay := time.Duration(delayMs) * time.Millisecond
 			select {
 			case <-ctx.Done():
-				return
-			case <-m.stopCh:
 				return
 			case <-time.After(delay):
 			}

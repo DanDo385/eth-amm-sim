@@ -137,9 +137,7 @@ func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Finalize accounts (atomic guard ensures this runs only once even if
-	// the OnStateChange callback also fires).
-	s.finalizeSession()
+	// Finalization runs in Session.run after bots stop (see SetOnSessionEnded).
 
 	// Record session stop event
 	event := store.KeyEvent{

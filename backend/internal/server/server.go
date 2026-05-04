@@ -74,7 +74,11 @@ func NewServer(session *engine.Session, store *store.MemoryStore, executor *engi
 		clients:   make(map[*websocket.Conn]bool),
 		broadcast: make(chan interface{}, 100),
 	}
-	
+
+	session.SetOnSessionEnded(func() {
+		s.finalizeSession()
+	})
+
 	s.setupRoutes()
 	return s
 }
@@ -129,14 +133,10 @@ func (s *Server) Start(addr string) error {
 		s.runBroadcast()
 	}()
 	
-	// Register session state callback
+	// Register session state callback (broadcast only; finalization runs in
+	// Session.run via SetOnSessionEnded after orchestrator.Stop completes).
 	s.session.OnStateChange(func(state engine.SessionState) {
 		s.Broadcast(WSMessage{Type: "session_state", Data: state})
-		// When the session completes (manual stop or auto-expire), finalize
-		// accounts so that close prices and recalculated PnL are available.
-		if state.Status == engine.StatusCompleted {
-			s.finalizeSession()
-		}
 	})
 	
 	log.Printf("Server starting on %s", addr)
@@ -250,9 +250,10 @@ func respondError(w http.ResponseWriter, status int, message string) {
 }
 
 // finalizeSession fetches the final spot price and finalizes all account
-// metrics (close prices, PnL recalculation, session volatility). It is
-// guarded by an atomic flag so it runs exactly once per session — the first
-// caller wins (manual stop handler or auto-expire callback).
+// metrics (close prices, PnL recalculation, session volatility). It is invoked
+// from Session.run via SetOnSessionEnded after orchestrator.Stop(). Guarded by
+// sessionFinalized so it runs once per completed session; handleSessionStart
+// resets the guard when a new session begins.
 func (s *Server) finalizeSession() {
 	if !atomic.CompareAndSwapInt32(&s.sessionFinalized, 0, 1) {
 		return // already finalized

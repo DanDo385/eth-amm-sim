@@ -27,6 +27,7 @@ export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }
   
   const isRunning = session.status === 'running';
   const isCompleted = session.status === 'completed';
+  const isIdle = session.status === 'idle';
   
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -66,8 +67,8 @@ export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }
         />
       </div>
       
-      {/* Progress bar */}
-      {isRunning && (
+      {/* Progress bar: running (live) or completed (full bar, read-only) */}
+      {(isRunning || isCompleted) && (
         <div className="mb-4">
           <div className="flex justify-between text-sm text-gray-400 mb-1">
             <span>Elapsed</span>
@@ -82,35 +83,38 @@ export const SessionControls = ({ session, isLoading, onStart, onStop, onReset }
         </div>
       )}
       
-      {/* Control buttons */}
-      <div className="flex space-x-2">
-        {!isRunning ? (
-          <>
-            <button
-              onClick={() => onStart(duration)}
-              disabled={isLoading}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
-            >
-              {isLoading ? 'Starting...' : 'Start'}
-            </button>
-            {(isCompleted || session.status === 'idle') && (
-              <button
-                onClick={() => onReset(true)}
-                disabled={isLoading}
-                className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
-                title="Hard reset: Clears all data including account metrics"
-              >
-                Reset
-              </button>
-            )}
-          </>
-        ) : (
+      {/* Control buttons: running → Stop only; completed → Start + Stop + Reset; idle → Start + Reset */}
+      <div className="flex flex-wrap gap-2">
+        {!isRunning && (
           <button
-            onClick={onStop}
+            type="button"
+            onClick={() => onStart(duration)}
             disabled={isLoading}
-            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+            className="min-w-0 flex-1 basis-[40%] bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+          >
+            {isLoading ? 'Starting...' : 'Start'}
+          </button>
+        )}
+        {(isRunning || isCompleted) && (
+          <button
+            type="button"
+            onClick={() => onStop()}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[40%] bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+            title={isCompleted ? 'Dismiss completed session (same as clearing to idle)' : 'Stop simulation'}
           >
             {isLoading ? 'Stopping...' : 'Stop'}
+          </button>
+        )}
+        {!isRunning && (isIdle || isCompleted) && (
+          <button
+            type="button"
+            onClick={() => onReset(true)}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[40%] bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+            title="Hard reset: Clears all data including account metrics"
+          >
+            Reset
           </button>
         )}
       </div>

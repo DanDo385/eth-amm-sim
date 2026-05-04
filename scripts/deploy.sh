@@ -114,7 +114,14 @@ cd "$(dirname "$0")/../contracts"
 # The script uses account 0's private key (from Anvil's deterministic mnemonic)
 # to sign all transactions. Account 0 becomes the contract deployer/owner.
 
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+# --slow: wait for each tx to confirm before sending the next. Avoids Anvil hanging on
+# batched broadcasts (e.g. "25/34 receipts" forever) on some macOS / Foundry combos.
+# --non-interactive: safe for tmux/CI (no size-limit prompts).
+forge script script/Deploy.s.sol \
+  --rpc-url http://127.0.0.1:8545 \
+  --broadcast \
+  --slow \
+  --non-interactive
 
 echo ""
 echo "Deployment complete!"

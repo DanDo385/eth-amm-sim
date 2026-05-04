@@ -29,21 +29,19 @@ import (
 
 // BaseBot contains common functionality for all bots
 type BaseBot struct {
-	config     *config.AccountConfig
-	executor   *engine.Executor
-	store      *store.MemoryStore
-	stopCh     chan struct{}
-	rng        *rand.Rand
+	config   *config.AccountConfig
+	executor *engine.Executor
+	store    *store.MemoryStore
+	rng      *rand.Rand
 }
 
 // NewBaseBot creates a new base bot
 func NewBaseBot(cfg *config.AccountConfig, executor *engine.Executor, store *store.MemoryStore) *BaseBot {
 	return &BaseBot{
-		config:     cfg,
-		executor:   executor,
-		store:      store,
-		stopCh:     make(chan struct{}),
-		rng:        rand.New(rand.NewSource(time.Now().UnixNano() + int64(cfg.Index))),
+		config:   cfg,
+		executor: executor,
+		store:    store,
+		rng:      rand.New(rand.NewSource(time.Now().UnixNano() + int64(cfg.Index))),
 	}
 }
 
@@ -57,15 +55,13 @@ func (b *BaseBot) Type() config.BotType {
 	return b.config.Type
 }
 
-// Stop signals the bot to stop
-func (b *BaseBot) Stop() {
-	select {
-	case <-b.stopCh:
-		// Already closed
-	default:
-		close(b.stopCh)
-	}
-}
+// Stop is kept for the engine.Bot / orchestrator contract but does not carry
+// per-session shutdown state. Each session uses a fresh context from
+// engine.Orchestrator; Run(ctx) exits on <-ctx.Done() when the orchestrator
+// cancels that context. A one-shot channel (previously closed here) made bots
+// unusable after the first session because receiving from a closed channel is
+// always ready in select.
+func (b *BaseBot) Stop() {}
 
 // RandomDelay returns a random duration between the configured min and max
 func (b *BaseBot) RandomDelay() time.Duration {

@@ -1,32 +1,41 @@
 // api.ts — REST client for the Go backend on :8080.
 //
-// Every exported function maps 1-to-1 to a route in server/server.go.
-// Types are imported from types/index.ts, which mirrors the JSON structs
-// defined in Go (metrics/*.go, engine/types.go, store/memory.go).
+// URL resolution:
+//   - NEXT_PUBLIC_API_URL set → use that host (explicit / remote deploy).
+//   - Browser, unset → same-origin `/api/...` (Next rewrites to Go; works for
+//     LAN IPs, tunnel hostnames, and Vercel when BACKEND_PROXY_URL is set).
+//   - Server (SSR/build), unset → http://127.0.0.1:8080 (direct to local Go).
 //
 // CONNECTIONS:
 //   - Backend routes:  server/server.go setupRoutes → server/handlers.go
-//   - Type contracts:  types/index.ts ↔ Go JSON structs
-//   - Consumers:       hooks/useSession.ts, hooks/usePriceData.ts,
-//                      components/TradingPanel.tsx, page.tsx
+//   - Next rewrites:    next.config.js /api/* → BACKEND_PROXY_URL or :8080
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+function restUrl(path: string): string {
+  const direct = (process.env.NEXT_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+  if (direct) {
+    return `${direct}${path}`;
+  }
+  if (typeof window !== 'undefined') {
+    return `/api${path}`;
+  }
+  return `http://127.0.0.1:8080${path}`;
+}
 
 // Generic fetch wrapper
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(restUrl(path), {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
-  
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
     throw new Error(error.error || `HTTP ${response.status}`);
   }
-  
+
   return response.json();
 }
 

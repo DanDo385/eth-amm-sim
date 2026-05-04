@@ -52,16 +52,11 @@ func (r *RetailBot) Run(ctx context.Context) {
 		case <-ctx.Done():
 			log.Printf("[%s] Retail bot stopped (context cancelled)", r.Nickname())
 			return
-		case <-r.stopCh:
-			log.Printf("[%s] Retail bot stopped", r.Nickname())
-			return
 		default:
 			// Wait random interval from config (2-5 seconds)
 			delay := r.RandomDelay()
 			select {
 			case <-ctx.Done():
-				return
-			case <-r.stopCh:
 				return
 			case <-time.After(delay):
 			}

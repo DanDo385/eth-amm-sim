@@ -1,4 +1,4 @@
-.PHONY: anvil deploy bindings backend frontend clean test-contracts up demo-120 down kill-anvil kill-backend kill-all
+.PHONY: anvil deploy bindings backend frontend frontend-fresh clean test-contracts up demo-120 down kill-anvil kill-backend kill-all
 
 # Kill any existing Anvil process
 kill-anvil:
@@ -34,9 +34,14 @@ bindings:
 backend:
 	cd backend && go run cmd/simulator/main.go
 
-# Run Next.js frontend
+# Run Next.js frontend (see http://localhost:3000 when Next prints Ready)
 frontend:
+	@echo "→ http://localhost:3000  (after Next shows Ready). If chunks 404 or odd errors: make frontend-fresh"
 	cd frontend && npm run dev
+
+# Clean .next then dev — fixes corrupt chunk / Flight cache after failed builds
+frontend-fresh:
+	cd frontend && rm -rf .next && npm run dev
 
 # Run Foundry tests
 test-contracts:

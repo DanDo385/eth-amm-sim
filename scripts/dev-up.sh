@@ -191,7 +191,12 @@ echo "✓ All services started in tmux session: $SESSION_NAME"
 echo "  Windows: anvil, deploy, bindings, backend, frontend"
 echo ""
 
-# Attach to session
+# Attach to session (skip when non-interactive / agent: ETH_AMM_SIM_SKIP_ATTACH=1)
+if [ "${ETH_AMM_SIM_SKIP_ATTACH:-}" = "1" ]; then
+  echo "  Skipping attach (ETH_AMM_SIM_SKIP_ATTACH=1). Run: tmux attach -t $SESSION_NAME"
+  exit 0
+fi
+
 if [ -n "${TMUX:-}" ]; then
   tmux switch-client -t "$SESSION_NAME"
 else

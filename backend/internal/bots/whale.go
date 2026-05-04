@@ -51,16 +51,11 @@ func (w *WhaleBot) Run(ctx context.Context) {
 		case <-ctx.Done():
 			log.Printf("[%s] Whale bot stopped (context cancelled)", w.Nickname())
 			return
-		case <-w.stopCh:
-			log.Printf("[%s] Whale bot stopped", w.Nickname())
-			return
 		default:
 			// Wait random interval from config
 			delay := w.RandomDelay()
 			select {
 			case <-ctx.Done():
-				return
-			case <-w.stopCh:
 				return
 			case <-time.After(delay):
 			}

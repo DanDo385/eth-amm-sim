@@ -49,8 +49,8 @@ type Bot interface {
 	// The orchestrator calls this in a goroutine and cancels ctx when stopping.
 	Run(ctx context.Context)
 
-	// Stop signals the bot to stop gracefully. The bot should exit its Run() loop
-	// on the next iteration after receiving the stop signal.
+	// Stop is reserved for orchestrator symmetry; shutdown is driven by the
+	// context passed to Run (cancelled when the session/orchestrator stops).
 	Stop()
 
 	// Nickname returns the bot's human-readable name (e.g., "Whale1", "Retail5").

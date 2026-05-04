@@ -1,26 +1,30 @@
 // useWebSocket.ts — Persistent WebSocket connection to backend /stream.
 //
-// Opens a WebSocket to the Go server (server/broadcast.go handleWebSocket).
-// On connect, the backend sends initial state (session, LP metrics, candles,
-// trades, events). During the simulation, broadcast.go fans out real-time
-// messages which this hook dispatches to registered handlers.
-//
-// MESSAGE FLOW:
-//   backend executor callback → server.BroadcastTrade/Price/etc
-//   → broadcast channel → runBroadcast → WebSocket frame
-//   → this hook → page.tsx handleWSMessage → component state updates
+// URL resolution:
+//   - NEXT_PUBLIC_WS_URL set → use it (required for HTTPS UI → wss backend).
+//   - Otherwise in the browser → ws(s)://<current-host>:8080/stream so LAN /
+//     phone / tunnel hits the same machine as Next (Go listens on :8080).
 //
 // CONNECTIONS:
-//   - Backend endpoint: server/broadcast.go handleWebSocket + sendInitialState
-//   - Consumer:         page.tsx registers handleWSMessage as the onMessage callback
-//   - Message types:    "trade", "price", "lp_metrics", "account_update",
-//                       "key_event", "session_state", "candles", "trades", "events"
+//   - Backend: server/broadcast.go handleWebSocket + sendInitialState
+//   - Consumer: page.tsx handleWSMessage
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WSMessage } from '@/types';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/stream';
+function getWebSocketUrl(): string {
+  const env = process.env.NEXT_PUBLIC_WS_URL?.trim();
+  if (env) {
+    return env;
+  }
+  if (typeof window === 'undefined') {
+    return 'ws://127.0.0.1:8080/stream';
+  }
+  const { protocol, hostname } = window.location;
+  const wsProto = protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProto}//${hostname}:8080/stream`;
+}
 
 type MessageHandler = (message: WSMessage) => void;
 
@@ -46,7 +50,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(getWebSocketUrl());
 
       ws.onopen = () => {
         console.log('WebSocket connected');
@@ -56,7 +60,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
       ws.onclose = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
-        
+
         // Reconnect after 2 seconds
         reconnectTimeoutRef.current = setTimeout(connect, 2000);
       };
@@ -69,10 +73,10 @@ export function useWebSocket(onMessage?: MessageHandler) {
         try {
           const message: WSMessage = JSON.parse(event.data);
           setLastMessage(message);
-          
+
           // Call all registered handlers
           handlersRef.current.forEach((handler) => handler(message));
-          
+
           // Call the direct handler if provided
           onMessage?.(message);
         } catch (e) {

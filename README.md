@@ -49,8 +49,8 @@ Anvil (localhost:8545)
 
 ### Interfaces
 - **REST**: snapshot endpoints for candles, trades, account performance, and session state.
-- **WebSocket**: `ws://localhost:8080/stream` for real-time trades, prices, and events.
-- **Chain RPC**: `http://localhost:8545` (Anvil local chain).
+- **WebSocket**: [ws://localhost:8080/stream](ws://localhost:8080/stream) for real-time trades, prices, and events.
+- **Chain RPC**: [http://localhost:8545](http://localhost:8545) (Anvil local chain).
 
 ## Simulation Flow
 1. Deploy contracts via Foundry (Deploy.s.sol writes broadcast JSON).
@@ -58,6 +58,8 @@ Anvil (localhost:8545)
 3. Bots are created based on `backend/internal/config/accounts.go`.
 4. On-chain trades emit updates -> in-memory store -> metrics pipeline.
 5. WebSocket broadcasts push live updates to the dashboard.
+
+**Session / bot lifecycle (multi-session without restarting the Go process):** [docs/SESSION_BOT_LIFECYCLE.md](docs/SESSION_BOT_LIFECYCLE.md).
 
 ## Feature Highlights
 - AppleToken (ERC20) + AppleAMM (constant product, 0.30% fee) on Anvil.
@@ -163,12 +165,19 @@ make setup   # installs deps (Foundry/solidity deps + frontend deps + bindings)
 make up      # tmux session: anvil, deploy, bindings, backend, frontend
 ```
 
+If `make up` would block waiting for `tmux attach` (e.g. from a script or agent), use **`ETH_AMM_SIM_SKIP_ATTACH=1 make up`**, then attach yourself: **`tmux attach -t eth-amm-sim`**.
+
 To stop everything:
 ```bash
 make down
 ```
 
-Open `http://localhost:3000`, click **Start**, and watch metrics stream in.
+Open [http://localhost:3000](http://localhost:3000), click **Start**, and watch metrics stream in.
+
+## Web / LAN / Vercel
+- **Same machine:** REST goes through Next’s **`/api/*` proxy** to Go on `:8080` (no CORS issues). WebSocket uses **`ws://<host>:8080/stream`**, so it tracks the hostname you used in the browser (works for `localhost` or your LAN IP).
+- **Another device on your Wi‑Fi:** Start stack as usual, then open `http://<your-computer-LAN-IP>:3000`. Keep the Go backend on the same machine (`:8080` is already reachable on the LAN).
+- **Vercel (UI only):** Link the repo with **Root Directory = `frontend`**, or from `frontend/` run `vercel`. Set **`BACKEND_PROXY_URL`** to a **public** `https://` base URL where this Go simulator is reachable (Vercel rewrites `/api/*` there). Set **`NEXT_PUBLIC_WS_URL`** to **`wss://…/stream`** on that same host (HTTPS pages cannot use `ws://` to random ports). The chain still lives wherever that backend points (typically your own VPS + Anvil or a testnet). See `frontend/.env.example`.
 
 ## Manual Run (4 terminals)
 If you prefer to run each service yourself:
@@ -187,7 +196,8 @@ make frontend
 - `make deploy` - deploy contracts and write broadcast JSON
 - `make bindings` - generate Go bindings from contract ABIs
 - `make backend` - run Go simulator on :8080
-- `make frontend` - run Next.js on :3000
+- `make frontend` - run Next.js on **0.0.0.0:3000** (open [http://localhost:3000](http://localhost:3000) after **Ready**; Makefile prints a reminder)
+- `make frontend-fresh` - **`rm -rf frontend/.next`** then dev (use after **chunk 404** / corrupt `.next` / `e[o] is not a function` glitches)
 - `make kill-all` - free ports 8545, 8080, 3000-3004
 - `make test-contracts` - run Foundry tests
 
@@ -219,20 +229,22 @@ Common knobs:
 - GET  `/user/balance`
 
 ## WebSocket
-- `ws://localhost:8080/stream`
+- [ws://localhost:8080/stream](ws://localhost:8080/stream)
 - Message types: `trade`, `price`, `lp_metrics`, `key_event`, `session_state`, `account_update`, `trades`, `candles`, `events`.
 
 ## Demo Walkthrough (5 minutes)
-1. `make up` and open `http://localhost:3000`.
+1. `make up` and open [http://localhost:3000](http://localhost:3000).
 2. Click **Start** and highlight the session timer + live trade blotter.
 3. Point out price impact from whale trades on the chart.
 4. Open **LP Stats** to explain impermanent loss vs. fees earned.
-5. Open `/performance` to show account equity curves and Sharpe.
+5. Open [http://localhost:3000/performance](http://localhost:3000/performance) to show account equity curves and Sharpe.
 
 ## Troubleshooting
+- **“It built as HTML” / opening the app from Finder doesn’t work**: `next build` only writes the compiled bundle under `frontend/.next/`. You still need a **Next server** to run the app. From `frontend/`, use **`npm run dev`** (development) or **`npm run build` then `npm run start`** (production). Then open [http://localhost:3000](http://localhost:3000) in a normal browser tab. Do **not** double-click HTML under `.next/` or “Open with…” a single exported file — chunk URLs, the App Router, and your API/WebSocket calls expect `localhost:3000` plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
 - **No data in UI**: confirm backend is running on `:8080` and contracts were deployed.
 - **Deploy failed**: delete old `contracts/broadcast/Deploy.s.sol/31337/run-latest.json` and redeploy.
+- **Deploy stuck** (`Waiting for pending transactions`, receipt count not increasing, huge “seconds” in the progress bar): Anvil and Forge got out of sync. In tmux: **Ctrl+C** in the `deploy` window, switch to `anvil` and stop it (**Ctrl+C**), then run `make kill-all`, `make down`, and `make up` again. `scripts/deploy.sh` uses **`forge script --slow`** so each transaction confirms before the next (reduces this class of hang).
 - **Bindings errors**: ensure `abigen` is installed and `jq` or `python3` is available.
 - **tmux not found**: install tmux or run the manual workflow.
 

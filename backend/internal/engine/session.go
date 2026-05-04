@@ -58,6 +58,9 @@ type Session struct {
 	
 	// Callbacks
 	stateCallbacks []func(SessionState)
+
+	endedMu        sync.Mutex
+	onSessionEnded func() // optional; invoked once per run after bots stop, before completed
 }
 
 // NewSession creates a new session
@@ -81,6 +84,24 @@ func (s *Session) OnStateChange(callback func(SessionState)) {
 	s.mu.Lock()
 	s.stateCallbacks = append(s.stateCallbacks, callback)
 	s.mu.Unlock()
+}
+
+// SetOnSessionEnded registers a hook invoked synchronously from run() after
+// orchestrator.Stop() returns and before status moves to completed. Use this
+// for metrics finalization so bot teardown finishes before session accounting closes.
+func (s *Session) SetOnSessionEnded(fn func()) {
+	s.endedMu.Lock()
+	s.onSessionEnded = fn
+	s.endedMu.Unlock()
+}
+
+func (s *Session) invokeSessionEnded() {
+	s.endedMu.Lock()
+	fn := s.onSessionEnded
+	s.endedMu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // emitState notifies all callbacks of state change
@@ -185,6 +206,9 @@ func (s *Session) run(ctx context.Context) {
 	
 	// Stop all bots
 	s.orchestrator.Stop()
+
+	// One-shot accounting hook (e.g. finalize PnL) while bots are fully stopped
+	s.invokeSessionEnded()
 	
 	s.mu.Lock()
 	now := time.Now()
@@ -195,21 +219,41 @@ func (s *Session) run(ctx context.Context) {
 	s.emitState()
 }
 
-// Stop stops the current session
+// Stop stops the current session, or normalizes a finished session to idle.
+//
+// - running: cancel context; run() ends the session as completed (existing path).
+// - completed: move to idle and clear timestamps so the UI matches first load;
+//   idempotent for clients that call POST /session/stop after the timer ends.
+// - idle: no-op (idempotent).
 func (s *Session) Stop() error {
 	s.mu.Lock()
-	
+
+	if s.status == StatusIdle {
+		s.mu.Unlock()
+		return nil
+	}
+
+	if s.status == StatusCompleted {
+		s.status = StatusIdle
+		s.startedAt = nil
+		s.endedAt = nil
+		s.cancel = nil
+		s.mu.Unlock()
+		s.emitState()
+		return nil
+	}
+
 	if s.status != StatusRunning {
 		s.mu.Unlock()
 		return fmt.Errorf("session not running")
 	}
-	
+
 	if s.cancel != nil {
 		s.cancel()
 	}
-	
+
 	s.mu.Unlock()
-	
+
 	return nil
 }
 
