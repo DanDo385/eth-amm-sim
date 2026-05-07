@@ -2,30 +2,32 @@
   "name": "eth-amm-sim-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0 <25.0.0"
+  },
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
-    "build": "next build && node -e \"console.log('\\n  Built. Run: npm run start  →  http://localhost:3000  (backend must be on :8080)\\n')\"",
-    "start": "next start -H 0.0.0.0",
-    "lint": "tsc --noEmit"
+    "dev": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3000",
+    "build": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js build && node -e \"console.log('\\n  Built. Run: npm run preview  →  http://localhost:3000  (backend must be on :8080)\\n')\"",
+    "preview": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 3000",
+    "lint": "node ./scripts/check-node.cjs && node ./node_modules/typescript/lib/tsc.js --noEmit",
+    "verify": "npm run lint && npm run build"
   },
   "dependencies": {
     "lightweight-charts": "^4.1.0",
-    "next": "^16.3.0-canary.9",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "autoprefixer": "^10",
-    "postcss": "^8.5.13",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^6.0.3"
-  },
-  "overrides": {
-    "next": {
-      "postcss": "^8.5.13"
-    }
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.3",
+    "vite": "5.4.21"
   }
 }

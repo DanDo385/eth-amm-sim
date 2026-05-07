@@ -8,10 +8,11 @@ Do not add separate root-level `.cursorrules`, `CLAUDE.md`, `GEMINI.md`, or tool
 
 - **[README.md](./README.md)** — local setup, Makefile targets, HTTP/WebSocket endpoints, and current system behavior. Keep it aligned when you change bots, metrics, or routes.
 - **`docs/SESSION_BOT_LIFECYCLE.md`** — session vs process lifetime, bot shutdown, and finalize ordering.
+- **[docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md)** — stable baseline roadmap, toolchain contract, and recovery phases when dependency/tooling drift causes confusion.
 
 ## Project purpose
 
-`eth-amm-sim` is a portfolio-grade AMM execution simulation. It demonstrates a local EVM-compatible chain, Foundry/Anvil deployment, immutable Solidity contracts, Go/geth execution infrastructure, bot behavior, WebSocket streaming, and a Next.js dashboard for AMM observability.
+`eth-amm-sim` is a portfolio-grade AMM execution simulation. It demonstrates a local EVM-compatible chain, Foundry/Anvil deployment, immutable Solidity contracts, Go/geth execution infrastructure, bot behavior, WebSocket streaming, and a Vite + React SPA dashboard for AMM observability.
 
 Demo focus: AMM execution lab.
 
@@ -35,7 +36,7 @@ local chain → contracts → Go/geth execution → real-time state → risk/mar
 - Local Anvil chain with AppleToken + AppleAMM.
 - Go backend polls chain every 2s and streams over WebSocket.
 - Bots run per session and stop on context cancel.
-- Frontend is Next.js App Router + Tailwind + lightweight-charts.
+- Frontend is Vite + React SPA + Tailwind + lightweight-charts + React Router.
 
 ## Go backend rules
 
@@ -76,13 +77,13 @@ local chain → contracts → Go/geth execution → real-time state → risk/mar
 Before reporting success after code changes:
 
 ```bash
-cd frontend && npm run build
+cd frontend && npm run verify
 ```
 
 Also validate the Go backend when it changed:
 
 ```bash
-cd backend && go build ./...
+cd backend && GOTOOLCHAIN=auto GOFLAGS=-buildvcs=false go build ./...
 ```
 
 ---

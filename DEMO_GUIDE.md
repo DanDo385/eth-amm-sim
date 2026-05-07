@@ -107,12 +107,12 @@ If useful, mention:
 ### 2:15-2:45 -- Design decisions and tech stack
 
 Say:
-"I used Solidity for the invariant and contract boundary, Foundry/Anvil for fast local deployment, Go because concurrent bot execution and RPC polling are natural with goroutines, and Next.js because the dashboard needs to teach the system while the system is running."
+"I used Solidity for the invariant and contract boundary, Foundry/Anvil for fast local deployment, Go because concurrent bot execution and RPC polling are natural with goroutines, and Vite + React because the dashboard needs to teach the system while the system is running."
 
 Point at:
 - Solidity / Foundry / Anvil.
 - Go/geth backend.
-- Next.js dashboard.
+- Vite + React dashboard.
 
 ### 2:45-3:00 -- Close with hiring signal
 

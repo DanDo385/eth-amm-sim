@@ -1,12 +1,12 @@
 module eth-amm-sim
 
-go 1.26.2
+go 1.25.7
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/gorilla/mux v1.8.1
-	github.com/gorilla/websocket v1.5.1
-	golang.org/x/sync v0.19.0
+	github.com/gorilla/websocket v1.5.3
+	golang.org/x/sync v0.20.0
 )
 
 require (

@@ -3,7 +3,7 @@
 // SYSTEM ROLE:
 // This is the central orchestrator that wires together every backend component.
 // It connects the Go backend to the on-chain contracts (via Anvil RPC) and serves
-// real-time data to the Next.js frontend (via HTTP REST + WebSocket on :8080).
+// real-time data to the Vite/React frontend (via HTTP REST + WebSocket on :8080).
 //
 // STARTUP SEQUENCE:
 //  1. Load config and contract addresses (from broadcast JSON written by deploy.sh)

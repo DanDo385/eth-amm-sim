@@ -3,7 +3,7 @@
 // SYSTEM ROLE:
 // This is the backend's interface to the frontend. It exposes REST endpoints
 // for session control, metrics queries, and user trading, plus a WebSocket
-// endpoint for real-time data streaming. The frontend (Next.js on :3000)
+// endpoint for real-time data streaming. The frontend (Vite SPA on :3000)
 // connects here for all data.
 //
 // ROUTES (see handlers.go for implementations):

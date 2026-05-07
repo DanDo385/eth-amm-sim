@@ -6,12 +6,15 @@
 # testing
 /coverage
 
-# next.js
+# production
+/dist
+
+# legacy Next.js output (ignore if present after branch switches or old tooling)
 /.next/
 /out/
 
-# production
-/build
+# vite
+/.vite/
 
 # misc
 .DS_Store
@@ -30,4 +33,3 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts

@@ -1,6 +1,6 @@
 # ETH-AMM-SIM
 
-Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer in crypto/blockchain. It wires Solidity contracts to a Go execution engine and a Next.js dashboard so you can explain protocol mechanics, real-time data pipelines, and system design tradeoffs in one cohesive project.
+Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer in crypto/blockchain. It wires Solidity contracts to a Go execution engine and a Vite + React SPA dashboard so you can explain protocol mechanics, real-time data pipelines, and system design tradeoffs in one cohesive project.
 
 ## Portfolio demo package
 
@@ -32,9 +32,9 @@ This repo is intentionally built for demoability:
 ## Architecture (Current)
 
 ```
-Next.js (localhost:3000)
+Vite + React SPA (localhost:3000)
   - Dashboard (charts + controls)
-  - REST fetch for snapshots
+  - REST fetch for snapshots (via `/api/*` → Go in dev/preview)
   - WebSocket for live updates
           |
           v
@@ -120,15 +120,15 @@ Why Go is especially well-suited here:
 ## Repository Layout
 - `contracts/` Solidity contracts + Foundry scripts
 - `backend/` Go engine, bots, metrics, REST + WebSocket server
-- `frontend/` Next.js dashboard
+- `frontend/` Vite + React dashboard
 - `scripts/` deployment, bindings, and dev tooling
 - `Makefile` orchestration targets
 
 ## Prerequisites
 - **Foundry** (forge, anvil)
-- **Go** 1.26+ (matches `backend/go.mod`; use `GOTOOLCHAIN=auto` if your local toolchain is older)
-- **Node.js** 20+ (npm)
-- **Next.js** in this repo tracks a **canary** release (see `frontend/package.json`); pin to a stable release if you need maximum reproducibility for interviews.
+- **Go** 1.25.x — **recommended:** install the patch release matching `backend/go.mod` (see `go` line), or keep **`GOTOOLCHAIN=auto`** so the toolchain can upgrade itself. The repo root **`.vscode/settings.json`** sets `GOTOOLCHAIN=auto` for the Go extension / `gopls`, which avoids IDE **packages.Load** failures when the module requires a newer patch than your default `go` binary.
+- **Node.js** **20.x or 22.x LTS** (npm). **Avoid Node 25+ for the frontend** until Vite/Rollup fully support it — Node 25 can throw **`ERR_INVALID_PACKAGE_CONFIG`** on `rollup/dist/es/package.json`. Use **`frontend/.nvmrc`** (`nvm use` / `fnm use`).
+- **Vite + React** — fast local dev server and static production build under `frontend/dist/` (see `frontend/package.json`).
 - **tmux** (optional but recommended for `make up`)
 - **abigen** (from go-ethereum) for Go contract bindings
 - **jq** or **python3** for ABI extraction in `scripts/generate-bindings.sh`
@@ -176,9 +176,9 @@ make down
 Open [http://localhost:3000](http://localhost:3000), click **Start**, and watch metrics stream in.
 
 ## Web / LAN / Vercel
-- **Same machine:** REST goes through Next’s **`/api/*` proxy** to Go on `:8080` (no CORS issues). WebSocket uses **`ws://<host>:8080/stream`**, so it tracks the hostname you used in the browser (works for `localhost` or your LAN IP).
+- **Same machine:** REST goes through Vite’s **`/api/*` dev/preview proxy** to Go on `:8080` (no CORS issues). WebSocket uses **`ws://<host>:8080/stream`**, so it tracks the hostname you used in the browser (works for `localhost` or your LAN IP).
 - **Another device on your Wi‑Fi:** Start stack as usual, then open `http://<your-computer-LAN-IP>:3000`. Keep the Go backend on the same machine (`:8080` is already reachable on the LAN).
-- **Vercel (UI only):** Link the repo with **Root Directory = `frontend`**, or from `frontend/` run `vercel`. Set **`BACKEND_PROXY_URL`** to a **public** `https://` base URL where this Go simulator is reachable (Vercel rewrites `/api/*` there). Set **`NEXT_PUBLIC_WS_URL`** to **`wss://…/stream`** on that same host (HTTPS pages cannot use `ws://` to random ports). The chain still lives wherever that backend points (typically your own VPS + Anvil or a testnet). See `frontend/.env.example`.
+- **Vercel (UI only):** Link the repo with **Root Directory = `frontend`**, or from `frontend/` run `vercel`. The build is a **static SPA** (`dist/`); configure **`VITE_API_URL`** (and **`VITE_WS_URL`** as **`wss://…/stream`**) for your public Go backend so the browser can reach REST/WebSocket from an HTTPS origin (or put both UI and API behind a gateway that preserves same-origin `/api`). See `frontend/.env.example`.
 
 ## Manual Run (4 terminals)
 If you prefer to run each service yourself:
@@ -193,7 +193,9 @@ make frontend
 
 ## Frontend checks
 
-From `frontend/`, `npm run lint` runs **`tsc --noEmit`** (the Next canary CLI in this repo does not ship `next lint`).
+- **`npm run build`** — runs **`vite build`** only (fast production bundle to `dist/`).
+- **`npm run lint`** — TypeScript check via **`node ./node_modules/typescript/lib/tsc.js --noEmit`** (avoids flaky `node_modules/.bin/tsc` shims that can error with **`Operation timed out`** on some macOS setups).
+- **`npm run verify`** — **`lint` then `build`** (use before commits / when you want both).
 
 ## Useful Make Targets
 - `make setup` - install deps and generate bindings
@@ -201,8 +203,8 @@ From `frontend/`, `npm run lint` runs **`tsc --noEmit`** (the Next canary CLI in
 - `make deploy` - deploy contracts and write broadcast JSON
 - `make bindings` - generate Go bindings from contract ABIs
 - `make backend` - run Go simulator on :8080
-- `make frontend` - run Next.js on **0.0.0.0:3000** (open [http://localhost:3000](http://localhost:3000) after **Ready**; Makefile prints a reminder)
-- `make frontend-fresh` - **`rm -rf frontend/.next`** then dev (use after **chunk 404** / corrupt `.next` / `e[o] is not a function` glitches)
+- `make frontend` - run Vite dev server on **0.0.0.0:3000** (open [http://localhost:3000](http://localhost:3000) after the Local URL prints; Makefile prints a reminder)
+- `make frontend-fresh` - **`rm -rf frontend/dist frontend/.vite`** then dev (use after stale chunk/proxy glitches)
 - `make kill-all` - free ports 8545, 8080, 3000-3004
 - `make test-contracts` - run Foundry tests
 
@@ -266,7 +268,10 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 5. Open [http://localhost:3000/performance](http://localhost:3000/performance) to show account equity curves and Sharpe.
 
 ## Troubleshooting
-- **“It built as HTML” / opening the app from Finder doesn’t work**: `next build` only writes the compiled bundle under `frontend/.next/`. You still need a **Next server** to run the app. From `frontend/`, use **`npm run dev`** (development) or **`npm run build` then `npm run start`** (production). Then open [http://localhost:3000](http://localhost:3000) in a normal browser tab. Do **not** double-click HTML under `.next/` or “Open with…” a single exported file — chunk URLs, the App Router, and your API/WebSocket calls expect `localhost:3000` plus the Go backend on `:8080`.
+- **`go build` fails with `error obtaining VCS status: exit status 128`**: Go tries to stamp binaries with Git metadata; if `git` errors (sandbox, partial clone), build with **`GOFLAGS=-buildvcs=false`** — **`make backend`** / **`make clean`** already set this via the Makefile’s **`BACKEND_TOOLCHAIN`**.
+- **`Invalid package config` / `ERR_INVALID_PACKAGE_CONFIG` under `rollup/dist/es` when running `npm run dev`**: You are almost certainly on **Node 25+**. Switch to **Node 20 or 22** (see **`frontend/.nvmrc`**), then `cd frontend && rm -rf node_modules && npm install`.
+- **`npm run build` stalls / `Operation timed out` on `node_modules/.bin/tsc`**: `npm run build` no longer invokes `tsc` (only **`vite build`**). Run types separately with **`npm run lint`**, or both with **`npm run verify`**. If `npm run lint` still times out, use the system Node binary (not an IDE‑bundled helper): `PATH="/opt/homebrew/bin:$PATH" npm run lint`.
+- **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser — client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
 - **No data in UI**: confirm backend is running on `:8080` and contracts were deployed.
 - **Deploy failed**: delete old `contracts/broadcast/Deploy.s.sol/31337/run-latest.json` and redeploy.

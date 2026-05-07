@@ -1,5 +1,10 @@
 .PHONY: anvil deploy bindings backend frontend frontend-fresh clean test-contracts up demo-120 down kill-anvil kill-backend kill-all
 
+# backend/go.mod pins Go 1.25.x (patch may bump after dependency upgrades). Shells that set GOTOOLCHAIN=local with an older `go` binary
+# break `go run`/`go clean`; auto lets the toolchain switch fetch the matching Go for this module.
+# GOFLAGS=-buildvcs=false avoids `go build` failing when `git status` errors (agents/sandboxes/broken .git).
+BACKEND_TOOLCHAIN := GOTOOLCHAIN=auto GOFLAGS=-buildvcs=false
+
 # Kill any existing Anvil process
 kill-anvil:
 	@lsof -ti:8545 | xargs kill -9 2>/dev/null || echo "No Anvil process found on port 8545"
@@ -32,16 +37,16 @@ bindings:
 
 # Run Go backend
 backend:
-	cd backend && go run cmd/simulator/main.go
+	cd backend && $(BACKEND_TOOLCHAIN) go run cmd/simulator/main.go
 
-# Run Next.js frontend (see http://localhost:3000 when Next prints Ready)
+# Run Vite + React frontend (see http://localhost:3000 when Vite prints Local URL)
 frontend:
-	@echo "→ http://localhost:3000  (after Next shows Ready). If chunks 404 or odd errors: make frontend-fresh"
+	@echo "→ http://localhost:3000  (after Vite prints Local URL). If odd proxy/chunk errors: make frontend-fresh"
 	cd frontend && npm run dev
 
-# Clean .next then dev — fixes corrupt chunk / Flight cache after failed builds
+# Clean Vite cache/output then dev — fixes stale chunk / proxy issues after failed builds
 frontend-fresh:
-	cd frontend && rm -rf .next && npm run dev
+	cd frontend && rm -rf dist .vite .next && npm run dev
 
 # Run Foundry tests
 test-contracts:
@@ -50,8 +55,8 @@ test-contracts:
 # Clean build artifacts
 clean:
 	cd contracts && forge clean
-	cd frontend && rm -rf .next node_modules
-	cd backend && go clean
+	cd frontend && rm -rf dist .vite .next node_modules
+	cd backend && $(BACKEND_TOOLCHAIN) go clean
 
 # Install frontend dependencies
 frontend-install:
@@ -70,7 +75,7 @@ up:
 
 # Loom-ready deterministic demo launcher. Frontend defaults to a 120 second session.
 demo-120: kill-all
-	@echo "Starting Loom demo mode: Anvil + deploy + Go backend + Next.js frontend"
+	@echo "Starting Loom demo mode: Anvil + deploy + Go backend + Vite frontend"
 	@echo "Open http://localhost:3000, click Start, then use Shock Pool around 1:25."
 	./scripts/dev-up.sh
 
