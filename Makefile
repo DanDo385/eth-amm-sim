@@ -42,11 +42,12 @@ backend:
 # Run Vite + React frontend (see http://localhost:3000 when Vite prints Local URL)
 frontend:
 	@echo "→ http://localhost:3000  (after Vite prints Local URL). If odd proxy/chunk errors: make frontend-fresh"
-	cd frontend && npm run dev
+	./scripts/with-frontend-node.sh npm run dev
 
 # Clean Vite cache/output then dev — fixes stale chunk / proxy issues after failed builds
 frontend-fresh:
-	cd frontend && rm -rf dist .vite .next && npm run dev
+	cd frontend && rm -rf dist .vite .next
+	./scripts/with-frontend-node.sh npm run dev
 
 # Run Foundry tests
 test-contracts:
@@ -60,7 +61,7 @@ clean:
 
 # Install frontend dependencies
 frontend-install:
-	cd frontend && npm install
+	./scripts/with-frontend-node.sh npm install
 
 # Install Foundry dependencies
 contracts-install:

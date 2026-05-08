@@ -4,13 +4,15 @@
 // Session types
 // --------------------
 export interface SessionState {
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error';
   startedAt?: string;
   endedAt?: string;
   duration: number;
   elapsed: number;
   error?: string;
 }
+
+export type ResetMode = 'soft' | 'hard' | 'reseed';
 
 // --------------------
 // Trading types

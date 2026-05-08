@@ -7,13 +7,14 @@
 // connects here for all data.
 //
 // ROUTES (see handlers.go for implementations):
-//   POST /session/{start,stop,reset}  — Control simulation lifecycle
-//   GET  /session/state               — Current session status
-//   GET  /candles, /trades, /events   — Market data
-//   GET  /lp/metrics                  — LP performance
-//   GET  /accounts                    — All account metrics
-//   POST /trade/{buy,sell}            — User manual trading
-//   WS   /stream                      — Real-time WebSocket feed
+//
+//	POST /session/{start,pause,resume,stop,reset}  — Control simulation lifecycle
+//	GET  /session/state               — Current session status
+//	GET  /candles, /trades, /events   — Market data
+//	GET  /lp/metrics                  — LP performance
+//	GET  /accounts                    — All account metrics
+//	POST /trade/{buy,sell}            — User manual trading
+//	WS   /stream                      — Real-time WebSocket feed
 //
 // CONNECTIONS:
 //   - Frontend: lib/api.ts makes REST calls; hooks/useWebSocket.ts opens /stream
@@ -48,14 +49,16 @@ type Server struct {
 	executor *engine.Executor
 
 	// WebSocket
-	upgrader    websocket.Upgrader
-	clients     map[*websocket.Conn]bool
-	clientsMu   sync.RWMutex
-	broadcast   chan interface{}
+	upgrader        websocket.Upgrader
+	clients         map[*websocket.Conn]bool
+	clientsMu       sync.RWMutex
+	broadcast       chan interface{}
 	broadcastClosed int32 // Atomic flag to track if broadcast channel is closed
 	// Rate-limit noisy "channel full" logs when the writer falls behind.
 	broadcastDropLogMu   sync.Mutex
 	lastBroadcastDropLog time.Time
+	accountUpdateMu      sync.Mutex
+	lastAccountUpdateAt  map[string]time.Time
 
 	// Session finalization guard — ensures FinalizeAccountsForSession runs
 	// exactly once per session, whether stopped manually or by auto-expire.
@@ -72,13 +75,14 @@ type Server struct {
 // NewServer creates a new server
 func NewServer(session *engine.Session, store *store.MemoryStore, executor *engine.Executor) *Server {
 	s := &Server{
-		router:         mux.NewRouter(),
-		session:        session,
-		store:          store,
-		executor:       executor,
-		clients:        make(map[*websocket.Conn]bool),
-		broadcast:      make(chan interface{}, 1024),
-		allowedOrigins: parseAllowedOriginsFromEnv(),
+		router:              mux.NewRouter(),
+		session:             session,
+		store:               store,
+		executor:            executor,
+		clients:             make(map[*websocket.Conn]bool),
+		broadcast:           make(chan interface{}, 1024),
+		lastAccountUpdateAt: make(map[string]time.Time),
+		allowedOrigins:      parseAllowedOriginsFromEnv(),
 	}
 	s.upgrader.CheckOrigin = func(r *http.Request) bool {
 		return s.webSocketOriginOK(r)
@@ -133,31 +137,33 @@ func (s *Server) setupRoutes() {
 
 	s.router.HandleFunc("/healthz", s.handleHealthz).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/readyz", s.handleReadyz).Methods("GET", "OPTIONS")
-	
+
 	// Session endpoints
 	s.router.HandleFunc("/session/start", s.handleSessionStart).Methods("POST", "OPTIONS")
+	s.router.HandleFunc("/session/pause", s.handleSessionPause).Methods("POST", "OPTIONS")
+	s.router.HandleFunc("/session/resume", s.handleSessionResume).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/session/stop", s.handleSessionStop).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/session/reset", s.handleSessionReset).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/session/state", s.handleSessionState).Methods("GET", "OPTIONS")
-	
+
 	// Account endpoints
 	s.router.HandleFunc("/accounts", s.handleGetAccounts).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/accounts/{nickname}/performance", s.handleGetAccountPerformance).Methods("GET", "OPTIONS")
-	
+
 	// LP endpoints
 	s.router.HandleFunc("/lp/metrics", s.handleGetLPMetrics).Methods("GET", "OPTIONS")
-	
+
 	// Market data endpoints
 	s.router.HandleFunc("/candles", s.handleGetCandles).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/trades", s.handleGetTrades).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/impact-curve", s.handleGetImpactCurve).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/events", s.handleGetEvents).Methods("GET", "OPTIONS")
-	
+
 	// User trading endpoints
 	s.router.HandleFunc("/trade/buy", s.handleTradeBuy).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/trade/sell", s.handleTradeSell).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/user/balance", s.handleGetUserBalance).Methods("GET", "OPTIONS")
-	
+
 	// WebSocket
 	s.router.HandleFunc("/stream", s.handleWebSocket)
 }
@@ -171,7 +177,7 @@ func (s *Server) Start(addr string) error {
 		Addr:    addr,
 		Handler: s.router,
 	}
-	
+
 	// Start broadcast goroutine
 	go func() {
 		defer func() {
@@ -181,13 +187,13 @@ func (s *Server) Start(addr string) error {
 		}()
 		s.runBroadcast()
 	}()
-	
+
 	// Register session state callback (broadcast only; finalization runs in
 	// Session.run via SetOnSessionEnded after orchestrator.Stop completes).
 	s.session.OnStateChange(func(state engine.SessionState) {
 		s.Broadcast(WSMessage{Type: "session_state", Data: state})
 	})
-	
+
 	log.Printf("Server starting on %s", addr)
 	return s.httpServer.ListenAndServe()
 }
@@ -207,13 +213,13 @@ func (s *Server) Stop(ctx context.Context) error {
 	if clientCount > 0 {
 		log.Printf("Closed %d WebSocket connection(s)", clientCount)
 	}
-	
+
 	// Close broadcast channel (this will stop the broadcast goroutine)
 	// Use atomic flag to prevent double-close and check in Broadcast method
 	if atomic.CompareAndSwapInt32(&s.broadcastClosed, 0, 1) {
 		close(s.broadcast)
 	}
-	
+
 	// Shutdown HTTP server
 	return s.httpServer.Shutdown(ctx)
 }
@@ -224,7 +230,15 @@ func (s *Server) Broadcast(msg interface{}) {
 	if atomic.LoadInt32(&s.broadcastClosed) == 1 {
 		return // Channel is closed, silently drop message
 	}
-	
+
+	// Nothing to fan out to; avoid queuing work when no clients are connected.
+	s.clientsMu.RLock()
+	hasClients := len(s.clients) > 0
+	s.clientsMu.RUnlock()
+	if !hasClients {
+		return
+	}
+
 	select {
 	case s.broadcast <- msg:
 	default:
@@ -326,10 +340,10 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, map[string]interface{}{
-		"status":               "ok",
-		"uptime_seconds":       uptime,
-		"ws_clients":           n,
-		"broadcast_queue_len":  qLen,
+		"status":              "ok",
+		"uptime_seconds":      uptime,
+		"ws_clients":          n,
+		"broadcast_queue_len": qLen,
 	})
 }
 
@@ -399,7 +413,7 @@ func (s *Server) reinitializeLPMetrics(ctx context.Context) {
 		log.Printf("Warning: Could not get reserves for LP metrics reinit: %v", err)
 		return
 	}
-	
+
 	// Get current fees from contract
 	feesApple, feesETH, err := s.executor.GetTotalFees(ctx)
 	if err != nil {
@@ -407,14 +421,14 @@ func (s *Server) reinitializeLPMetrics(ctx context.Context) {
 		feesApple = big.NewInt(0)
 		feesETH = big.NewInt(0)
 	}
-	
+
 	// Set initial state to current reserves (this is the new baseline)
 	s.store.GetLPMetrics().SetInitialState(apples, eth)
 	s.store.GetLPMetrics().SetInitialFees(feesApple, feesETH)
-	
+
 	// Also update current state to match (ensures metrics show current pool state)
 	s.store.GetLPMetrics().UpdateState(apples, eth, feesApple, feesETH)
 	s.store.GetImpactCurve().UpdateReserves(apples, eth)
-	
+
 	log.Printf("LP metrics re-initialized: APPL=%s, ETH=%s", apples.String(), eth.String())
 }

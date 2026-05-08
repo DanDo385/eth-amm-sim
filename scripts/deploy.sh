@@ -119,6 +119,7 @@ cd "$(dirname "$0")/../contracts"
 # --non-interactive: safe for tmux/CI (no size-limit prompts).
 forge script script/Deploy.s.sol \
   --rpc-url http://127.0.0.1:8545 \
+  --with-gas-price 2000000000 \
   --broadcast \
   --slow \
   --non-interactive

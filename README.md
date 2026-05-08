@@ -12,7 +12,7 @@ Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer
 - Thumbnail hook: `AMM EXECUTION LAB`
 - Loom link: TBD
 - Preview MP4/GIF: TBD
-- Architecture image: dashboard includes a built-in Show Architecture panel
+- Demo notes script: [`.hermes/workspace/projects/eth-amm-sim/DEMO.md`](file:///Users/danmagro/.hermes/workspace/projects/eth-amm-sim/DEMO.md)
 
 
 ## Why this project exists
@@ -68,12 +68,12 @@ Anvil (localhost:8545)
   - Retail (15) small random trades
   - Whale (3) large random trades
   - MeanRev (3) EWMA mean reversion on trade-flow events
-- Session control (start/stop/reset) with per-session bot lifecycle.
+- Session control (start/pause/resume/stop/reset) with per-session bot lifecycle.
 - Metrics computed in Go:
   - 5s OHLC candles, 60s TWAP, volatility from observed returns
   - LP metrics (IL, fees earned, net PnL)
   - Account performance (equity curve, Sharpe, drawdown, win rate)
-- Dashboard components: Price, TWAP, Impact Curve, Blotter, LP Stats, Key Events, Account Metrics.
+- Dashboard components: Price, TWAP, Impact Curve (hover readout), Blotter, LP Stats, Key Events (clickable trade rows), AMM Details, Account Metrics, User Trading (buy/sell).
 - Performance analytics page at `/performance`.
 
 ## Liquidity Pool Calculations (LP Metrics)
@@ -240,8 +240,10 @@ Common knobs:
 - GET  `/healthz` — liveness JSON (`uptime_seconds`, `ws_clients`, `broadcast_queue_len`)
 - GET  `/readyz` — readiness JSON (same shape once the server has started)
 - POST `/session/start` (optional body: `{ "duration": 300 }`)
+- POST `/session/pause`
+- POST `/session/resume`
 - POST `/session/stop`
-- POST `/session/reset` (query: `?hard=true` for hard reset)
+- POST `/session/reset` (query: `?mode=soft|hard|reseed`; legacy `?hard=true` and `?reseed=true` still supported)
 - GET  `/session/state`
 - GET  `/candles`
 - GET  `/trades` (query: `?limit=...`)
@@ -263,9 +265,10 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 ## Demo Walkthrough (5 minutes)
 1. `make up` and open [http://localhost:3000](http://localhost:3000).
 2. Click **Start** and highlight the session timer + live trade blotter.
-3. Point out price impact from whale trades on the chart.
-4. Open **LP Stats** to explain impermanent loss vs. fees earned.
-5. Open [http://localhost:3000/performance](http://localhost:3000/performance) to show account equity curves and Sharpe.
+3. Point out price impact from whale trades on the chart, then hover the AMM reserve curve to show local price differences.
+4. Click a trade in **Key Events** and show **AMM Details** (before/after reserves + spot impact).
+5. Open **LP Stats** to explain impermanent loss vs. fees earned.
+6. Open [http://localhost:3000/performance](http://localhost:3000/performance) to show account equity curves and Sharpe.
 
 ## Troubleshooting
 - **`go build` fails with `error obtaining VCS status: exit status 128`**: Go tries to stamp binaries with Git metadata; if `git` errors (sandbox, partial clone), build with **`GOFLAGS=-buildvcs=false`** — **`make backend`** / **`make clean`** already set this via the Makefile’s **`BACKEND_TOOLCHAIN`**.
@@ -274,7 +277,9 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 - **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser — client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
 - **No data in UI**: confirm backend is running on `:8080` and contracts were deployed.
-- **Deploy failed**: delete old `contracts/broadcast/Deploy.s.sol/31337/run-latest.json` and redeploy.
+- **Reset does not reseed / price not back near 1.0**: session must be idle (not running). Use **Stop/Pause** first, then **Reseed** reset.
+- **Deploy failed**: if manual redeploy runs on a dirty chain, LP account funds can be exhausted; use reseed reset (which runs `anvil_reset` before deploy) or restart from fresh Anvil.
+- **Deploy fails with `max fee per gas less than block base fee`**: update scripts and retry; repo `scripts/deploy.sh` now pins local gas price for Anvil deploys.
 - **Deploy stuck** (`Waiting for pending transactions`, receipt count not increasing, huge “seconds” in the progress bar): Anvil and Forge got out of sync. In tmux: **Ctrl+C** in the `deploy` window, switch to `anvil` and stop it (**Ctrl+C**), then run `make kill-all`, `make down`, and `make up` again. `scripts/deploy.sh` uses **`forge script --slow`** so each transaction confirms before the next (reduces this class of hang).
 - **Bindings errors**: ensure `abigen` is installed and `jq` or `python3` is available.
 - **tmux not found**: install tmux or run the manual workflow.

@@ -20,6 +20,9 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -72,7 +75,7 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Could not get spot price for session start: %v", err)
 		spotPrice = big.NewInt(0)
 	}
-	
+
 	// Convert spot price to float64
 	var spotPriceFloat float64
 	if spotPrice != nil && spotPrice.Sign() > 0 {
@@ -89,30 +92,30 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 		if acc == nil {
 			return 0, 0, fmt.Errorf("account not found: %s", nickname)
 		}
-		
+
 		// Get balances from executor (use RPC context with timeout)
 		ethBal, err := s.executor.GetETHBalance(rpcCtx, acc.Address())
 		if err != nil {
 			return 0, 0, err
 		}
-		
+
 		applBal, err := s.executor.GetAPPLBalance(rpcCtx, acc.Address())
 		if err != nil {
 			return 0, 0, err
 		}
-		
+
 		// Convert from wei to ETH/APPL
 		ethFloat := new(big.Float).SetInt(ethBal)
 		ethFloat.Quo(ethFloat, big.NewFloat(1e18))
 		ethBalance, _ = ethFloat.Float64()
-		
+
 		applFloat := new(big.Float).SetInt(applBal)
 		applFloat.Quo(applFloat, big.NewFloat(1e18))
 		applBalance, _ = applFloat.Float64()
-		
+
 		return ethBalance, applBalance, nil
 	}
-	
+
 	s.store.ResetAccountsForSession(getBalance, spotPriceFloat)
 
 	// Start session with background context (not request context)
@@ -160,9 +163,80 @@ func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "stopped"})
 }
 
+func (s *Server) handleSessionPause(w http.ResponseWriter, r *http.Request) {
+	if err := s.session.Pause(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	event := store.KeyEvent{
+		Timestamp:   time.Now(),
+		Type:        "strategy_trigger",
+		Description: "Session paused",
+		Severity:    "info",
+	}
+	s.store.RecordEvent(event.Type, event.Description, event.Severity)
+	s.BroadcastEvent(event)
+
+	respondJSON(w, map[string]string{"status": "paused"})
+}
+
+func (s *Server) handleSessionResume(w http.ResponseWriter, r *http.Request) {
+	// Before resuming, normalize all trading account positions back to their
+	// configured starting balances so resumed flow is deterministic.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.executor.ResetTradingAccounts(ctx); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to reset trading positions: "+err.Error())
+		return
+	}
+
+	spotPrice, err := s.executor.GetSpotPrice(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get spot price during resume: %v", err)
+		spotPrice = big.NewInt(0)
+	}
+	var spotPriceFloat float64
+	if spotPrice != nil && spotPrice.Sign() > 0 {
+		spotPriceBigFloat := new(big.Float).SetInt(spotPrice)
+		spotPriceBigFloat.Quo(spotPriceBigFloat, big.NewFloat(1e18))
+		spotPriceFloat, _ = spotPriceBigFloat.Float64()
+	}
+	s.store.ResetAccountsForSession(s.buildBalanceLookup(ctx), spotPriceFloat)
+
+	s.Broadcast(WSMessage{
+		Type: "user_balance_reset",
+		Data: map[string]interface{}{"reset": true},
+	})
+
+	if err := s.session.Resume(context.Background()); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	event := store.KeyEvent{
+		Timestamp:   time.Now(),
+		Type:        "strategy_trigger",
+		Description: "Session resumed with trading positions reset",
+		Severity:    "info",
+	}
+	s.store.RecordEvent(event.Type, event.Description, event.Severity)
+	s.BroadcastEvent(event)
+	s.BroadcastAllAccountUpdates()
+
+	respondJSON(w, map[string]string{"status": "resumed"})
+}
+
 func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
-	// Check for hard reset parameter (clears account metrics too)
-	hardReset := r.URL.Query().Get("hard") == "true"
+	// Reset mode:
+	// - soft: clear session/store data only
+	// - hard: also reset account metrics + user balance
+	// - reseed: hard reset + anvil_reset + redeploy to recover initial 1.0 pool
+	mode, hardReset, reseed, err := parseResetMode(r.URL.Query())
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if err := s.session.Reset(); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
@@ -180,11 +254,11 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 			accountMgr.Reset()
 			log.Println("Hard reset: Account metrics reset to initial state")
 		}
-		
+
 		// Reset LP metrics to zero (don't re-initialize with current pool state)
 		s.store.GetLPMetrics().Reset()
 		log.Println("Hard reset: LP metrics reset to zero")
-		
+
 		// Reset User account on-chain balances to initial state (1,000 ETH and 1,000 APPL)
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -200,6 +274,31 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 					Data: map[string]interface{}{"reset": true},
 				})
 			}
+		}
+
+		if reseed {
+			reseedCtx, reseedCancel := context.WithTimeout(r.Context(), 3*time.Minute)
+			defer reseedCancel()
+			if err := s.reseedChainAndRedeploy(reseedCtx); err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to reseed chain: "+err.Error())
+				return
+			}
+			// After reseed/redeploy, establish a fresh LP baseline and reset account metrics
+			// to on-chain starting balances at the current spot price.
+			s.reinitializeLPMetrics(reseedCtx)
+			spotPrice, err := s.executor.GetSpotPrice(reseedCtx)
+			if err != nil {
+				log.Printf("Warning: Could not get spot price after reseed: %v", err)
+				spotPrice = big.NewInt(0)
+			}
+			var spotPriceFloat float64
+			if spotPrice != nil && spotPrice.Sign() > 0 {
+				spf := new(big.Float).SetInt(spotPrice)
+				spf.Quo(spf, big.NewFloat(1e18))
+				spotPriceFloat, _ = spf.Float64()
+			}
+			s.store.ResetAccountsForSession(s.buildBalanceLookup(reseedCtx), spotPriceFloat)
+			log.Println("Hard reset reseed: chain reset + redeploy complete")
 		}
 	} else {
 		// Soft reset: Re-initialize LP metrics with current pool state
@@ -225,13 +324,132 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, map[string]interface{}{
 		"status":    "reset",
+		"mode":      mode,
 		"hardReset": hardReset,
+		"reseeded":  reseed,
 	})
+}
+
+func parseResetMode(q map[string][]string) (mode string, hardReset bool, reseed bool, err error) {
+	mode = strings.ToLower(strings.TrimSpace(firstQuery(q, "mode")))
+	switch mode {
+	case "", "soft":
+		mode = "soft"
+	case "hard":
+		mode = "hard"
+		hardReset = true
+	case "reseed":
+		mode = "reseed"
+		hardReset = true
+		reseed = true
+	default:
+		return "", false, false, fmt.Errorf("invalid reset mode: use soft, hard, or reseed")
+	}
+
+	// Backward-compatible query params:
+	// /session/reset?hard=true   -> hard
+	// /session/reset?reseed=true -> reseed
+	if mode == "soft" {
+		if firstQuery(q, "hard") == "true" {
+			mode = "hard"
+			hardReset = true
+		}
+		if firstQuery(q, "reseed") == "true" {
+			mode = "reseed"
+			hardReset = true
+			reseed = true
+		}
+	}
+	return mode, hardReset, reseed, nil
+}
+
+func firstQuery(q map[string][]string, key string) string {
+	values := q[key]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func (s *Server) handleSessionState(w http.ResponseWriter, r *http.Request) {
 	state := s.session.GetState()
 	respondJSON(w, state)
+}
+
+func (s *Server) buildBalanceLookup(ctx context.Context) func(nickname string) (ethBalance, applBalance float64, err error) {
+	return func(nickname string) (ethBalance, applBalance float64, err error) {
+		acc := config.GetAccount(nickname)
+		if acc == nil {
+			return 0, 0, fmt.Errorf("account not found: %s", nickname)
+		}
+
+		ethBal, err := s.executor.GetETHBalance(ctx, acc.Address())
+		if err != nil {
+			return 0, 0, err
+		}
+		applBal, err := s.executor.GetAPPLBalance(ctx, acc.Address())
+		if err != nil {
+			return 0, 0, err
+		}
+
+		ethFloat := new(big.Float).SetInt(ethBal)
+		ethFloat.Quo(ethFloat, big.NewFloat(1e18))
+		ethBalance, _ = ethFloat.Float64()
+
+		applFloat := new(big.Float).SetInt(applBal)
+		applFloat.Quo(applFloat, big.NewFloat(1e18))
+		applBalance, _ = applFloat.Float64()
+
+		return ethBalance, applBalance, nil
+	}
+}
+
+func (s *Server) reseedChainAndRedeploy(ctx context.Context) error {
+	if err := s.executor.ResetChain(ctx); err != nil {
+		return fmt.Errorf("anvil reset failed: %w", err)
+	}
+	projectRoot, err := findProjectRootForScripts()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, "bash", "scripts/deploy.sh")
+	cmd.Dir = projectRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("deploy script failed: %w; output: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	// Clear cached nonces after chain reset/redeploy to avoid stale nonce usage.
+	if err := s.executor.ResetNonceCache(ctx); err != nil {
+		return fmt.Errorf("nonce cache reset failed: %w", err)
+	}
+	return nil
+}
+
+func findProjectRootForScripts() (string, error) {
+	startDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("could not determine working directory: %w", err)
+	}
+
+	dir := startDir
+	for {
+		if hasDir(filepath.Join(dir, "contracts")) && hasDir(filepath.Join(dir, "backend")) && hasDir(filepath.Join(dir, "scripts")) {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("could not find project root for deploy script")
+}
+
+func hasDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // Account handlers
@@ -393,7 +611,7 @@ func (s *Server) handleTradeBuy(w http.ResponseWriter, r *http.Request) {
 	// Calculate fee and amount out (same formula as executor)
 	fee := new(big.Int).Div(new(big.Int).Mul(ethAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(ethAmount, fee)
-	
+
 	// Calculate amount out: (amountInAfterFee * appleReserve) / (ethReserve + amountInAfterFee)
 	numerator := new(big.Int).Mul(amountInAfterFee, appleReserveBefore)
 	denominator := new(big.Int).Add(ethReserveBefore, amountInAfterFee)
@@ -498,7 +716,7 @@ func (s *Server) handleTradeSell(w http.ResponseWriter, r *http.Request) {
 	// Calculate fee and amount out (same formula as executor)
 	fee := new(big.Int).Div(new(big.Int).Mul(appleAmount, big.NewInt(config.AMMFeeNumerator)), big.NewInt(config.AMMFeeDenominator))
 	amountInAfterFee := new(big.Int).Sub(appleAmount, fee)
-	
+
 	// Calculate amount out: (amountInAfterFee * ethReserve) / (appleReserve + amountInAfterFee)
 	numerator := new(big.Int).Mul(amountInAfterFee, ethReserveBefore)
 	denominator := new(big.Int).Add(appleReserveBefore, amountInAfterFee)

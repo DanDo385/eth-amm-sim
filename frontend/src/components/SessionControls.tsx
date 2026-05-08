@@ -11,21 +11,24 @@
 //   - State hook:  hooks/useSession.ts provides session state + action callbacks
 
 import { useState } from 'react';
-import type { SessionState } from '@/types';
+import type { ResetMode, SessionState } from '@/types';
 
 interface SessionControlsProps {
   session: SessionState;
   isLoading: boolean;
   error?: string | null;
   onStart: (duration: number) => void;
+  onPause: () => void;
+  onResume: () => void;
   onStop: () => void;
-  onReset: (hardReset?: boolean) => void;
+  onReset: (mode: ResetMode) => void;
 }
 
-export const SessionControls = ({ session, isLoading, error, onStart, onStop, onReset }: SessionControlsProps) => {
+export const SessionControls = ({ session, isLoading, error, onStart, onPause, onResume, onStop, onReset }: SessionControlsProps) => {
   const [duration, setDuration] = useState(120);
   
   const isRunning = session.status === 'running';
+  const isPaused = session.status === 'paused';
   const isCompleted = session.status === 'completed';
   const isIdle = session.status === 'idle';
   
@@ -53,6 +56,7 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
         <div className="flex items-center space-x-2">
           <span className={`w-2 h-2 rounded-full ${
             isRunning ? 'bg-green-500 animate-pulse' : 
+            isPaused ? 'bg-amber-500' :
             isCompleted ? 'bg-blue-500' : 'bg-gray-500'
           }`} />
           <span className="text-sm text-gray-400 capitalize">{session.status}</span>
@@ -69,7 +73,7 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
           type="number"
           value={duration}
           onChange={(e) => setDuration(parseInt(e.target.value) || 180)}
-          disabled={isRunning}
+          disabled={isRunning || isPaused}
           className="w-full bg-surface-light border border-border rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
           min={30}
           max={600}
@@ -77,7 +81,7 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
       </div>
       
       {/* Progress bar: running (live) or completed (full bar, read-only) */}
-      {(isRunning || isCompleted) && (
+      {(isRunning || isPaused || isCompleted) && (
         <div className="mb-4">
           <div className="flex justify-between text-sm text-gray-400 mb-1">
             <span>Elapsed</span>
@@ -92,9 +96,9 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
         </div>
       )}
       
-      {/* Control buttons: running → Stop only; completed → Start + Stop + Reset; idle → Start + Reset */}
+      {/* Control buttons */}
       <div className="flex flex-wrap gap-2">
-        {!isRunning && (
+        {(isIdle || isCompleted) && (
           <button
             type="button"
             onClick={() => onStart(duration)}
@@ -104,7 +108,29 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
             {isLoading ? 'Starting...' : 'Start'}
           </button>
         )}
-        {(isRunning || isCompleted) && (
+        {isRunning && (
+          <button
+            type="button"
+            onClick={() => onPause()}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[40%] bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+            title="Pause simulation and keep remaining time"
+          >
+            {isLoading ? 'Pausing...' : 'Pause'}
+          </button>
+        )}
+        {isPaused && (
+          <button
+            type="button"
+            onClick={() => onResume()}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[40%] bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
+            title="Resume simulation with positions reset to starting balances"
+          >
+            {isLoading ? 'Resuming...' : 'Resume'}
+          </button>
+        )}
+        {(isRunning || isPaused || isCompleted) && (
           <button
             type="button"
             onClick={() => onStop()}
@@ -115,15 +141,46 @@ export const SessionControls = ({ session, isLoading, error, onStart, onStop, on
             {isLoading ? 'Stopping...' : 'Stop'}
           </button>
         )}
-        {!isRunning && (isIdle || isCompleted) && (
+        {!isRunning && !isPaused && (isIdle || isCompleted) && (
           <button
             type="button"
-            onClick={() => onReset(true)}
+            onClick={() => onReset('soft')}
             disabled={isLoading}
-            className="min-w-0 flex-1 basis-[40%] bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded transition"
-            title="Hard reset: Clears all data including account metrics"
+            className="min-w-0 flex-1 basis-[30%] bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white font-medium py-2 px-3 rounded transition"
+            title="Soft reset: clear charts/events/trades; keep chain state"
           >
             Reset
+            <span className="ml-1 text-[10px] text-gray-200" title="Soft reset: clears dashboard session data only.">
+              ?
+            </span>
+          </button>
+        )}
+        {!isRunning && !isPaused && (isIdle || isCompleted) && (
+          <button
+            type="button"
+            onClick={() => onReset('hard')}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[30%] bg-slate-600 hover:bg-slate-700 disabled:opacity-50 text-white font-medium py-2 px-3 rounded transition"
+            title="Hard reset: clear session/account metrics and reset User wallet balances"
+          >
+            Hard
+            <span className="ml-1 text-[10px] text-gray-200" title="Hard reset: also resets account metrics and user balances.">
+              ?
+            </span>
+          </button>
+        )}
+        {!isRunning && !isPaused && (isIdle || isCompleted) && (
+          <button
+            type="button"
+            onClick={() => onReset('reseed')}
+            disabled={isLoading}
+            className="min-w-0 flex-1 basis-[30%] bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium py-2 px-3 rounded transition"
+            title="Reseed reset: anvil_reset + deploy to restore initial pool and ~1.0 starting price"
+          >
+            Reseed
+            <span className="ml-1 text-[10px] text-violet-200" title="Reseed: full chain reset + redeploy to initial balances/pool.">
+              ?
+            </span>
           </button>
         )}
       </div>

@@ -6,12 +6,13 @@
 // serialize the data as JSON and fan it out to every connected client.
 //
 // MESSAGE TYPES (consumed by frontend page.tsx handleWSMessage):
-//   "trade"          → Blotter component
-//   "price"          → PriceChart component
-//   "lp_metrics"     → LPStats component
-//   "key_event"      → KeyEvents component
-//   "session_state"  → SessionControls component
-//   "account_update" → AccountMetrics component
+//
+//	"trade"          → Blotter component
+//	"price"          → PriceChart component
+//	"lp_metrics"     → LPStats component
+//	"key_event"      → KeyEvents component
+//	"session_state"  → SessionControls component
+//	"account_update" → AccountMetrics component
 package server
 
 import (
@@ -29,18 +30,19 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
-	
+
+	// Send initial state before registration so runBroadcast doesn't write
+	// concurrently to the same conn during bootstrap.
+	s.sendInitialState(conn)
+
 	// Register client
 	s.clientsMu.Lock()
 	s.clients[conn] = true
 	clientCount := len(s.clients)
 	s.clientsMu.Unlock()
-	
+
 	log.Printf("WebSocket client connected. Total clients: %d", clientCount)
-	
-	// Send initial state
-	s.sendInitialState(conn)
-	
+
 	// Keep connection alive and handle disconnection
 	go func() {
 		defer func() {
@@ -55,30 +57,35 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 // sendInitialState sends the current state to a new client
 func (s *Server) sendInitialState(conn *websocket.Conn) {
 	// Send session state
+	_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 	conn.WriteJSON(WSMessage{
 		Type: "session_state",
 		Data: s.session.GetState(),
 	})
-	
+
 	// Send LP metrics
+	_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 	conn.WriteJSON(WSMessage{
 		Type: "lp_metrics",
 		Data: s.store.GetLPData(),
 	})
-	
+
 	// Send recent candles
+	_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 	conn.WriteJSON(WSMessage{
 		Type: "candles",
 		Data: s.store.GetCandles(),
 	})
-	
+
 	// Send recent trades
+	_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 	conn.WriteJSON(WSMessage{
 		Type: "trades",
 		Data: s.store.GetRecentTrades(50),
 	})
-	
+
 	// Send recent events
+	_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 	conn.WriteJSON(WSMessage{
 		Type: "events",
 		Data: s.store.GetRecentEvents(20),
@@ -95,15 +102,9 @@ func (s *Server) handleConnection(conn *websocket.Conn) {
 		conn.Close()
 		log.Printf("WebSocket client disconnected. Total clients: %d", clientCount)
 	}()
-	
-	// Configure ping/pong for connection health
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
-	})
-	
-	// Read messages (mainly for ping/pong)
+
+	// Read messages until disconnect. Browser clients don't send periodic messages,
+	// so avoid a hard read deadline that would force disconnect churn.
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
@@ -132,6 +133,19 @@ func (s *Server) BroadcastLPMetrics() {
 
 // BroadcastAccountUpdate sends an account update to all clients
 func (s *Server) BroadcastAccountUpdate(nickname string) {
+	// Account performance payloads grow with session length (equity/trade history).
+	// Throttle per-account pushes to avoid saturating the WS queue under heavy flow.
+	const minAccountUpdateInterval = 1 * time.Second
+	now := time.Now()
+	s.accountUpdateMu.Lock()
+	last := s.lastAccountUpdateAt[nickname]
+	if now.Sub(last) < minAccountUpdateInterval {
+		s.accountUpdateMu.Unlock()
+		return
+	}
+	s.lastAccountUpdateAt[nickname] = now
+	s.accountUpdateMu.Unlock()
+
 	perf := s.store.GetAccountPerformance(nickname)
 	if perf != nil {
 		s.Broadcast(WSMessage{Type: "account_update", Data: perf})

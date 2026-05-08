@@ -38,7 +38,7 @@ func NewNonceManager(client *Client) *NonceManager {
 func (nm *NonceManager) GetAndIncrement(ctx context.Context, addr common.Address) (uint64, error) {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	// Initialize nonce from chain if not cached
 	if _, exists := nm.nonces[addr]; !exists {
 		pendingNonce, err := nm.client.PendingNonceAt(ctx, addr)
@@ -47,10 +47,10 @@ func (nm *NonceManager) GetAndIncrement(ctx context.Context, addr common.Address
 		}
 		nm.nonces[addr] = pendingNonce
 	}
-	
+
 	nonce := nm.nonces[addr]
 	nm.nonces[addr]++
-	
+
 	return nonce, nil
 }
 
@@ -58,7 +58,7 @@ func (nm *NonceManager) GetAndIncrement(ctx context.Context, addr common.Address
 func (nm *NonceManager) PeekNonce(ctx context.Context, addr common.Address) (uint64, error) {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	if _, exists := nm.nonces[addr]; !exists {
 		pendingNonce, err := nm.client.PendingNonceAt(ctx, addr)
 		if err != nil {
@@ -66,7 +66,7 @@ func (nm *NonceManager) PeekNonce(ctx context.Context, addr common.Address) (uin
 		}
 		nm.nonces[addr] = pendingNonce
 	}
-	
+
 	return nm.nonces[addr], nil
 }
 
@@ -74,12 +74,12 @@ func (nm *NonceManager) PeekNonce(ctx context.Context, addr common.Address) (uin
 func (nm *NonceManager) Reset(ctx context.Context, addr common.Address) error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	pendingNonce, err := nm.client.PendingNonceAt(ctx, addr)
 	if err != nil {
 		return err
 	}
-	
+
 	nm.nonces[addr] = pendingNonce
 	return nil
 }
@@ -93,13 +93,21 @@ func (nm *NonceManager) ResetAll(ctx context.Context) error {
 	}
 	nm.nonces = make(map[common.Address]uint64)
 	nm.mu.Unlock()
-	
+
 	// Re-fetch nonces for all addresses
 	for _, addr := range addresses {
 		if _, err := nm.GetAndIncrement(ctx, addr); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
+}
+
+// ClearCache drops all cached nonces. Subsequent requests re-fetch from chain.
+func (nm *NonceManager) ClearCache() {
+	nm.mu.Lock()
+	nm.nonces = make(map[common.Address]uint64)
+	nm.pending = make(map[common.Address]uint64)
+	nm.mu.Unlock()
 }

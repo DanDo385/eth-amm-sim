@@ -133,3 +133,50 @@ func (c *Client) SetBalance(ctx context.Context, address common.Address, balance
 
 	return nil
 }
+
+// AnvilReset resets chain state back to genesis using Anvil's reset RPC method.
+func (c *Client) AnvilReset(ctx context.Context) error {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "anvil_reset",
+		"params":  []interface{}{},
+		"id":      1,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResp struct {
+		JSONRPC string      `json:"jsonrpc"`
+		ID      int         `json:"id"`
+		Result  interface{} `json:"result"`
+		Error   *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if rpcResp.Error != nil {
+		return fmt.Errorf("RPC error: %s (code: %d)", rpcResp.Error.Message, rpcResp.Error.Code)
+	}
+	return nil
+}

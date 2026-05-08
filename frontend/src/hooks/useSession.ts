@@ -11,7 +11,7 @@
 //   - Backend:   engine/session.go manages the actual state machine
 
 import { useState, useEffect, useCallback } from 'react';
-import type { SessionState } from '@/types';
+import type { ResetMode, SessionState } from '@/types';
 import * as api from '@/lib/api';
 
 export function useSession() {
@@ -62,12 +62,38 @@ export function useSession() {
     }
   }, [refresh]);
 
-  // Reset session
-  const reset = useCallback(async (hardReset: boolean = false) => {
+  const pause = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await api.resetSession(hardReset);
+      await api.pauseSession();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to pause session');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [refresh]);
+
+  const resume = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await api.resumeSession();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to resume session');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [refresh]);
+
+  // Reset session
+  const reset = useCallback(async (mode: ResetMode = 'soft') => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await api.resetSession(mode);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to reset session');
@@ -107,6 +133,8 @@ export function useSession() {
     error,
     start,
     stop,
+    pause,
+    resume,
     reset,
     refresh,
     updateFromWS,

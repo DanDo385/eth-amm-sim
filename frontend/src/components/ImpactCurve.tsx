@@ -13,7 +13,7 @@
 //   - Reserve updates: main.go pollPrices → impact.UpdateReserves
 //   - Types:         types/index.ts ImpactPoint, LPMetrics
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ImpactPoint, LPMetrics } from '@/types';
 
 interface ImpactCurveProps {
@@ -78,6 +78,15 @@ const inferReservesFromImpact = (buyData: ImpactPoint[], sellData: ImpactPoint[]
 };
 
 export const ImpactCurve = ({ buyData, sellData, lpMetrics, height = 280 }: ImpactCurveProps) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<{
+    svgX: number;
+    svgY: number;
+    reserveX: number;
+    price: number;
+    deltaPct: number;
+  } | null>(null);
+
   const reserves = useMemo<Reserves | null>(() => {
     if (lpMetrics && lpMetrics.currentApples > 0 && lpMetrics.currentETH > 0) {
       return { apples: lpMetrics.currentApples, eth: lpMetrics.currentETH, source: 'lp' };
@@ -217,14 +226,51 @@ export const ImpactCurve = ({ buyData, sellData, lpMetrics, height = 280 }: Impa
     };
   }, [reserves]);
 
+  const xMin = xTicks.length > 0 ? xTicks[0] : 0;
+  const xMax = xTicks.length > 0 ? xTicks[xTicks.length - 1] : 0;
+  const yMin = yTicks.length > 0 ? yTicks[0] : 0;
+  const yMax = yTicks.length > 0 ? yTicks[yTicks.length - 1] : 0;
+  const xSpan = xMax - xMin;
+  const ySpan = yMax - yMin;
+  const k = xSpot * ySpot;
+  const xToPx = (x: number) => 90 + ((x - xMin) / xSpan) * 880;
+  const yToPx = (y: number) => 40 + (1 - (y - yMin) / ySpan) * 400;
+  const pxToX = (px: number) => xMin + ((px - 90) / 880) * xSpan;
+
+  const handleMouseMove = (evt: React.MouseEvent<SVGSVGElement>) => {
+    if (!reserves || !svgRef.current || xSpan <= 0 || ySpan <= 0 || k <= 0) {
+      return;
+    }
+    const rect = svgRef.current.getBoundingClientRect();
+    const localX = ((evt.clientX - rect.left) / rect.width) * 1000;
+    const clampedX = Math.min(970, Math.max(90, localX));
+    const reserveX = pxToX(clampedX);
+    if (reserveX <= 0) {
+      setHoverPoint(null);
+      return;
+    }
+    const price = k / (reserveX * reserveX);
+    const reserveY = k / reserveX;
+    const svgY = yToPx(reserveY);
+    const deltaPct = priceSpot > 0 ? ((price - priceSpot) / priceSpot) * 100 : 0;
+    setHoverPoint({ svgX: xToPx(reserveX), svgY, reserveX, price, deltaPct });
+  };
+
   return (
     <div className="bg-surface rounded-lg border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="text-sm font-medium text-white">AMM Reserve Curve</h3>
         <div className="text-xs text-gray-400">
-          {reserves
-            ? `Spot: ${formatNumber(priceSpot, 4)} ETH/APPL`
-            : 'Waiting for pool reserves'}
+          {reserves ? (
+            <span>
+              Spot: {formatNumber(priceSpot, 4)} ETH/APPL
+              {hoverPoint ? (
+                <span className="ml-3 text-cyan-300">
+                  Hover: {formatNumber(hoverPoint.price, 4)} ({hoverPoint.deltaPct >= 0 ? '+' : ''}{formatNumber(hoverPoint.deltaPct, 3)}%)
+                </span>
+              ) : null}
+            </span>
+          ) : 'Waiting for pool reserves'}
         </div>
       </div>
       <div className="px-4 py-4">
@@ -234,7 +280,14 @@ export const ImpactCurve = ({ buyData, sellData, lpMetrics, height = 280 }: Impa
           </div>
         ) : (
           <div className="w-full" style={{ height }}>
-            <svg viewBox={viewBox} width="100%" height="100%">
+            <svg
+              ref={svgRef}
+              viewBox={viewBox}
+              width="100%"
+              height="100%"
+              onMouseMove={handleMouseMove}
+              onMouseLeave={() => setHoverPoint(null)}
+            >
               <defs>
                 <linearGradient id="impactSegment" x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0%" stopColor="#ef4444" />
@@ -284,6 +337,13 @@ export const ImpactCurve = ({ buyData, sellData, lpMetrics, height = 280 }: Impa
               <circle cx={90 + ((xSpot - xTicks[0]) / (xTicks[xTicks.length - 1] - xTicks[0])) * 880} cy={40 + (1 - (ySpot - yTicks[0]) / (yTicks[yTicks.length - 1] - yTicks[0])) * 400} r="6" fill="#38bdf8" />
               <circle cx={90 + ((xSell - xTicks[0]) / (xTicks[xTicks.length - 1] - xTicks[0])) * 880} cy={40 + (1 - (ySell - yTicks[0]) / (yTicks[yTicks.length - 1] - yTicks[0])) * 400} r="7" fill="#ef4444" />
               <circle cx={90 + ((xBuy - xTicks[0]) / (xTicks[xTicks.length - 1] - xTicks[0])) * 880} cy={40 + (1 - (yBuy - yTicks[0]) / (yTicks[yTicks.length - 1] - yTicks[0])) * 400} r="7" fill="#22c55e" />
+
+              {hoverPoint && (
+                <>
+                  <line x1={hoverPoint.svgX} y1="40" x2={hoverPoint.svgX} y2="440" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 4" />
+                  <circle cx={hoverPoint.svgX} cy={hoverPoint.svgY} r="5" fill="#22d3ee" />
+                </>
+              )}
 
               {/* Labels */}
               <text x="90" y="24" fill="#9ca3af" fontSize="12">ETH in Pool</text>

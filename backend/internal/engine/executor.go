@@ -657,3 +657,105 @@ func (e *Executor) ResetUserAccount(ctx context.Context, userAddr common.Address
 
 	return nil
 }
+
+// ResetTradingAccounts resets User + bot account balances to configured initial values.
+// LP account is intentionally excluded so pool reserves remain unchanged while trading
+// participants are normalized before a resumed session.
+func (e *Executor) ResetTradingAccounts(ctx context.Context) error {
+	// Reset ETH balances first so all accounts have gas for APPL transfer adjustments.
+	for _, acc := range config.Accounts {
+		if acc.Type == config.BotTypeLP {
+			continue
+		}
+		targetETH := new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e18))
+		if err := e.client.SetBalance(ctx, acc.Address(), targetETH); err != nil {
+			return fmt.Errorf("set ETH balance for %s: %w", acc.Nickname, err)
+		}
+	}
+
+	lpAccount := config.GetAccountByIndex(0)
+	if lpAccount == nil {
+		return fmt.Errorf("LP account not found")
+	}
+	lpPrivateKey, err := crypto.HexToECDSA(lpAccount.PrivateKey())
+	if err != nil {
+		return fmt.Errorf("decode LP private key: %w", err)
+	}
+
+	for _, acc := range config.Accounts {
+		if acc.Type == config.BotTypeLP {
+			continue
+		}
+		if err := e.resetAPPLBalanceForAccount(ctx, &acc, lpAccount, lpPrivateKey); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ResetChain resets Anvil back to genesis state.
+func (e *Executor) ResetChain(ctx context.Context) error {
+	return e.client.AnvilReset(ctx)
+}
+
+// ResetNonceCache clears cached nonces so nonce allocation re-syncs with chain state.
+func (e *Executor) ResetNonceCache(ctx context.Context) error {
+	e.nonceManager.ClearCache()
+	return nil
+}
+
+func (e *Executor) resetAPPLBalanceForAccount(
+	ctx context.Context,
+	acc *config.AccountConfig,
+	lpAccount *config.AccountConfig,
+	lpPrivateKey *ecdsa.PrivateKey,
+) error {
+	currentAPPL, err := e.GetAPPLBalance(ctx, acc.Address())
+	if err != nil {
+		return fmt.Errorf("get APPL balance for %s: %w", acc.Nickname, err)
+	}
+	targetAPPL := acc.StartingApples
+	diff := new(big.Int).Sub(targetAPPL, currentAPPL)
+
+	switch diff.Sign() {
+	case 0:
+		return nil
+	case 1:
+		nonce, err := e.nonceManager.GetAndIncrement(ctx, lpAccount.Address())
+		if err != nil {
+			return fmt.Errorf("get LP nonce for mint to %s: %w", acc.Nickname, err)
+		}
+		auth, err := e.accountMgr.GetTransactOpts(lpPrivateKey)
+		if err != nil {
+			return fmt.Errorf("create LP tx opts for mint to %s: %w", acc.Nickname, err)
+		}
+		auth.Nonce = big.NewInt(int64(nonce))
+		auth.Context = ctx
+		if _, err := e.tokenContract.Mint(auth, acc.Address(), diff); err != nil {
+			return fmt.Errorf("mint APPL to %s: %w", acc.Nickname, err)
+		}
+	case -1:
+		// Move excess APPL back to LP.
+		privateKey, err := crypto.HexToECDSA(acc.PrivateKey())
+		if err != nil {
+			return fmt.Errorf("decode private key for %s: %w", acc.Nickname, err)
+		}
+		nonce, err := e.nonceManager.GetAndIncrement(ctx, acc.Address())
+		if err != nil {
+			return fmt.Errorf("get nonce for %s APPL transfer: %w", acc.Nickname, err)
+		}
+		auth, err := e.accountMgr.GetTransactOpts(privateKey)
+		if err != nil {
+			return fmt.Errorf("create tx opts for %s APPL transfer: %w", acc.Nickname, err)
+		}
+		auth.Nonce = big.NewInt(int64(nonce))
+		auth.Context = ctx
+		excess := new(big.Int).Neg(diff)
+		if _, err := e.tokenContract.Transfer(auth, lpAccount.Address(), excess); err != nil {
+			return fmt.Errorf("transfer excess APPL from %s: %w", acc.Nickname, err)
+		}
+	}
+
+	return nil
+}

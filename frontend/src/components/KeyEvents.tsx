@@ -15,6 +15,7 @@ import type { KeyEvent } from '@/types';
 interface KeyEventsProps {
   events: KeyEvent[];
   height?: number; // Height in pixels (defaults to 200 to match TWAPChart)
+  onSelectEvent?: (event: KeyEvent) => void;
 }
 
 const eventIcons: Record<string, string> = {
@@ -28,7 +29,7 @@ const severityColors: Record<string, string> = {
   critical: 'text-red-400',
 };
 
-export const KeyEvents = ({ events, height = 200 }: KeyEventsProps) => {
+export const KeyEvents = ({ events, height = 200, onSelectEvent }: KeyEventsProps) => {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString();
@@ -50,7 +51,16 @@ export const KeyEvents = ({ events, height = 200 }: KeyEventsProps) => {
         ) : (
           <ul className="divide-y divide-border">
             {events.map((event, i) => (
-              <li key={i} className="px-4 py-2 flex items-start space-x-3">
+              <li
+                key={i}
+                className={`px-4 py-2 flex items-start space-x-3 ${event.type === 'trade' ? 'cursor-pointer hover:bg-surface-light/60' : ''}`}
+                onClick={() => {
+                  if (event.type === 'trade') {
+                    onSelectEvent?.(event);
+                  }
+                }}
+                title={event.type === 'trade' ? 'Click to inspect AMM details' : undefined}
+              >
                 <span className="text-lg">{eventIcons[event.type] || '📌'}</span>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${severityColors[event.severity] || 'text-gray-300'}`}>

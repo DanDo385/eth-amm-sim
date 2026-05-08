@@ -18,9 +18,10 @@ interface BlotterProps {
   trades: Trade[];
   maxRows?: number; // Optional limit, undefined means show all trades
   height?: number; // Height in pixels (defaults to 350 to match PriceChart)
+  highlightedTxHash?: string | null;
 }
 
-export const Blotter = ({ trades, maxRows, height = 350 }: BlotterProps) => {
+export const Blotter = ({ trades, maxRows, height = 350, highlightedTxHash = null }: BlotterProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   
@@ -115,7 +116,7 @@ export const Blotter = ({ trades, maxRows, height = 350 }: BlotterProps) => {
               displayTrades.map((trade, i) => (
                 <tr 
                   key={trade.txHash || i} 
-                  className={rowClassName(trade)}
+                  className={`${rowClassName(trade)} ${highlightedTxHash && trade.txHash === highlightedTxHash ? 'ring-1 ring-cyan-400/70 bg-cyan-500/10' : ''}`}
                 >
                   <td className="px-3 py-2 text-gray-300">
                     {formatTime(trade.timestamp)}

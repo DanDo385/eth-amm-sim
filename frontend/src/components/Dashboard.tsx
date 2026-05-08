@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
-import { DemoArchitecturePanel } from '@/components/DemoArchitecturePanel';
 import { TradingPanel } from '@/components/TradingPanel';
 import { PriceChart } from '@/components/PriceChart';
 import { TWAPChart } from '@/components/TWAPChart';
@@ -11,26 +10,28 @@ import { LPStats } from '@/components/LPStats';
 import { KeyEvents } from '@/components/KeyEvents';
 import { AccountMetrics } from '@/components/AccountMetrics';
 import { ImpactCurve } from '@/components/ImpactCurve';
+import { AmmDetailsPanel } from '@/components/AmmDetailsPanel';
 import { useSession } from '@/hooks/useSession';
 import { usePriceData } from '@/hooks/usePriceData';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import type { Trade, KeyEvent, WSMessage, Candle, LPMetrics, ImpactPoint, SessionState } from '@/types';
+import type { Trade, KeyEvent, WSMessage, Candle, LPMetrics, ImpactPoint, SessionState, ResetMode } from '@/types';
 import * as api from '@/lib/api';
 
 export default function Dashboard() {
-  const { session, isLoading, error: sessionError, start, stop, reset, updateFromWS } = useSession();
+  const { session, isLoading, error: sessionError, start, pause, resume, stop, reset, updateFromWS } = useSession();
   const { candles, lpMetrics, addCandle, updateLPMetrics, refresh: refreshPriceData } = usePriceData();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [events, setEvents] = useState<KeyEvent[]>([]);
   const [impactData, setImpactData] = useState<{ buy: ImpactPoint[]; sell: ImpactPoint[] }>({ buy: [], sell: [] });
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
   const sessionStartRef = useRef<string | undefined>(undefined);
 
   const handleReset = useCallback(
-    async (hardReset: boolean = false) => {
+    async (mode: ResetMode = 'soft') => {
       setTrades([]);
       setEvents([]);
-      await reset(hardReset);
+      await reset(mode);
       await refreshPriceData();
     },
     [reset, refreshPriceData]
@@ -89,6 +90,25 @@ export default function Dashboard() {
     }
   }, [updateFromWS, addCandle, updateLPMetrics]);
 
+  const handleSelectEvent = useCallback((event: KeyEvent) => {
+    if (event.type !== 'trade') return;
+    const match = /^(?<nick>\\S+) executed (?<side>BUY|SELL) of/.exec(event.description);
+    const evtTime = new Date(event.timestamp).getTime();
+    const nickname = match?.groups?.nick;
+    const isBuy = match?.groups?.side === 'BUY';
+
+    const candidates = sessionTrades
+      .filter((t) => {
+        if (nickname && t.nickname !== nickname) return false;
+        if (match?.groups?.side && t.isBuy !== isBuy) return false;
+        return true;
+      })
+      .sort((a, b) => Math.abs(new Date(a.timestamp).getTime() - evtTime) - Math.abs(new Date(b.timestamp).getTime() - evtTime));
+    if (candidates.length > 0) {
+      setSelectedTrade(candidates[0]);
+    }
+  }, [sessionTrades]);
+
   const { isConnected } = useWebSocket(handleWSMessage);
 
   useEffect(() => {
@@ -117,54 +137,60 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Market Dashboard</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Real-time AMM simulation with heterogeneous agents
+      <div className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Market Dashboard</h1>
+            <p className="text-gray-400 text-sm mt-1">
+              Real-time AMM simulation with heterogeneous agents
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-sm text-gray-400">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="grid grid-cols-15 gap-6">
+            <div className="col-span-15 lg:col-span-3 space-y-6">
+              <SessionControls
+                session={session}
+                isLoading={isLoading}
+                error={sessionError}
+                onStart={start}
+                onPause={pause}
+                onResume={resume}
+                onStop={stop}
+                onReset={handleReset}
+              />
+              <TradingPanel session={session} />
+              <LPStats metrics={lpMetrics} />
+              <AccountMetrics />
+            </div>
+
+            <div className="col-span-15 lg:col-span-6 space-y-6">
+              <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
+              <TWAPChart candles={candles} trades={sessionTrades} session={session} height={200} />
+              <ImpactCurve buyData={impactData.buy} sellData={impactData.sell} lpMetrics={lpMetrics} />
+            </div>
+
+            <div className="col-span-15 lg:col-span-6 space-y-6">
+              <Blotter trades={sessionTrades} height={350} highlightedTxHash={selectedTrade?.txHash ?? null} />
+              <KeyEvents events={events} height={200} onSelectEvent={handleSelectEvent} />
+              <AmmDetailsPanel trade={selectedTrade} />
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-xs text-gray-500 py-4 border-t border-border">
+          <p>
+            Simulating market microstructure with Whale, Retail, and Strategy bots.
+            All metrics computed in real-time.
           </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-sm text-gray-400">
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-15 gap-6">
-        <div className="col-span-15 lg:col-span-3 space-y-6">
-          <SessionControls
-            session={session}
-            isLoading={isLoading}
-            error={sessionError}
-            onStart={start}
-            onStop={stop}
-            onReset={handleReset}
-          />
-          <DemoArchitecturePanel />
-          <TradingPanel session={session} />
-          <LPStats metrics={lpMetrics} />
-          <AccountMetrics />
-        </div>
-
-        <div className="col-span-15 lg:col-span-6 space-y-6">
-          <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
-          <TWAPChart candles={candles} trades={sessionTrades} session={session} height={200} />
-          <ImpactCurve buyData={impactData.buy} sellData={impactData.sell} lpMetrics={lpMetrics} />
-        </div>
-
-        <div className="col-span-15 lg:col-span-6 space-y-6">
-          <Blotter trades={sessionTrades} height={350} />
-          <KeyEvents events={events} height={200} />
-        </div>
-      </div>
-
-      <div className="text-center text-xs text-gray-500 pt-4 border-t border-border">
-        <p>
-          Simulating market microstructure with Whale, Retail, and Strategy bots.
-          All metrics computed in real-time.
-        </p>
       </div>
     </div>
   );
