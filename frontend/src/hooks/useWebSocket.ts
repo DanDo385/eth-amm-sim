@@ -33,6 +33,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
+  const intentionalCloseRef = useRef(false);
 
   // Add a message handler
   const addHandler = useCallback((handler: MessageHandler) => {
@@ -46,9 +47,15 @@ export function useWebSocket(onMessage?: MessageHandler) {
 
   // Connect to WebSocket
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
     try {
+      intentionalCloseRef.current = false;
       const ws = new WebSocket(getWebSocketUrl());
 
       ws.onopen = () => {
@@ -57,15 +64,23 @@ export function useWebSocket(onMessage?: MessageHandler) {
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        if (!intentionalCloseRef.current) {
+          console.log('WebSocket disconnected');
+        }
         setIsConnected(false);
 
-        // Reconnect after 2 seconds
-        reconnectTimeoutRef.current = setTimeout(connect, 2000);
+        // Reconnect after 2 seconds (unless this close was intentional, e.g. strict-mode unmount)
+        if (!intentionalCloseRef.current) {
+          reconnectTimeoutRef.current = setTimeout(connect, 2000);
+        }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        // During React strict-mode mount/unmount cycles, closing a CONNECTING socket
+        // can emit a benign error. Suppress those intentional-close logs.
+        if (!intentionalCloseRef.current) {
+          console.error('WebSocket error:', error);
+        }
       };
 
       ws.onmessage = (event) => {
@@ -85,18 +100,28 @@ export function useWebSocket(onMessage?: MessageHandler) {
 
       wsRef.current = ws;
     } catch (e) {
-      console.error('Failed to connect WebSocket:', e);
-      reconnectTimeoutRef.current = setTimeout(connect, 2000);
+      if (!intentionalCloseRef.current) {
+        console.error('Failed to connect WebSocket:', e);
+        reconnectTimeoutRef.current = setTimeout(connect, 2000);
+      }
     }
   }, [onMessage]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
+    intentionalCloseRef.current = true;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
-      wsRef.current.close();
+      // Close only active sockets; suppress strict-mode disconnect noise.
+      if (
+        wsRef.current.readyState === WebSocket.CONNECTING ||
+        wsRef.current.readyState === WebSocket.OPEN
+      ) {
+        wsRef.current.close();
+      }
       wsRef.current = null;
     }
   }, []);

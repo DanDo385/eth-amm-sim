@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [events, setEvents] = useState<KeyEvent[]>([]);
   const [impactData, setImpactData] = useState<{ buy: ImpactPoint[]; sell: ImpactPoint[] }>({ buy: [], sell: [] });
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [displaySessionStartedAt, setDisplaySessionStartedAt] = useState<string | undefined>(undefined);
   const [, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
   const sessionStartRef = useRef<string | undefined>(undefined);
 
@@ -31,6 +32,9 @@ export default function Dashboard() {
     async (mode: ResetMode = 'soft') => {
       setTrades([]);
       setEvents([]);
+      setSelectedTrade(null);
+      setDisplaySessionStartedAt(undefined);
+      sessionStartRef.current = undefined;
       await reset(mode);
       await refreshPriceData();
     },
@@ -40,27 +44,30 @@ export default function Dashboard() {
   useEffect(() => {
     if (session.startedAt && session.startedAt !== sessionStartRef.current) {
       sessionStartRef.current = session.startedAt;
+      setDisplaySessionStartedAt(session.startedAt);
+      setSelectedTrade(null);
       refreshPriceData();
-    } else if (session.status === 'idle' || !session.startedAt) {
-      if (sessionStartRef.current !== undefined) {
-        sessionStartRef.current = undefined;
-        setTrades([]);
-        setEvents([]);
-        refreshPriceData();
-      }
     }
-  }, [session.startedAt, session.status, refreshPriceData]);
+  }, [session.startedAt, refreshPriceData]);
 
   const sessionTrades = useMemo(() => {
-    if (!session.startedAt) {
-      return [];
+    if (!displaySessionStartedAt) {
+      return trades;
     }
-    const startTime = new Date(session.startedAt).getTime();
+    const startTime = new Date(displaySessionStartedAt).getTime();
     return trades.filter((t) => {
       const tradeTime = new Date(t.timestamp).getTime();
       return tradeTime >= startTime;
     });
-  }, [trades, session.startedAt]);
+  }, [trades, displaySessionStartedAt]);
+
+  const sessionEvents = useMemo(() => {
+    if (!displaySessionStartedAt) {
+      return events;
+    }
+    const startTime = new Date(displaySessionStartedAt).getTime();
+    return events.filter((event) => new Date(event.timestamp).getTime() >= startTime);
+  }, [events, displaySessionStartedAt]);
 
   const handleWSMessage = useCallback((message: WSMessage) => {
     switch (message.type) {
@@ -80,7 +87,7 @@ export default function Dashboard() {
         updateLPMetrics(message.data as LPMetrics);
         break;
       case 'key_event':
-        setEvents((prev) => [...prev.slice(-49), message.data as KeyEvent]);
+        setEvents((prev) => [...prev, message.data as KeyEvent]);
         break;
       case 'events':
         setEvents(message.data as KeyEvent[]);
@@ -113,7 +120,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.getTrades(1000).then((data) => setTrades(data as Trade[])).catch(console.error);
-    api.getEvents(20).then((data) => setEvents(data as KeyEvent[])).catch(console.error);
+    api.getEvents(1000).then((data) => setEvents(data as KeyEvent[])).catch(console.error);
     api.getImpactCurve()
       .then((data) => setImpactData(data as { buy: ImpactPoint[]; sell: ImpactPoint[] }))
       .catch(console.error);
@@ -168,7 +175,6 @@ export default function Dashboard() {
               />
               <TradingPanel session={session} />
               <LPStats metrics={lpMetrics} />
-              <AccountMetrics />
             </div>
 
             <div className="col-span-15 lg:col-span-6 space-y-6">
@@ -179,8 +185,9 @@ export default function Dashboard() {
 
             <div className="col-span-15 lg:col-span-6 space-y-6">
               <Blotter trades={sessionTrades} height={350} highlightedTxHash={selectedTrade?.txHash ?? null} />
-              <KeyEvents events={events} height={200} onSelectEvent={handleSelectEvent} />
+              <KeyEvents events={sessionEvents} height={200} onSelectEvent={handleSelectEvent} />
               <AmmDetailsPanel trade={selectedTrade} />
+              <AccountMetrics />
             </div>
           </div>
         </div>

@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -183,10 +184,14 @@ func main() {
 
 		// Record key events for large trades
 		amountInETH := toEther(trade.AmountIn)
-		if amountInETH >= config.LargeTradeThresholdETH {
-			severity := "warning"
-			if amountInETH >= config.CriticalTradeThresholdETH {
-				severity = "critical"
+		isUserTrade := trade.Nickname == "User"
+		if isUserTrade || amountInETH >= config.LargeTradeThresholdETH {
+			severity := "info"
+			if !isUserTrade {
+				severity = "warning"
+				if amountInETH >= config.CriticalTradeThresholdETH {
+					severity = "critical"
+				}
 			}
 			event := store.KeyEvent{
 				Timestamp:   time.Now(),
@@ -214,7 +219,7 @@ func main() {
 
 	// Start price polling
 	eg.Go(func() error {
-		return pollPricesWithError(egCtx, executor, memStore, srv)
+		return pollPricesWithError(egCtx, executor, memStore, srv, session)
 	})
 
 	// Start HTTP server
@@ -416,8 +421,8 @@ func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *sto
 //
 // This is the primary path that feeds real-time data to the frontend charts
 // (PriceChart, LPStats, ImpactCurve components).
-func pollPricesWithError(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) error {
-	pollPrices(ctx, executor, memStore, srv)
+func pollPricesWithError(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server, session *engine.Session) error {
+	pollPrices(ctx, executor, memStore, srv, session)
 	// Return nil on context cancellation (expected shutdown)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
@@ -425,12 +430,13 @@ func pollPricesWithError(ctx context.Context, executor *engine.Executor, memStor
 	return ctx.Err()
 }
 
-func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server) {
+func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore, srv *server.Server, session *engine.Session) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	var lastPrice float64
 	var priceInitialized bool
+	var lastNoCodeLogAt time.Time
 
 	for {
 		select {
@@ -445,18 +451,34 @@ func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.
 		// Get current price
 		price, err := executor.GetSpotPrice(pollCtx)
 		if err != nil {
-			log.Printf("Error getting spot price: %v", err)
+			// During hard reset/reseed, the AMM can be temporarily undeployed.
+			// Avoid noisy per-tick error spam between sessions.
+			errMsg := err.Error()
+			isNoContractCode := strings.Contains(errMsg, "no contract code at given address")
+			if isNoContractCode && !session.IsRunning() {
+				if time.Since(lastNoCodeLogAt) >= 15*time.Second {
+					log.Printf("Spot price unavailable between sessions (reset/redeploy in progress); waiting for contracts")
+					lastNoCodeLogAt = time.Now()
+				}
+			} else {
+				log.Printf("Error getting spot price: %v", err)
+			}
 			continue
 		}
+		lastNoCodeLogAt = time.Time{}
 
 		// Convert from wei to float
 		priceFloat := toEtherFloat(price)
 		memStore.RecordPrice(priceFloat)
 
-		// Track price movements for key events
+		// Track price movements for key events, but only during active sessions.
+		// Between sessions (idle/completed/reset/reseed), re-anchor the baseline
+		// so resets to 1.00 don't emit synthetic strategy-trigger events.
 		if !priceInitialized {
 			lastPrice = priceFloat
 			priceInitialized = true
+		} else if !session.IsRunning() {
+			lastPrice = priceFloat
 		} else if lastPrice > 0 {
 			priceChange := (priceFloat - lastPrice) / lastPrice
 			if math.Abs(priceChange) >= 0.05 { // 5% price move

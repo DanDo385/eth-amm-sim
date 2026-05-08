@@ -99,6 +99,11 @@ export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange 
       borderDownColor: '#ef4444',
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'price',
+        precision: 4,
+        minMove: 0.0001,
+      },
     });
 
     chartRef.current = chart;

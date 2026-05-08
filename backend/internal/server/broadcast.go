@@ -108,8 +108,14 @@ func (s *Server) handleConnection(conn *websocket.Conn) {
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket error: %v", err)
+			// Browser refreshes/dev reconnects often close without a status code (1005).
+			// Treat normal/go-away/no-status closes as expected disconnects.
+			if !websocket.IsCloseError(err,
+				websocket.CloseNormalClosure,
+				websocket.CloseGoingAway,
+				websocket.CloseNoStatusReceived,
+			) {
+				log.Printf("WebSocket read error: %v", err)
 			}
 			break
 		}
