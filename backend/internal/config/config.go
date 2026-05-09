@@ -64,7 +64,7 @@ func LoadAddressesFromBroadcast() (string, string, error) {
 
 	broadcastDir := filepath.Join(projectRoot, "contracts", "broadcast", "Deploy.s.sol", "31337")
 	
-	// Try run-latest.json first (symlink to most recent)
+	// Try run-latest.json first (deploy script keeps this as the canonical latest run file)
 	latestPath := filepath.Join(broadcastDir, "run-latest.json")
 	if _, err := os.Stat(latestPath); os.IsNotExist(err) {
 		// Find most recent run-*.json file

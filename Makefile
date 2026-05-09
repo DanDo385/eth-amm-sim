@@ -74,7 +74,7 @@ setup: contracts-install frontend-install bindings
 up:
 	./scripts/dev-up.sh
 
-# Loom-ready deterministic demo launcher. Frontend defaults to a 120 second session.
+# Loom-ready demo launcher. Use the UI session control for exact duration (e.g., 120s).
 demo-120: kill-all
 	@echo "Starting Loom demo mode: Anvil + deploy + Go backend + Vite frontend"
 	@echo "Open http://localhost:3000, click Start, then showcase a large key-event trade around 1:25."

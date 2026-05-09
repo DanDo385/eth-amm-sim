@@ -389,7 +389,7 @@ func initializeAccountMetrics(ctx context.Context, executor *engine.Executor, me
 // initLPMetrics initializes LP metrics with pool state
 func initLPMetrics(ctx context.Context, executor *engine.Executor, memStore *store.MemoryStore) {
 	// Initialize LP metrics from the actual on-chain pool reserves so the UI
-	// always reflects the deployed state (Deploy.s.sol seeds 10,000 APPL + 10,000 ETH).
+	// always reflects the deployed state (Deploy.s.sol seeds 25,000 APPL + 25,000 ETH).
 
 	// Get initial fees from contract (should be 0 at start, but track for accuracy)
 	initialFeesApple, initialFeesETH, err := executor.GetTotalFees(ctx)

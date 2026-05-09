@@ -73,7 +73,8 @@ Anvil (localhost:8545)
   - 5s OHLC candles, 60s TWAP, volatility from observed returns
   - LP metrics (IL, fees earned, net PnL)
   - Account performance (equity curve, Sharpe, drawdown, win rate)
-- Dashboard components: Price, TWAP, Impact Curve (hover readout), Blotter, LP Stats, Key Events (clickable trade rows), AMM Details, Account Metrics, User Trading (buy/sell).
+- Dashboard components: Price, TWAP, Impact Curve (hover readout), Blotter, LP Stats, Key Events (clickable trade rows), AMM Details, User Trading (buy/sell).
+- Account analytics live on the dedicated `/performance` page.
 - Performance analytics page at `/performance`.
 
 ## Liquidity Pool Calculations (LP Metrics)

@@ -3,7 +3,7 @@
 // Each handler reads from MemoryStore or controls Session/Executor and returns
 // JSON. Frontend lib/api.ts calls these endpoints. User trade handlers
 // (handleUserBuy/Sell) call executor methods directly to submit on-chain
-// transactions for the User account (index 29).
+// transactions for the User account (index 1).
 //
 // CONNECTIONS:
 //   - Frontend API client: frontend/lib/api.ts (fetches from these endpoints)
