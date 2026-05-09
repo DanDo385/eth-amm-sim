@@ -37,22 +37,22 @@
 #    - AppleAMM: The AMM contract for swapping ETH <-> APPL
 #      * Uses ReentrancyGuard and Address.sendValue() for security
 #
-# 2. REDISTRIBUTE ETH via vm.deal:
-#    - Account 0 (LP):     15,000 ETH (10k liquidity + 5k for gas)
+# 2. SET STARTING ETH BALANCES:
+#    - Account 0 (LP):     30,000 ETH
 #    - Accounts 1-29:      1,000 ETH each
 #
 # 3. MINT TOKENS to all Anvil accounts:
-#    - Account 0 (LP):         10,000 APPL (for pool seeding)
+#    - Account 0 (LP):         25,000 APPL (for pool seeding)
 #    - Accounts 1-29:          1,000 APPL each
 #
 # 4. SEED LIQUIDITY POOL
-#    - LP (account 0) deposits 10,000 APPL + 10,000 ETH
+#    - LP (account 0) deposits 25,000 APPL + 25,000 ETH
 #    - This creates the initial trading pool with 1:1 price ratio
 #
 # NOTE:
 # Deploy.s.sol is the authoritative on-chain pool state.
 # The backend also reads the actual on-chain reserves on startup to initialize LP metrics,
-# so the UI should reflect 10,000 APPL + 10,000 ETH immediately after deploy.
+# so the UI should reflect 25,000 APPL + 25,000 ETH immediately after deploy.
 #
 # ==============================================================================
 # OUTPUT FILES
@@ -80,11 +80,14 @@
 #    - First regenerate bindings: ./scripts/generate-bindings.sh
 #    - Then redeploy: ./scripts/deploy.sh
 #
-# 2. WANT FRESH STATE
+# 2. WANT FRESH STATE (MANUAL)
 #    - Pool reserves have drifted from trades
 #    - Want to reset all account balances
 #    - Restart Anvil first: pkill anvil && ./scripts/start-anvil.sh
 #    - Then redeploy: ./scripts/deploy.sh
+#
+#    For app-driven reset flow, use frontend Reset -> Reseed (or POST /session/reset?mode=reseed),
+#    which performs anvil_reset + deploy + nonce-cache refresh.
 #
 # 3. ANVIL RESTARTED
 #    - Anvil state is in-memory only
@@ -195,7 +198,7 @@ fi
 # Find the latest broadcast file
 LATEST_BROADCAST=""
 
-# Check for run-latest.json first (symlink to most recent)
+# Check for run-latest.json first (deploy.sh copies newest run-*.json to this path)
 if [ -f "$BROADCAST_DIR/run-latest.json" ]; then
     LATEST_BROADCAST="$BROADCAST_DIR/run-latest.json"
 else
@@ -238,7 +241,7 @@ fi
 #    Or: make backend
 #
 # 3. Open the frontend to visualize trades:
-#    cd frontend && npm run dev
+#    ./scripts/with-frontend-node.sh npm run dev
 #    Or: make frontend
 #
 # ==============================================================================

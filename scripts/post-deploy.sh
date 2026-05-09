@@ -1,12 +1,13 @@
 #!/bin/bash
 # ==============================================================================
-# post-deploy.sh - Post-Deployment Balance Adjustment
+# post-deploy.sh - Optional Post-Deployment Balance Adjustment (legacy leverage demo)
 # ==============================================================================
 #
 # PURPOSE:
-# Adjusts leverage account balances after deployment to ensure realistic
-# liquidation risk. Anvil starts all accounts with 30,000 ETH, but leverage
-# accounts should have constrained capital (130, 80, 60 ETH respectively).
+# Optional helper for legacy leverage experiments. The current core AMM demo
+# does not require this script in the default `make up` / reset flow.
+# If used, it constrains a subset of accounts after deploy to emulate tighter
+# leverage capital.
 #
 # This script:
 # 1. Transfers excess ETH from leverage accounts (25-27) to lending pool (account 7)

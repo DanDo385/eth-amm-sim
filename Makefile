@@ -77,7 +77,7 @@ up:
 # Loom-ready deterministic demo launcher. Frontend defaults to a 120 second session.
 demo-120: kill-all
 	@echo "Starting Loom demo mode: Anvil + deploy + Go backend + Vite frontend"
-	@echo "Open http://localhost:3000, click Start, then use Shock Pool around 1:25."
+	@echo "Open http://localhost:3000, click Start, then showcase a large key-event trade around 1:25."
 	./scripts/dev-up.sh
 
 # Stop tmux session and all running services

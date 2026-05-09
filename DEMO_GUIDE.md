@@ -35,15 +35,15 @@ The whale trade is the visual moment, not the whole thesis. The stronger thesis 
 
 1. Start the Loom launcher:
 
-   cd /Users/openclaw/Code/eth-amm-sim
+   cd /path/to/eth-amm-sim
    make demo-120
 
 2. Open the app in a clean browser window at `http://localhost:3000`.
-3. Zoom browser to 90-100% so the Loom Demo Director, Show Architecture panel, chart, blotter, and LP panels fit.
+3. Zoom browser to 90-100% so the chart, blotter, AMM Details, and LP panels fit.
 4. Reset the session before recording.
-5. Click Start. The dashboard now defaults to a 120-second session for recording.
+5. Click Start (or set session duration to 120s first if you want a strict 2-minute run).
 6. Let a few normal bot/retail trades appear first.
-7. Around 1:25, click **Shock Pool: sell 500 APPL** for the deterministic price-impact moment.
+7. Around 1:25, highlight a large whale/key-event trade and click it to open **AMM Details**.
 8. Keep the trade blotter, price chart, TWAP, reserves, and LP metrics visible when the shock lands.
 9. Close by comparing simulation boundaries to real market infrastructure.
 
@@ -62,7 +62,7 @@ Point at:
 
 ### 0:15-0:40 -- Architecture in one breath
 
-Show the Loom Demo Director / architecture text.
+Use the dashboard while narrating the architecture in one breath.
 Say:
 "The system spins up a local EVM-compatible chain, deploys immutable Solidity contracts with Foundry, drives execution through Go/geth, then streams the resulting state into the frontend. The point is not fake money. The point is the production-shaped integration pattern."
 

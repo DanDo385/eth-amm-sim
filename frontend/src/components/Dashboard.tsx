@@ -8,7 +8,6 @@ import { TWAPChart } from '@/components/TWAPChart';
 import { Blotter } from '@/components/Blotter';
 import { LPStats } from '@/components/LPStats';
 import { KeyEvents } from '@/components/KeyEvents';
-import { AccountMetrics } from '@/components/AccountMetrics';
 import { ImpactCurve } from '@/components/ImpactCurve';
 import { AmmDetailsPanel } from '@/components/AmmDetailsPanel';
 import { useSession } from '@/hooks/useSession';
@@ -187,7 +186,6 @@ export default function Dashboard() {
               <Blotter trades={sessionTrades} height={350} highlightedTxHash={selectedTrade?.txHash ?? null} />
               <KeyEvents events={sessionEvents} height={200} onSelectEvent={handleSelectEvent} />
               <AmmDetailsPanel trade={selectedTrade} />
-              <AccountMetrics />
             </div>
           </div>
         </div>

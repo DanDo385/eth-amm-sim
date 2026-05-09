@@ -8,7 +8,7 @@ Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer
 - Recommended launcher: `make demo-120`
 - Recommended video length: 120 seconds primary, 180 seconds deep cut
 - Demo focus: AMM execution lab
-- Best GIF loop: start bots → Shock Pool → price/TWAP/LP panels move
+- Best GIF loop: start bots -> whale trade -> price/TWAP/LP panels move
 - Thumbnail hook: `AMM EXECUTION LAB`
 - Loom link: TBD
 - Preview MP4/GIF: TBD

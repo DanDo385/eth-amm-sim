@@ -59,7 +59,7 @@ local chain → contracts → Go/geth execution → real-time state → risk/mar
 - Hooks own data fetching/state; components are mostly presentational.
 - Do not compute financial metrics in the frontend.
 - Keep the dashboard readable on Loom recordings.
-- Preserve the `LoomDemoDirector` and `DEMO_GUIDE.md` narrative flow.
+- Preserve the `DEMO_GUIDE.md` narrative flow and keep the dashboard causality-focused for recordings.
 - Components should clarify causality: trade → reserves → price/TWAP → LP exposure.
 
 ## Out of scope unless requested

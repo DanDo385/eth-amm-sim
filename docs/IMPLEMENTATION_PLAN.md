@@ -72,7 +72,7 @@ If any step needs “try five random Stack Overflow fixes,” the **toolchain co
 ### Phase 0 — Inventory (½ day)
 
 - [ ] List **one** supported matrix: macOS version, Node x.y, Go x.y, Foundry version.
-- [ ] Confirm `docs/SESSION_BOT_LIFECYCLE.md` exists or restore link in `AGENTS.md` if the file moved.
+- [x] Confirm `docs/SESSION_BOT_LIFECYCLE.md` exists and is linked from `AGENTS.md` and README.
 - [ ] Grep repo for duplicate/contradictory instructions (Next vs Vite, old ports).
 
 **Exit:** README + `AGENTS.md` agree on stack and commands.

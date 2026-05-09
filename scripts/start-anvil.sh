@@ -58,8 +58,8 @@
 #
 # --balance 30000
 #   Each account starts with 30,000 ETH
-#   The deploy script uses vm.deal to redistribute: account 0 gets 30k, others get 1k each
-#   Account 0 needs 30k ETH total (25k for liquidity + 5k for loans/gas)
+#   The deploy script then sets account 0 to 30k and accounts 1-29 to 1k.
+#   Account 0 uses 25k ETH to seed the pool and keeps the rest for gas/ops.
 #
 # ==============================================================================
 # NETWORK DETAILS
@@ -112,8 +112,8 @@
 
 echo "Starting Anvil local Ethereum node..."
 echo "Accounts: 30"
-echo "Balance per account: 15,000 ETH"
-echo "Note: ETH will be redistributed during deployment (LP gets 15k, others get 1k each)"
+echo "Balance per account: 30,000 ETH (before deploy normalization)"
+echo "Note: deploy step sets LP=30k ETH, accounts 1-29=1k ETH, then seeds pool"
 echo ""
 
 # ==============================================================================

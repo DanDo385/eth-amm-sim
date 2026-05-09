@@ -1,7 +1,7 @@
 // TradingPanel.tsx — Manual trading UI for the "User" account.
 //
 // Lets the user buy APPL with ETH or sell APPL for ETH, using the
-// dedicated User account (Anvil account index 29). Trades execute via
+// dedicated User account (Anvil account index 1). Trades execute via
 // POST /trade/{buy,sell} → server/handlers.go → engine/executor.go.
 //
 // CONNECTIONS:

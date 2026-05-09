@@ -283,6 +283,20 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 				respondError(w, http.StatusInternalServerError, "failed to reseed chain: "+err.Error())
 				return
 			}
+			// anvil_reset + redeploy can overwrite prior hard-reset account normalization.
+			// Re-assert User wallet balances after reseed so TradingPanel always shows
+			// the expected 1,000 ETH / 1,000 APPL baseline.
+			if userAccount != nil {
+				if err := s.executor.ResetUserAccount(reseedCtx, userAccount.Address()); err != nil {
+					log.Printf("Warning: Failed to reset User account balances after reseed: %v", err)
+				} else {
+					log.Println("Hard reset reseed: User account balances re-normalized to 1,000 ETH and 1,000 APPL")
+					s.Broadcast(WSMessage{
+						Type: "user_balance_reset",
+						Data: map[string]interface{}{"reset": true},
+					})
+				}
+			}
 			// After reseed/redeploy, establish a fresh LP baseline and reset account metrics
 			// to on-chain starting balances at the current spot price.
 			s.reinitializeLPMetrics(reseedCtx)
