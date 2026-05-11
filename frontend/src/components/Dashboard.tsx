@@ -24,6 +24,8 @@ export default function Dashboard() {
   const [impactData, setImpactData] = useState<{ buy: ImpactPoint[]; sell: ImpactPoint[] }>({ buy: [], sell: [] });
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [displaySessionStartedAt, setDisplaySessionStartedAt] = useState<string | undefined>(undefined);
+  const [chartResetVersion, setChartResetVersion] = useState(0);
+  const [userBalanceRefreshToken, setUserBalanceRefreshToken] = useState(0);
   const [, setPriceRange] = useState<{ min: number; max: number } | undefined>(undefined);
   const sessionStartRef = useRef<string | undefined>(undefined);
 
@@ -33,6 +35,7 @@ export default function Dashboard() {
       setEvents([]);
       setSelectedTrade(null);
       setDisplaySessionStartedAt(undefined);
+      setChartResetVersion((v) => v + 1);
       sessionStartRef.current = undefined;
       await reset(mode);
       await refreshPriceData();
@@ -92,6 +95,7 @@ export default function Dashboard() {
         setEvents(message.data as KeyEvent[]);
         break;
       case 'user_balance_reset':
+        setUserBalanceRefreshToken((v) => v + 1);
         break;
     }
   }, [updateFromWS, addCandle, updateLPMetrics]);
@@ -172,12 +176,18 @@ export default function Dashboard() {
                 onStop={stop}
                 onReset={handleReset}
               />
-              <TradingPanel session={session} />
+              <TradingPanel session={session} balanceRefreshToken={userBalanceRefreshToken} />
               <LPStats metrics={lpMetrics} />
             </div>
 
             <div className="col-span-15 lg:col-span-6 space-y-6">
-              <PriceChart candles={candles} session={session} height={350} onPriceRangeChange={setPriceRange} />
+              <PriceChart
+                candles={candles}
+                session={session}
+                height={350}
+                onPriceRangeChange={setPriceRange}
+                resetVersion={chartResetVersion}
+              />
               <TWAPChart candles={candles} trades={sessionTrades} session={session} height={200} />
               <ImpactCurve buyData={impactData.buy} sellData={impactData.sell} lpMetrics={lpMetrics} />
             </div>

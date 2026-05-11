@@ -10,7 +10,7 @@
 //   - Data hook:     hooks/usePriceData.ts manages candle state
 //   - Types:         types/index.ts Candle
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
 import type { Candle, SessionState } from '@/types';
 
@@ -19,45 +19,61 @@ interface PriceChartProps {
   session: SessionState;
   height?: number;
   onPriceRangeChange?: (range: { min: number; max: number }) => void;
+  resetVersion?: number;
 }
 
-export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange }: PriceChartProps) => {
+export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange, resetVersion = 0 }: PriceChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const sessionStartRef = useRef<string | undefined>(undefined);
+  const [displaySessionStartedAt, setDisplaySessionStartedAt] = useState<string | undefined>(undefined);
+  const [displaySessionEndedAt, setDisplaySessionEndedAt] = useState<string | undefined>(undefined);
 
-  // Filter candles to only show those from the current session
+  // Filter candles to only show those from the displayed session.
   const sessionCandles = useMemo(() => {
-    if (!session.startedAt) {
+    if (!displaySessionStartedAt) {
       return []; // No session started, show blank chart
     }
 
-    const startTime = new Date(session.startedAt).getTime();
+    const startTime = new Date(displaySessionStartedAt).getTime();
+    const endTime = displaySessionEndedAt ? new Date(displaySessionEndedAt).getTime() : Number.POSITIVE_INFINITY;
     return candles.filter((c) => {
       const candleTime = new Date(c.timestamp).getTime();
-      return candleTime >= startTime;
+      return candleTime >= startTime && candleTime <= endTime;
     });
-  }, [candles, session.startedAt]);
+  }, [candles, displaySessionStartedAt, displaySessionEndedAt]);
 
-  // Reset chart when a new session starts or when session is reset
+  // Reset chart only on explicit reset action.
   useEffect(() => {
-    if (session.status === 'idle' || !session.startedAt) {
-      // Session is idle/reset - clear the chart
-      if (sessionStartRef.current !== undefined) {
-        sessionStartRef.current = undefined;
-        if (seriesRef.current) {
-          seriesRef.current.setData([]);
-        }
-      }
-    } else if (session.startedAt && session.startedAt !== sessionStartRef.current) {
+    sessionStartRef.current = undefined;
+    setDisplaySessionStartedAt(undefined);
+    setDisplaySessionEndedAt(undefined);
+    if (seriesRef.current) {
+      seriesRef.current.setData([]);
+    }
+  }, [resetVersion]);
+
+  // Track the currently displayed session window.
+  useEffect(() => {
+    if (session.startedAt && session.startedAt !== sessionStartRef.current) {
       // New session started - clear the chart
       sessionStartRef.current = session.startedAt;
+      setDisplaySessionStartedAt(session.startedAt);
+      setDisplaySessionEndedAt(undefined);
       if (seriesRef.current) {
         seriesRef.current.setData([]);
       }
     }
-  }, [session.startedAt, session.status]);
+  }, [session.startedAt]);
+
+  // Freeze the displayed window at session completion so post-session polling
+  // does not append extra candles until the user explicitly resets.
+  useEffect(() => {
+    if (session.status === 'completed' && session.endedAt) {
+      setDisplaySessionEndedAt(session.endedAt);
+    }
+  }, [session.status, session.endedAt]);
 
   // Initialize chart
   useEffect(() => {
@@ -146,8 +162,8 @@ export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange 
 
     // Set fixed time window based on session duration
     // This ensures the chart view never changes - it always shows the full session duration
-    if (session.startedAt && session.duration > 0) {
-      const startTime = new Date(session.startedAt).getTime() / 1000;
+    if (displaySessionStartedAt && session.duration > 0) {
+      const startTime = new Date(displaySessionStartedAt).getTime() / 1000;
       const endTime = startTime + session.duration;
       
       // Always set the visible range to the full session duration
@@ -181,7 +197,7 @@ export const PriceChart = ({ candles, session, height = 300, onPriceRangeChange 
         max: maxPrice + margin 
       });
     }
-  }, [sessionCandles, session.startedAt, session.duration, onPriceRangeChange]);
+  }, [sessionCandles, displaySessionStartedAt, session.duration, onPriceRangeChange]);
 
   return (
     <div className="bg-surface rounded-lg border border-border overflow-hidden">

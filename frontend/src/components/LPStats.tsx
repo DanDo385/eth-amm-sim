@@ -13,15 +13,15 @@ const MetricCard = ({ label, value, subValue, positive }: {
 }) => {
   return (
     <div className="bg-surface-light rounded-lg p-3">
-      <div className="text-xs text-gray-400 mb-1">{label}</div>
-      <div className={`text-lg font-semibold ${
+      <div className="text-[10px] text-gray-400 mb-1">{label}</div>
+      <div className={`text-base font-semibold ${
         positive === undefined ? 'text-white' :
         positive ? 'text-green-500' : 'text-red-500'
       }`}>
         {value}
       </div>
       {subValue && (
-        <div className="text-xs text-gray-500 mt-0.5">{subValue}</div>
+        <div className="text-[10px] text-gray-500 mt-0.5">{subValue}</div>
       )}
     </div>
   );

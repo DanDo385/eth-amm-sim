@@ -185,7 +185,7 @@ func main() {
 		// Record key events for large trades
 		amountInETH := toEther(trade.AmountIn)
 		isUserTrade := trade.Nickname == "User"
-		if isUserTrade || amountInETH >= config.LargeTradeThresholdETH {
+		if session.IsRunning() && (isUserTrade || amountInETH >= config.LargeTradeThresholdETH) {
 			severity := "info"
 			if !isUserTrade {
 				severity = "warning"
@@ -243,7 +243,7 @@ func main() {
 	eg.Go(func() error {
 		<-egCtx.Done()
 		log.Println("\n=== Shutting down gracefully ===")
-		
+
 		// Stop active sessions
 		log.Println("Stopping active sessions...")
 		if session.IsRunning() {
@@ -482,6 +482,11 @@ func pollPrices(ctx context.Context, executor *engine.Executor, memStore *store.
 		} else if lastPrice > 0 {
 			priceChange := (priceFloat - lastPrice) / lastPrice
 			if math.Abs(priceChange) >= 0.05 { // 5% price move
+				// Double-check active session at emit time in case state changed mid-tick.
+				if !session.IsRunning() {
+					lastPrice = priceFloat
+					continue
+				}
 				severity := "info"
 				if math.Abs(priceChange) >= 0.10 {
 					severity = "warning"

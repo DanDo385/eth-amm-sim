@@ -31,6 +31,7 @@ import (
 	"eth-amm-sim/internal/config"
 	"eth-amm-sim/internal/store"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gorilla/mux"
 )
@@ -126,15 +127,17 @@ func (s *Server) handleSessionStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record session start event
-	state := s.session.GetState()
-	event := store.KeyEvent{
-		Timestamp:   time.Now(),
-		Type:        "strategy_trigger",
-		Description: fmt.Sprintf("Session started (duration: %d seconds)", state.Duration),
-		Severity:    "info",
+	if s.session.IsRunning() {
+		state := s.session.GetState()
+		event := store.KeyEvent{
+			Timestamp:   time.Now(),
+			Type:        "strategy_trigger",
+			Description: fmt.Sprintf("Session started (duration: %d seconds)", state.Duration),
+			Severity:    "info",
+		}
+		s.store.RecordEvent(event.Type, event.Description, event.Severity)
+		s.BroadcastEvent(event)
 	}
-	s.store.RecordEvent(event.Type, event.Description, event.Severity)
-	s.BroadcastEvent(event)
 
 	// Broadcast updated LP metrics
 	s.BroadcastLPMetrics()
@@ -150,16 +153,6 @@ func (s *Server) handleSessionStop(w http.ResponseWriter, r *http.Request) {
 
 	// Finalization runs in Session.run after bots stop (see SetOnSessionEnded).
 
-	// Record session stop event
-	event := store.KeyEvent{
-		Timestamp:   time.Now(),
-		Type:        "strategy_trigger",
-		Description: "Session stopped",
-		Severity:    "info",
-	}
-	s.store.RecordEvent(event.Type, event.Description, event.Severity)
-	s.BroadcastEvent(event)
-
 	respondJSON(w, map[string]string{"status": "stopped"})
 }
 
@@ -168,15 +161,6 @@ func (s *Server) handleSessionPause(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	event := store.KeyEvent{
-		Timestamp:   time.Now(),
-		Type:        "strategy_trigger",
-		Description: "Session paused",
-		Severity:    "info",
-	}
-	s.store.RecordEvent(event.Type, event.Description, event.Severity)
-	s.BroadcastEvent(event)
 
 	respondJSON(w, map[string]string{"status": "paused"})
 }
@@ -214,14 +198,16 @@ func (s *Server) handleSessionResume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event := store.KeyEvent{
-		Timestamp:   time.Now(),
-		Type:        "strategy_trigger",
-		Description: "Session resumed with trading positions reset",
-		Severity:    "info",
+	if s.session.IsRunning() {
+		event := store.KeyEvent{
+			Timestamp:   time.Now(),
+			Type:        "strategy_trigger",
+			Description: "Session resumed with trading positions reset",
+			Severity:    "info",
+		}
+		s.store.RecordEvent(event.Type, event.Description, event.Severity)
+		s.BroadcastEvent(event)
 	}
-	s.store.RecordEvent(event.Type, event.Description, event.Severity)
-	s.BroadcastEvent(event)
 	s.BroadcastAllAccountUpdates()
 
 	respondJSON(w, map[string]string{"status": "resumed"})
@@ -259,20 +245,12 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 		s.store.GetLPMetrics().Reset()
 		log.Println("Hard reset: LP metrics reset to zero")
 
-		// Reset User account on-chain balances to initial state (1,000 ETH and 1,000 APPL)
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
 		userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 		if userAccount != nil {
-			if err := s.executor.ResetUserAccount(ctx, userAccount.Address()); err != nil {
-				log.Printf("Warning: Failed to reset User account balances: %v", err)
-			} else {
-				log.Println("Hard reset: User account balances reset to 1,000 ETH and 1,000 APPL")
-				// Broadcast user balance reset to notify frontend
-				s.Broadcast(WSMessage{
-					Type: "user_balance_reset",
-					Data: map[string]interface{}{"reset": true},
-				})
+			normalizeCtx, normalizeCancel := context.WithTimeout(r.Context(), 45*time.Second)
+			defer normalizeCancel()
+			if err := s.normalizeUserAccount(normalizeCtx, userAccount.Address()); err != nil {
+				log.Printf("Warning: Failed to normalize User account balances: %v", err)
 			}
 		}
 
@@ -283,18 +261,11 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 				respondError(w, http.StatusInternalServerError, "failed to reseed chain: "+err.Error())
 				return
 			}
-			// anvil_reset + redeploy can overwrite prior hard-reset account normalization.
-			// Re-assert User wallet balances after reseed so TradingPanel always shows
-			// the expected 1,000 ETH / 1,000 APPL baseline.
 			if userAccount != nil {
-				if err := s.executor.ResetUserAccount(reseedCtx, userAccount.Address()); err != nil {
-					log.Printf("Warning: Failed to reset User account balances after reseed: %v", err)
-				} else {
-					log.Println("Hard reset reseed: User account balances re-normalized to 1,000 ETH and 1,000 APPL")
-					s.Broadcast(WSMessage{
-						Type: "user_balance_reset",
-						Data: map[string]interface{}{"reset": true},
-					})
+				postReseedCtx, postReseedCancel := context.WithTimeout(r.Context(), 45*time.Second)
+				defer postReseedCancel()
+				if err := s.normalizeUserAccount(postReseedCtx, userAccount.Address()); err != nil {
+					log.Printf("Warning: Failed to normalize User account balances after reseed: %v", err)
 				}
 			}
 			// After reseed/redeploy, establish a fresh LP baseline and reset account metrics
@@ -416,6 +387,46 @@ func (s *Server) buildBalanceLookup(ctx context.Context) func(nickname string) (
 
 		return ethBalance, applBalance, nil
 	}
+}
+
+func (s *Server) normalizeUserAccount(ctx context.Context, userAddress common.Address) error {
+	expectedBalance := new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e18))
+	resetAndVerify := func() error {
+		if err := s.executor.ResetUserAccount(ctx, userAddress); err != nil {
+			return fmt.Errorf("reset user account failed: %w", err)
+		}
+		ethAfter, err := s.executor.GetETHBalance(ctx, userAddress)
+		if err != nil {
+			return fmt.Errorf("read user ETH balance failed: %w", err)
+		}
+		applAfter, err := s.executor.GetAPPLBalance(ctx, userAddress)
+		if err != nil {
+			return fmt.Errorf("read user APPL balance failed: %w", err)
+		}
+		if ethAfter.Cmp(expectedBalance) != 0 || applAfter.Cmp(expectedBalance) != 0 {
+			return fmt.Errorf(
+				"user balance mismatch after normalization (ETH=%s, APPL=%s, expected=%s)",
+				ethAfter.String(),
+				applAfter.String(),
+				expectedBalance.String(),
+			)
+		}
+		return nil
+	}
+
+	if err := resetAndVerify(); err != nil {
+		log.Printf("Warning: First user normalization attempt failed: %v", err)
+		if retryErr := resetAndVerify(); retryErr != nil {
+			return retryErr
+		}
+	}
+
+	log.Println("User account balances normalized to 1,000 ETH and 1,000 APPL")
+	s.Broadcast(WSMessage{
+		Type: "user_balance_reset",
+		Data: map[string]interface{}{"reset": true},
+	})
+	return nil
 }
 
 func (s *Server) reseedChainAndRedeploy(ctx context.Context) error {
