@@ -548,12 +548,12 @@ func (e *Executor) GetAPPLBalance(ctx context.Context, address common.Address) (
 	return e.tokenContract.BalanceOf(&bind.CallOpts{Context: ctx}, address)
 }
 
-// ResetUserAccount resets the User account's balances to initial state (1,000 ETH and 1,000 APPL)
+// ResetUserAccount resets the User account's balances to initial state (5,000 ETH and 5,000 APPL)
 // This uses Anvil cheatcodes to set ETH balance and token contract to adjust APPL balance
 func (e *Executor) ResetUserAccount(ctx context.Context, userAddr common.Address) error {
-	initialETH := big.NewInt(1000) // 1,000 ETH in wei
+	initialETH := big.NewInt(config.UserStartingETH) // user baseline ETH in wei
 	initialETH.Mul(initialETH, big.NewInt(1e18))
-	initialAPPL := big.NewInt(1000) // 1,000 APPL in wei
+	initialAPPL := big.NewInt(config.UserStartingAPPL) // user baseline APPL in wei
 	initialAPPL.Mul(initialAPPL, big.NewInt(1e18))
 
 	// Set ETH balance using Anvil RPC
@@ -667,7 +667,11 @@ func (e *Executor) ResetTradingAccounts(ctx context.Context) error {
 		if acc.Type == config.BotTypeLP {
 			continue
 		}
-		targetETH := new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e18))
+		targetETHWhole := int64(1000)
+		if acc.Index == config.UserAccountIndex {
+			targetETHWhole = config.UserStartingETH
+		}
+		targetETH := new(big.Int).Mul(big.NewInt(targetETHWhole), big.NewInt(1e18))
 		if err := e.client.SetBalance(ctx, acc.Address(), targetETH); err != nil {
 			return fmt.Errorf("set ETH balance for %s: %w", acc.Nickname, err)
 		}

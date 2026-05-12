@@ -144,12 +144,12 @@ func main() {
 	// This ensures a fresh start every time services restart
 	userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 	if userAccount != nil {
-		log.Println("Resetting User account balances to initial state (1,000 ETH and 1,000 APPL)...")
+		log.Printf("Resetting User account balances to initial state (%d ETH and %d APPL)...", config.UserStartingETH, config.UserStartingAPPL)
 		if err := executor.ResetUserAccount(ctx, userAccount.Address()); err != nil {
 			log.Printf("Warning: Failed to reset User account balances on startup: %v", err)
 			log.Println("  User account may have different balances from previous session")
 		} else {
-			log.Println("✓ User account balances reset to 1,000 ETH and 1,000 APPL")
+			log.Printf("✓ User account balances reset to %d ETH and %d APPL", config.UserStartingETH, config.UserStartingAPPL)
 		}
 	}
 

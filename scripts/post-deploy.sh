@@ -18,7 +18,7 @@
 # ==============================================================================
 #
 # Account 7:  Lending Pool (receives excess ETH from leverage accounts and user)
-# Account 1:  User (keeps 1,000 ETH, sends excess to account 7)
+# Account 1:  User (keeps 5,000 ETH, sends excess to account 7)
 # Account 25: Lev5x  (keeps 130 ETH, sends excess to account 7)
 # Account 26: Lev10x (keeps 80 ETH, sends excess to account 7)
 # Account 27: Lev25x (keeps 60 ETH, sends excess to account 7)
@@ -92,10 +92,10 @@ LEV25X_ADDR="0x87BdCE72c06C21cd96219BD8521bDF1F42C78b5e"
 LEV25X_KEY="0xf3a6b71b94f5cd909fb2dbb287da47badaa6d8bcdc45d595e2884835d8749001"
 LEV25X_TARGET=60
 
-# Account 1 (User) - should keep 1,000 ETH (like other non-leverage accounts)
+# Account 1 (User) - should keep 5,000 ETH (manual trading baseline)
 USER_ADDR="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 USER_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-USER_TARGET=1000
+USER_TARGET=5000
 
 RPC_URL="http://localhost:8545"
 

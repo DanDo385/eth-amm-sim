@@ -247,7 +247,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 
 		userAccount := config.GetAccountByIndex(config.UserAccountIndex)
 		if userAccount != nil {
-			normalizeCtx, normalizeCancel := context.WithTimeout(r.Context(), 45*time.Second)
+			normalizeCtx, normalizeCancel := context.WithTimeout(context.Background(), 45*time.Second)
 			defer normalizeCancel()
 			if err := s.normalizeUserAccount(normalizeCtx, userAccount.Address()); err != nil {
 				log.Printf("Warning: Failed to normalize User account balances: %v", err)
@@ -262,7 +262,7 @@ func (s *Server) handleSessionReset(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if userAccount != nil {
-				postReseedCtx, postReseedCancel := context.WithTimeout(r.Context(), 45*time.Second)
+				postReseedCtx, postReseedCancel := context.WithTimeout(context.Background(), 45*time.Second)
 				defer postReseedCancel()
 				if err := s.normalizeUserAccount(postReseedCtx, userAccount.Address()); err != nil {
 					log.Printf("Warning: Failed to normalize User account balances after reseed: %v", err)
@@ -390,7 +390,8 @@ func (s *Server) buildBalanceLookup(ctx context.Context) func(nickname string) (
 }
 
 func (s *Server) normalizeUserAccount(ctx context.Context, userAddress common.Address) error {
-	expectedBalance := new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e18))
+	expectedETH := new(big.Int).Mul(big.NewInt(config.UserStartingETH), big.NewInt(1e18))
+	expectedAPPL := new(big.Int).Mul(big.NewInt(config.UserStartingAPPL), big.NewInt(1e18))
 	resetAndVerify := func() error {
 		if err := s.executor.ResetUserAccount(ctx, userAddress); err != nil {
 			return fmt.Errorf("reset user account failed: %w", err)
@@ -403,12 +404,13 @@ func (s *Server) normalizeUserAccount(ctx context.Context, userAddress common.Ad
 		if err != nil {
 			return fmt.Errorf("read user APPL balance failed: %w", err)
 		}
-		if ethAfter.Cmp(expectedBalance) != 0 || applAfter.Cmp(expectedBalance) != 0 {
+		if ethAfter.Cmp(expectedETH) != 0 || applAfter.Cmp(expectedAPPL) != 0 {
 			return fmt.Errorf(
-				"user balance mismatch after normalization (ETH=%s, APPL=%s, expected=%s)",
+				"user balance mismatch after normalization (ETH=%s, APPL=%s, expectedETH=%s, expectedAPPL=%s)",
 				ethAfter.String(),
 				applAfter.String(),
-				expectedBalance.String(),
+				expectedETH.String(),
+				expectedAPPL.String(),
 			)
 		}
 		return nil
@@ -421,7 +423,7 @@ func (s *Server) normalizeUserAccount(ctx context.Context, userAddress common.Ad
 		}
 	}
 
-	log.Println("User account balances normalized to 1,000 ETH and 1,000 APPL")
+	log.Printf("User account balances normalized to %d ETH and %d APPL", config.UserStartingETH, config.UserStartingAPPL)
 	s.Broadcast(WSMessage{
 		Type: "user_balance_reset",
 		Data: map[string]interface{}{"reset": true},
@@ -795,8 +797,32 @@ func (s *Server) handleGetUserBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Self-heal known reseed leak signature:
+	// Anvil defaults every account to 30,000 ETH, while User target is configured in config.
+	// If a reseed flow returns early, UI can show 30,000 ETH + User baseline APPL.
+	// Only normalize this exact mismatch while session is not running.
+	if !s.session.IsRunning() && isAnvilDefaultUserLeak(ethBalance, appleBalance) {
+		normalizeCtx, normalizeCancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer normalizeCancel()
+		if err := s.normalizeUserAccount(normalizeCtx, userAddr); err != nil {
+			log.Printf("Warning: Auto-normalization from leaked default balance failed: %v", err)
+		} else {
+			ethBalance, _ = s.executor.GetETHBalance(normalizeCtx, userAddr)
+			appleBalance, _ = s.executor.GetAPPLBalance(normalizeCtx, userAddr)
+		}
+	}
+
 	respondJSON(w, map[string]interface{}{
 		"ethBalance":   ethBalance.String(),
 		"appleBalance": appleBalance.String(),
 	})
+}
+
+func isAnvilDefaultUserLeak(ethBalance, appleBalance *big.Int) bool {
+	if ethBalance == nil || appleBalance == nil {
+		return false
+	}
+	userAPPLTarget := new(big.Int).Mul(big.NewInt(config.UserStartingAPPL), big.NewInt(1e18))
+	thirtyThousand := new(big.Int).Mul(big.NewInt(30000), big.NewInt(1e18))
+	return ethBalance.Cmp(thirtyThousand) == 0 && appleBalance.Cmp(userAPPLTarget) == 0
 }

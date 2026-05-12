@@ -39,11 +39,13 @@
 #
 # 2. SET STARTING ETH BALANCES:
 #    - Account 0 (LP):     30,000 ETH
-#    - Accounts 1-29:      1,000 ETH each
+#    - Account 1 (User):   5,000 ETH
+#    - Accounts 2-29:      1,000 ETH each
 #
 # 3. MINT TOKENS to all Anvil accounts:
 #    - Account 0 (LP):         25,000 APPL (for pool seeding)
-#    - Accounts 1-29:          1,000 APPL each
+#    - Account 1 (User):       5,000 APPL
+#    - Accounts 2-29:          1,000 APPL each
 #
 # 4. SEED LIQUIDITY POOL
 #    - LP (account 0) deposits 25,000 APPL + 25,000 ETH

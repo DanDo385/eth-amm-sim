@@ -43,6 +43,10 @@ const (
 	// This provides a clean, logical ordering: LP(0), User(1), then trading bots.
 	// Bots skip the "User" nickname, so this account is reserved for manual trades from the UI.
 	UserAccountIndex = 1
+	// UserStartingETH is the User account's baseline ETH after reset/reseed.
+	UserStartingETH int64 = 5000
+	// UserStartingAPPL is the User account's baseline APPL after reset/reseed.
+	UserStartingAPPL int64 = 5000
 )
 
 // AccountConfig defines an account's initial state and trading parameters
@@ -173,9 +177,9 @@ func init() {
 		// ═══════════════════════════════════════════════════════════════
 		{
 			Index:          UserAccountIndex,
-			Nickname:      "User",
-			Type:          BotTypeRetail, // Mark as retail for strategy-compatibility
-			StartingApples: eth(1000),    // 1,000 APPL (matches deployment script)
+			Nickname:       "User",
+			Type:           BotTypeRetail,         // Mark as retail for strategy-compatibility
+			StartingApples: eth(UserStartingAPPL), // 5,000 APPL (matches deployment script)
 			// User account never runs a bot (createBots skips Nickname == "User")
 			// Manual trades only via frontend TradingPanel
 		},
@@ -198,7 +202,7 @@ func init() {
 			Nickname:       fmt.Sprintf("Retail%d", i+1),
 			Type:           BotTypeRetail,
 			StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
-			MaxTradeSize:   eth(15), // Small trade size for noise
+			MaxTradeSize:   eth(15),   // Small trade size for noise
 			MaxPosition:    eth(100),
 			TradeFreqMin:   1, // Very frequent (1-4 seconds)
 			TradeFreqMax:   4,
@@ -264,7 +268,7 @@ func init() {
 		Nickname:       "MeanRev1",
 		Type:           BotTypeMeanRev,
 		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
-		MaxTradeSize:   eth(50),  // Fixed trade size
+		MaxTradeSize:   eth(50),   // Fixed trade size
 		MaxPosition:    eth(300),
 		TriggerLevels:  []float64{0.75, 1.0, 1.25}, // Fast: trades at lower z-score thresholds
 		HalfLifeTrades: 50,                         // Fast decay: 25 trades half-life
@@ -274,20 +278,20 @@ func init() {
 		Nickname:       "MeanRev2",
 		Type:           BotTypeMeanRev,
 		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
-		MaxTradeSize:   eth(75),  // Fixed trade size
+		MaxTradeSize:   eth(75),   // Fixed trade size
 		MaxPosition:    eth(400),
 		TriggerLevels:  []float64{1.0, 1.5, 2.0}, // Medium: trades at moderate thresholds
-		HalfLifeTrades: 100,                       // Medium decay: 50 trades half-life
+		HalfLifeTrades: 100,                      // Medium decay: 50 trades half-life
 	})
 	Accounts = append(Accounts, AccountConfig{
 		Index:          22,
 		Nickname:       "MeanRev3",
 		Type:           BotTypeMeanRev,
 		StartingApples: eth(1000), // 1,000 APPL (matches deployment script)
-		MaxTradeSize:   eth(150), // Fixed trade size (2x MeanRev2)
+		MaxTradeSize:   eth(150),  // Fixed trade size (2x MeanRev2)
 		MaxPosition:    eth(500),
 		TriggerLevels:  []float64{1.9, 2.4}, // Large: focuses on big moves
-		HalfLifeTrades: 150,                  // Slow decay: 75 trades half-life
+		HalfLifeTrades: 150,                 // Slow decay: 75 trades half-life
 	})
 
 	// Note: Indices 23-29 are reserved for future use

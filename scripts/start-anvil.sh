@@ -58,7 +58,8 @@
 #
 # --balance 30000
 #   Each account starts with 30,000 ETH
-#   The deploy script then sets account 0 to 30k and accounts 1-29 to 1k.
+#   The deploy script then sets account 0 to 30k, account 1 (User) to 5k,
+#   and accounts 2-29 to 1k.
 #   Account 0 uses 25k ETH to seed the pool and keeps the rest for gas/ops.
 #
 # ==============================================================================
@@ -113,7 +114,7 @@
 echo "Starting Anvil local Ethereum node..."
 echo "Accounts: 30"
 echo "Balance per account: 30,000 ETH (before deploy normalization)"
-echo "Note: deploy step sets LP=30k ETH, accounts 1-29=1k ETH, then seeds pool"
+echo "Note: deploy step sets LP=30k ETH, User=5k ETH, accounts 2-29=1k ETH, then seeds pool"
 echo ""
 
 # ==============================================================================

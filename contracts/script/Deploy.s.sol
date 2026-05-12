@@ -13,7 +13,7 @@ import "../src/AppleAMM.sol";
  * Account allocation (Anvil accounts 0-29):
  * 0: Deployer/LP - Seeds pool with 25,000 APPL + 25,000 ETH (initial price: 1 ETH/APPL)
  *     Gets 30,000 ETH total (25k liquidity + 5k for gas)
- * 1: User - Manual trading account (1,000 ETH and 1,000 APPL)
+ * 1: User - Manual trading account (5,000 ETH and 5,000 APPL)
  * 2-16: Retail - 15 retail trading bots (1,000 ETH and 1,000 APPL each)
  * 17-19: Whale - 3 whale trading bots (1,000 ETH and 5,000 APPL each)
  * 20-22: MeanRev - 3 mean reversion bots (1,000 ETH and 1,000 APPL each)
@@ -129,8 +129,8 @@ contract DeployScript is Script {
         console.log("Minting to LP Account 0: 25,000 APPL");
         
         // User account
-        token.mint(accounts[1], 1000 * APPLES_DECIMALS);
-        console.log("Minting to User Account 1: 1,000 APPL");
+        token.mint(accounts[1], 5000 * APPLES_DECIMALS);
+        console.log("Minting to User Account 1: 5,000 APPL");
         
         // Retail accounts (2-16)
         for (uint i = 2; i <= 16; i++) {
@@ -170,15 +170,20 @@ contract DeployScript is Script {
         vm.deal(accounts[0], 30000 ether);
         console.log("Setting ETH balance for LP Account 0: 30,000 ETH");
         
-        // All other accounts get 1k ETH
-        for (uint i = 1; i < accounts.length; i++) {
+        // User account gets 5k ETH for larger manual trade experiments
+        vm.deal(accounts[1], 5000 ether);
+        console.log("Setting ETH balance for User Account 1: 5,000 ETH");
+
+        // All remaining accounts get 1k ETH
+        for (uint i = 2; i < accounts.length; i++) {
             vm.deal(accounts[i], 1000 ether);
         }
-        console.log("Setting ETH balance for accounts 1-29: 1,000 ETH each");
+        console.log("Setting ETH balance for accounts 2-29: 1,000 ETH each");
         
         console.log("\nETH balances set for simulation:");
         console.log("  Account 0 (LP) = 30,000 ETH");
-        console.log("  Accounts 1-29 = 1,000 ETH each");
+        console.log("  Account 1 (User) = 5,000 ETH");
+        console.log("  Accounts 2-29 = 1,000 ETH each");
         console.log("Note: For actual deployment, ensure account 0 has sufficient ETH for liquidity + gas");
     }
     
