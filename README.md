@@ -47,6 +47,126 @@ Anvil (localhost:8545)
   - AppleToken + AppleAMM contracts
 ```
 
+## System Visualizations (ASCII)
+
+### 1) Component map (who talks to what)
+
+```text
+                 +----------------------------------+
+                 |        Foundry Toolchain         |
+                 | forge + anvil + Deploy.s.sol     |
+                 +----------------+-----------------+
+                                  |
+                                  | deploy / reset
+                                  v
++-------------------+      JSON-RPC / tx / calls      +----------------------+
+|  Go Backend       | <------------------------------> |   Anvil Chain        |
+|  (go-ethereum)    |                                  |  AppleToken + AMM    |
+|  :8080            |                                  |  :8545               |
++---------+---------+                                  +----------------------+
+          |  REST + WebSocket
+          v
++----------------------------+
+| Vite + React Dashboard     |
+| :3000 (proxy to :8080)     |
+| charts, controls, metrics  |
++----------------------------+
+```
+
+### 2) Startup lifecycle (`make up`)
+
+```text
+make up
+  |
+  +--> scripts/dev-up.sh
+         |
+         +--> [tmux:anvil]    make anvil
+         |         |
+         |         +--> anvil --accounts 30 --balance 30000
+         |
+         +--> [tmux:deploy]   make deploy
+         |         |
+         |         +--> contracts/script/Deploy.s.sol
+         |               - deploy AppleToken + AppleAMM
+         |               - set starting balances
+         |               - seed AMM liquidity
+         |
+         +--> [tmux:bindings] make bindings (abigen)
+         |
+         +--> [tmux:backend]  make backend
+         |         |
+         |         +--> go run cmd/simulator/main.go
+         |
+         +--> [tmux:frontend] make frontend
+                   |
+                   +--> vite dev server (:3000)
+```
+
+### 3) Runtime market data + trade flow
+
+```text
+Bots/User action
+   |
+   v
+Executor (Go) -> signs tx -> sends to Anvil
+   |
+   +--> emits trade callback
+           |
+           v
+      MemoryStore updates
+      - trades
+      - candles / TWAP / vol
+      - LP metrics
+      - key events
+           |
+           +--> REST snapshot reads (frontend polling/fetch)
+           |
+           +--> WebSocket broadcasts (live UI updates)
+                     |
+                     v
+               React dashboard rerenders
+```
+
+### 4) Session control state machine
+
+```text
+            start
+   +----------------------+
+   |                      v
+[idle] ---> [running] ---> [completed]
+  ^  ^          |  ^             |
+  |  |          |  |             | stop (normalize to idle)
+  |  |          |  +-- resume ---+
+  |  |        pause
+  |  +-------- [paused]
+  |
+  +-- reset (soft/hard/reseed)
+      - clear session/store state
+      - optionally normalize balances
+      - optionally anvil_reset + redeploy
+```
+
+### 5) Reset mode behavior (what each button does)
+
+```text
+Reset (soft)
+  - session.Reset()
+  - clear in-memory trades/events/candles
+  - keep chain state
+
+Hard
+  - soft reset +
+  - reset account metrics manager
+  - normalize User/bot runtime balances
+
+Reseed
+  - hard reset +
+  - anvil_reset
+  - redeploy contracts (Deploy.s.sol)
+  - clear nonce cache
+  - reinitialize LP + account baselines
+```
+
 ### Interfaces
 - **REST**: snapshot endpoints for candles, trades, account performance, and session state.
 - **WebSocket**: [ws://localhost:8080/stream](ws://localhost:8080/stream) for real-time trades, prices, and events.
