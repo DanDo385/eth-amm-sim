@@ -75,7 +75,6 @@ Anvil (localhost:8545)
   - Account performance (equity curve, Sharpe, drawdown, win rate)
 - Dashboard components: Price, TWAP, Impact Curve (hover readout), Blotter, LP Stats, Key Events (clickable trade rows), AMM Details, User Trading (buy/sell).
 - Account analytics live on the dedicated `/performance` page.
-- Performance analytics page at `/performance`.
 
 ## Liquidity Pool Calculations (LP Metrics)
 The LP metrics are calculated in `backend/internal/metrics/lp.go` from on-chain reserves and fee totals. The goal is to clearly separate **price-only IL** from **fees** and the LP’s **realized vs HODL** performance.
@@ -294,6 +293,8 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
   - 3 MeanRev (indices 20-22)
   - 7 Reserved (indices 23-29)
 - Session duration: 180s default (UI-configurable)
+- User execution baseline after startup/reset/reseed: 5,000 ETH + 5,000 APPL
+- Session analytics normalization baseline: 1,000 ETH + 1,000 APPL (for cross-account return comparability)
 - Retail: 10-100% of 15 ETH, every 1-4s
 - Whales: up to 600 ETH, every 45-90s
 - MeanRev: 50/75/150 ETH notional, EWMA half-life 25/50/75 trades

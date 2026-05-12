@@ -17,30 +17,32 @@ import (
 	"sync"
 	"time"
 
+	"eth-amm-sim/internal/config"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // AccountMetrics tracks performance metrics for a single account
 type AccountMetrics struct {
 	mu sync.RWMutex
-	
+
 	nickname string
 	address  common.Address
-	
+
 	// Trade history
 	trades []TradeRecord
-	
+
 	// Equity curve (value over time)
 	equityCurve []EquityPoint
-	
+
 	// Running calculations
 	initialEquity float64
 	peakEquity    float64
-	
+
 	// Balance tracking (for accurate equity calculation)
-	ethBalance  float64 // ETH balance in ETH
+	ethBalance   float64 // ETH balance in ETH
 	appleBalance float64 // APPL balance in APPL tokens
-	
+
 	// Session tracking
 	sessionStarted      bool
 	sessionStartTime    *time.Time
@@ -73,10 +75,10 @@ type EquityPoint struct {
 type PerformanceData struct {
 	Nickname    string        `json:"nickname"`
 	Address     string        `json:"address"`
-	TotalReturn float64       `json:"totalReturn"`  // Portfolio equity change (%)
-	TotalPnL    float64       `json:"totalPnL"`     // Portfolio equity change (ETH) = position + trading
-	PositionPnL float64       `json:"positionPnL"`  // APPL inventory mark-to-market (ETH)
-	TradingPnL  float64       `json:"tradingPnL"`   // Sum of per-trade PnLs (ETH)
+	TotalReturn float64       `json:"totalReturn"` // Portfolio equity change (%)
+	TotalPnL    float64       `json:"totalPnL"`    // Portfolio equity change (ETH) = position + trading
+	PositionPnL float64       `json:"positionPnL"` // APPL inventory mark-to-market (ETH)
+	TradingPnL  float64       `json:"tradingPnL"`  // Sum of per-trade PnLs (ETH)
 	Volatility  float64       `json:"volatility"`
 	SharpeRatio float64       `json:"sharpeRatio"`
 	MaxDrawdown float64       `json:"maxDrawdown"`
@@ -109,9 +111,9 @@ func NewAccountMetrics(nickname string, address common.Address, initialEquity fl
 func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, currentSpotPrice float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	now := time.Now()
-	
+
 	// Update balances based on trade
 	if isBuy {
 		// Buy: spend ETH, receive APPL
@@ -122,18 +124,18 @@ func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, curren
 		am.ethBalance += ethAmount
 		am.appleBalance -= appleAmount
 	}
-	
+
 	// Calculate equity using current spot price (mark-to-market)
 	// Equity = ETH_balance + APPL_balance * current_spot_price
 	newEquity := am.ethBalance + (am.appleBalance * currentSpotPrice)
-	
+
 	// Calculate PnL from this trade (change in equity)
 	var pnl float64
 	if len(am.equityCurve) > 0 {
 		lastEquity := am.equityCurve[len(am.equityCurve)-1].Equity
 		pnl = newEquity - lastEquity
 	}
-	
+
 	// Calculate trade size and execution price for display
 	var tradeSize float64
 	var executionPrice float64
@@ -148,7 +150,7 @@ func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, curren
 			executionPrice = ethAmount / appleAmount // ETH per APPL
 		}
 	}
-	
+
 	// Record trade
 	trade := TradeRecord{
 		Timestamp:   now,
@@ -160,18 +162,18 @@ func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, curren
 		Equity:      newEquity,
 	}
 	am.trades = append(am.trades, trade)
-	
+
 	// Update peak
 	if newEquity > am.peakEquity {
 		am.peakEquity = newEquity
 	}
-	
+
 	// Calculate drawdown
 	drawdown := 0.0
 	if am.peakEquity > 0 {
 		drawdown = (am.peakEquity - newEquity) / am.peakEquity
 	}
-	
+
 	// Record equity point
 	am.equityCurve = append(am.equityCurve, EquityPoint{
 		Timestamp: now,
@@ -184,18 +186,18 @@ func (am *AccountMetrics) RecordTrade(isBuy bool, ethAmount, appleAmount, curren
 func (am *AccountMetrics) UpdateEquity(newEquity float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	now := time.Now()
-	
+
 	if newEquity > am.peakEquity {
 		am.peakEquity = newEquity
 	}
-	
+
 	drawdown := 0.0
 	if am.peakEquity > 0 {
 		drawdown = (am.peakEquity - newEquity) / am.peakEquity
 	}
-	
+
 	am.equityCurve = append(am.equityCurve, EquityPoint{
 		Timestamp: now,
 		Equity:    newEquity,
@@ -357,7 +359,7 @@ func (am *AccountMetrics) calculateMaxDrawdown() float64 {
 	if len(am.equityCurve) == 0 {
 		return 0
 	}
-	
+
 	var maxDD float64
 	for _, point := range am.equityCurve {
 		if point.Drawdown > maxDD {
@@ -372,7 +374,7 @@ func (am *AccountMetrics) calculateWinRate() float64 {
 	if len(am.trades) == 0 {
 		return 0
 	}
-	
+
 	var wins int
 	for _, trade := range am.trades {
 		if trade.PnL > 0 {
@@ -398,7 +400,7 @@ func (am *AccountMetrics) copyTrades() []TradeRecord {
 func (am *AccountMetrics) Reset(initialEquity float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	now := time.Now()
 	am.trades = make([]TradeRecord, 0)
 	am.equityCurve = []EquityPoint{{Timestamp: now, Equity: initialEquity, Drawdown: 0}}
@@ -415,8 +417,8 @@ func (am *AccountMetrics) Reset(initialEquity float64) {
 }
 
 // ResetForSession resets account metrics to track session-only performance.
-// All accounts use the same normalized starting balance (1,000 ETH + 1,000 APPL)
-// so that returns are comparable across account types.
+// All accounts use the same normalized starting balance (from config) so that
+// returns are comparable across account types.
 // The actual on-chain balances are still used for real trade execution; this only
 // affects how performance metrics (return %, PnL, equity curve) are calculated.
 func (am *AccountMetrics) ResetForSession(currentETHBalance, currentAPPLBalance, currentSpotPrice float64) {
@@ -424,9 +426,9 @@ func (am *AccountMetrics) ResetForSession(currentETHBalance, currentAPPLBalance,
 	defer am.mu.Unlock()
 
 	now := time.Now()
-	// Use normalized starting balance: 1,000 ETH + 1,000 APPL
-	normalizedETH := 1000.0
-	normalizedAPPL := 1000.0
+	// Use normalized starting balance from config constants.
+	normalizedETH := config.NormalizedStartingETH
+	normalizedAPPL := config.NormalizedStartingAPPL
 	startingEquity := normalizedETH + (normalizedAPPL * currentSpotPrice)
 
 	// Reset session tracking
@@ -455,18 +457,18 @@ func (am *AccountMetrics) IsSessionActive() bool {
 func (am *AccountMetrics) FinalizeSession(finalSpotPrice float64) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	if !am.sessionStarted {
 		return // Not in a session
 	}
-	
+
 	now := time.Now()
 	am.sessionEndTime = &now
 	am.sessionClosingPrice = finalSpotPrice
-	
+
 	// Calculate final equity using current balances and final spot price
 	finalEquity := am.ethBalance + (am.appleBalance * finalSpotPrice)
-	
+
 	// Recalculate PnL for all trades using closing price
 	for i := range am.trades {
 		trade := &am.trades[i]
@@ -482,7 +484,7 @@ func (am *AccountMetrics) FinalizeSession(finalSpotPrice float64) {
 			}
 		}
 	}
-	
+
 	// Update equity curve with final mark-to-market
 	if len(am.equityCurve) > 0 {
 		// Update last equity point or add new one
@@ -495,12 +497,12 @@ func (am *AccountMetrics) FinalizeSession(finalSpotPrice float64) {
 			Drawdown:  0,
 		})
 	}
-	
+
 	// Update peak if needed
 	if finalEquity > am.peakEquity {
 		am.peakEquity = finalEquity
 	}
-	
+
 	// Recalculate drawdown for all points
 	for i := range am.equityCurve {
 		if am.peakEquity > 0 {
@@ -511,8 +513,8 @@ func (am *AccountMetrics) FinalizeSession(finalSpotPrice float64) {
 
 // AccountMetricsManager manages metrics for multiple accounts
 type AccountMetricsManager struct {
-	mu               sync.RWMutex
-	accounts         map[string]*AccountMetrics
+	mu                sync.RWMutex
+	accounts          map[string]*AccountMetrics
 	sessionVolatility float64 // observed daily vol (%) for the entire session
 }
 
@@ -543,11 +545,11 @@ func (m *AccountMetricsManager) GetSessionVolatility() float64 {
 func (m *AccountMetricsManager) GetOrCreate(nickname string, address common.Address, initialEquity float64) *AccountMetrics {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if am, exists := m.accounts[nickname]; exists {
 		return am
 	}
-	
+
 	am := NewAccountMetrics(nickname, address, initialEquity)
 	m.accounts[nickname] = am
 	return am
@@ -617,7 +619,7 @@ func (m *AccountMetricsManager) ResetForSession(getBalance func(nickname string)
 func (m *AccountMetricsManager) FinalizeSession(finalSpotPrice float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	for _, am := range m.accounts {
 		am.FinalizeSession(finalSpotPrice)
 	}

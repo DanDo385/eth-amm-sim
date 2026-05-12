@@ -14,11 +14,13 @@ const (
 	LargeTradeThresholdETH    = 100.0
 	CriticalTradeThresholdETH = 300.0
 
-	// Initial account equity (in ETH) — normalized starting balance for performance
-	// tracking: 1,000 ETH + 1,000 APPL (valued at spot price, ~2,000 ETH at 1:1).
+	// Initial account equity (in ETH) for metrics initialization fallback.
+	// This represents the normalized performance baseline (1,000 ETH + 1,000 APPL
+	// at 1:1), not the live wallet balance used for execution resets.
 	InitialAccountEquityETH = 2000
 
-	// Normalized starting balances for session performance tracking
+	// Normalized starting balances for session performance tracking.
+	// These are virtual analytics baselines for return comparability across accounts.
 	NormalizedStartingETH  = 1000.0
 	NormalizedStartingAPPL = 1000.0
 
