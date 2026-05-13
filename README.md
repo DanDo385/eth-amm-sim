@@ -63,14 +63,23 @@ Anvil (localhost:8545)
 |  Go Backend       | <------------------------------> |   Anvil Chain        |
 |  (go-ethereum)    |                                  |  AppleToken + AMM    |
 |  :8080            |                                  |  :8545               |
-+---------+---------+                                  +----------------------+
-          |  REST + WebSocket
-          v
-+----------------------------+
-| Vite + React Dashboard     |
-| :3000 (proxy to :8080)     |
-| charts, controls, metrics  |
-+----------------------------+
++---------^---------+                                  +----------------------+
+          |  REST snapshots + WebSocket stream
+          |
++-------------------------------------+
+| Vite + React App                    |
+| :3000 (proxy to :8080)              |
+| Home dashboard + User Trading panel |
+| /performance page (account metrics) |
++-------------------------------------+
+          |
+          | POST /trade/{buy,sell}  (manual trades)
+          |                          (User account only)
+          +-------------------------------------------->
+          |
+          | GET /accounts and /accounts/{nickname}/performance
+          | (Performance page analytics reads)
+          +-------------------------------------------->
 ```
 
 ### 2) Startup lifecycle (`make up`)
