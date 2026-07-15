@@ -122,8 +122,11 @@ cd "$(dirname "$0")/../contracts"
 # --slow: wait for each tx to confirm before sending the next. Avoids Anvil hanging on
 # batched broadcasts (e.g. "25/34 receipts" forever) on some macOS / Foundry combos.
 # --non-interactive: safe for tmux/CI (no size-limit prompts).
+# RPC override: ETH_AMM_SIM_RPC_URL > RPC_URL > local Anvil default.
+RPC_URL="${ETH_AMM_SIM_RPC_URL:-${RPC_URL:-http://127.0.0.1:8545}}"
+echo "Using RPC: $RPC_URL"
 forge script script/Deploy.s.sol \
-  --rpc-url http://127.0.0.1:8545 \
+  --rpc-url "$RPC_URL" \
   --with-gas-price 2000000000 \
   --broadcast \
   --slow \
