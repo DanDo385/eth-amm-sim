@@ -23,9 +23,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// handleWebSocket handles WebSocket connections
+// handleWebSocket handles WebSocket connections.
+// When ETH_AMM_SIM_API_TOKEN is set, clients must authenticate via
+// Authorization: Bearer <token> or Sec-WebSocket-Protocol: eth-amm-sim.bearer.<token>.
+// Query-string credentials are never accepted.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := s.upgrader.Upgrade(w, r, nil)
+	ok, negotiate := s.authorizeWebSocket(r)
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var respHeader http.Header
+	if negotiate != "" {
+		respHeader = http.Header{}
+		respHeader.Set("Sec-WebSocket-Protocol", negotiate)
+	}
+
+	conn, err := s.upgrader.Upgrade(w, r, respHeader)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return

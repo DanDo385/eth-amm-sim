@@ -33,10 +33,17 @@ type Config struct {
 	AMMAddress   common.Address
 }
 
-// DefaultConfig returns the default configuration for Anvil
+// DefaultConfig returns the default configuration for Anvil.
+// RPCURL override priority: ETH_AMM_SIM_RPC_URL > RPC_URL > http://localhost:8545.
 func DefaultConfig() *Config {
+	rpcURL := "http://localhost:8545"
+	if v := strings.TrimSpace(os.Getenv("ETH_AMM_SIM_RPC_URL")); v != "" {
+		rpcURL = v
+	} else if v := strings.TrimSpace(os.Getenv("RPC_URL")); v != "" {
+		rpcURL = v
+	}
 	return &Config{
-		RPCURL:  "http://localhost:8545",
+		RPCURL:  rpcURL,
 		ChainID: big.NewInt(31337), // Anvil default chain ID
 	}
 }
@@ -63,7 +70,7 @@ func LoadAddressesFromBroadcast() (string, string, error) {
 	}
 
 	broadcastDir := filepath.Join(projectRoot, "contracts", "broadcast", "Deploy.s.sol", "31337")
-	
+
 	// Try run-latest.json first (deploy script keeps this as the canonical latest run file)
 	latestPath := filepath.Join(broadcastDir, "run-latest.json")
 	if _, err := os.Stat(latestPath); os.IsNotExist(err) {
@@ -132,10 +139,10 @@ func findProjectRoot() string {
 		// Check if this directory contains both contracts/ and backend/
 		contractsPath := filepath.Join(dir, "contracts")
 		backendPath := filepath.Join(dir, "backend")
-		
+
 		contractsExists := false
 		backendExists := false
-		
+
 		if info, err := os.Stat(contractsPath); err == nil && info.IsDir() {
 			contractsExists = true
 		}

@@ -222,9 +222,15 @@ func main() {
 		return pollPricesWithError(egCtx, executor, memStore, srv, session)
 	})
 
-	// Start HTTP server
+	// Start HTTP server.
+	// Priority: GOAPI_ADDR > BIND_ADDR > PORT (":"+port) > ":8080".
+	// In production set GOAPI_ADDR or BIND_ADDR=127.0.0.1:8103 so only a local proxy reaches the backend.
 	addr := ":8080"
-	if port := os.Getenv("PORT"); port != "" {
+	if v := os.Getenv("GOAPI_ADDR"); v != "" {
+		addr = v
+	} else if v := os.Getenv("BIND_ADDR"); v != "" {
+		addr = v
+	} else if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port
 	}
 

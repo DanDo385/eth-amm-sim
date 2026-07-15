@@ -70,10 +70,14 @@ type Server struct {
 	// When nil, permissive dev mode (any origin). Set ETH_AMM_SIM_ALLOWED_ORIGINS.
 	allowedOrigins map[string]struct{}
 	startedAt      time.Time
+
+	security securityConfig
+	limiter  *rateLimiter
 }
 
 // NewServer creates a new server
 func NewServer(session *engine.Session, store *store.MemoryStore, executor *engine.Executor) *Server {
+	sec := loadSecurityConfig()
 	s := &Server{
 		router:              mux.NewRouter(),
 		session:             session,
@@ -83,7 +87,10 @@ func NewServer(session *engine.Session, store *store.MemoryStore, executor *engi
 		broadcast:           make(chan interface{}, 1024),
 		lastAccountUpdateAt: make(map[string]time.Time),
 		allowedOrigins:      parseAllowedOriginsFromEnv(),
+		security:            sec,
+		limiter:             newRateLimiter(sec.readLimit, sec.mutationLimit),
 	}
+	// Never CheckOrigin=true; always evaluate against the allowlist (or permissive empty).
 	s.upgrader.CheckOrigin = func(r *http.Request) bool {
 		return s.webSocketOriginOK(r)
 	}
@@ -92,6 +99,7 @@ func NewServer(session *engine.Session, store *store.MemoryStore, executor *engi
 		s.finalizeSession()
 	})
 
+	s.logAuthStartupWarning()
 	s.setupRoutes()
 	return s
 }
@@ -129,10 +137,15 @@ func (s *Server) webSocketOriginOK(r *http.Request) bool {
 	return s.originAllowed(r.Header.Get("Origin"))
 }
 
+// Handler returns the HTTP handler (routes + middleware) for tests and embedding.
+func (s *Server) Handler() http.Handler {
+	return s.router
+}
+
 // setupRoutes configures all HTTP routes
 func (s *Server) setupRoutes() {
 	s.router.Use(func(next http.Handler) http.Handler {
-		return s.corsMiddleware(next)
+		return s.corsMiddleware(s.securityMiddleware(next))
 	})
 
 	s.router.HandleFunc("/healthz", s.handleHealthz).Methods("GET", "OPTIONS")

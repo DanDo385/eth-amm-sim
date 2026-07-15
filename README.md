@@ -378,17 +378,61 @@ make frontend
 - **AMM constants & thresholds**: `backend/internal/config/amm.go`
 - **Chain + session defaults**: `backend/internal/config/config.go`
 
-### Backend security (optional, for non-local demos)
+### Backend security (defense in depth)
 
-By default the Go server uses **permissive CORS and WebSocket origin checks** so local `localhost` / LAN demos work without extra setup.
+Local development leaves auth off when `ETH_AMM_SIM_API_TOKEN` is unset (a startup warning is logged). Before any public reverse proxy or Cloudflare exposure, set these on the backend host via a secret manager (for example 1Password → systemd `op run`). **Never commit tokens to Git, put them in frontend JavaScript, or pass them in URL query strings.**
 
-To restrict browser origins, set a comma-separated allowlist:
+| Variable | Purpose |
+|----------|---------|
+| `ETH_AMM_SIM_API_TOKEN` | Bearer token required for session/trade mutations and `/stream` |
+| `ETH_AMM_SIM_ALLOWED_ORIGINS` | Comma-separated CORS + WebSocket Origin allowlist |
+| `ETH_AMM_SIM_TRUST_X_FORWARDED_FOR` | When `true`/`1`, use the first `X-Forwarded-For` hop as client IP for rate limits |
+| `ETH_AMM_SIM_RATE_LIMIT_READ` | Read-only requests per IP per minute (default `60`) |
+| `ETH_AMM_SIM_RATE_LIMIT_MUTATION` | Mutation + `/stream` requests per IP per minute (default `10`) |
+| `GOAPI_ADDR` / `BIND_ADDR` | HTTP listen address (VPS: `127.0.0.1:8103`) |
+| `ETH_AMM_SIM_RPC_URL` / `RPC_URL` | Anvil RPC URL (VPS: `http://127.0.0.1:11545`) |
+
+When `ETH_AMM_SIM_API_TOKEN` is set:
+
+- `Authorization: Bearer <token>` is required for `POST /session/{start,pause,resume,stop,reset}`, `POST /trade/{buy,sell}`, and WebSocket `/stream`
+- Missing or invalid credentials return **401**
+- `/healthz` and `/readyz` stay public
+- Tokens are compared in constant time and never logged
+
+When `ETH_AMM_SIM_ALLOWED_ORIGINS` is set, unlisted `Origin` values receive **403**. Empty/unset keeps permissive local-dev CORS (`Access-Control-Allow-Origin: *`). An allowlist never emits `*`.
+
+Rate limiting is in-memory per client IP: **429** with `Retry-After`. Inactive IP entries expire. Do not enable `ETH_AMM_SIM_TRUST_X_FORWARDED_FOR` unless a trusted reverse proxy strips/overwrites that header.
+
+#### curl examples
 
 ```bash
-export ETH_AMM_SIM_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+# Public health (no token)
+curl -sS http://127.0.0.1:8103/healthz
+
+# Mutation without token → 401 when ETH_AMM_SIM_API_TOKEN is set
+curl -sS -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8103/session/pause
+
+# Mutation with Bearer token (inject from a secret manager; do not hardcode)
+curl -sS -X POST http://127.0.0.1:8103/session/pause \
+  -H "Authorization: Bearer ${ETH_AMM_SIM_API_TOKEN}"
 ```
 
-When this variable is set, requests with an `Origin` header not in the list receive **403** (REST and WebSocket upgrade).
+#### WebSocket authentication (browsers)
+
+Browsers cannot set `Authorization` on `WebSocket`. Pass the token as a subprotocol (not in the URL):
+
+```javascript
+const token = /* from your secure backend/session bridge — never bake into the SPA bundle */;
+const ws = new WebSocket("wss://your-host/stream", [`eth-amm-sim.bearer.${token}`]);
+```
+
+Non-browser clients may use `Authorization: Bearer <token>` on the upgrade request instead.
+
+#### Origin allowlist
+
+```bash
+export ETH_AMM_SIM_ALLOWED_ORIGINS="https://your-app.vercel.app,http://localhost:3000"
+```
 
 ### Health endpoints
 
@@ -424,6 +468,7 @@ Common knobs:
 ## WebSocket
 - [ws://localhost:8080/stream](ws://localhost:8080/stream)
 - Message types: `trade`, `price`, `lp_metrics`, `key_event`, `session_state`, `account_update`, `trades`, `candles`, `events`.
+- When `ETH_AMM_SIM_API_TOKEN` is set, authenticate with `Sec-WebSocket-Protocol: eth-amm-sim.bearer.<token>` (or `Authorization: Bearer` for non-browser clients). Never put the token in the query string.
 
 If logs show **broadcast queue full** or the UI stops updating while the backend still runs, you usually have a **stale or slow WebSocket client** (background browser tab, full TCP buffers). Close extra tabs, hard-refresh the dashboard, or set `ETH_AMM_SIM_ALLOWED_ORIGINS` correctly. See [docs/SESSION_BOT_LIFECYCLE.md](docs/SESSION_BOT_LIFECYCLE.md) for session vs process lifetime.
 
