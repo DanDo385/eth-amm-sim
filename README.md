@@ -36,7 +36,7 @@ This repo is intentionally built for demoability:
 ```
 Vercel SPA (https://eth-amm-sim.vercel.app)
  - Dashboard (charts + controls)
- - REST via same-origin `/api/*` (Vercel rewrite)
+ - REST → `https://api-staging-eth-amm-sim.magro.dev` (`VITE_API_URL`)
  - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream
           |
           v
@@ -363,7 +363,7 @@ Open [http://localhost:3000](http://localhost:3000), click **Start**, and watch 
 
 ## Web / LAN / Vercel
 
-- **Hosted demo:** [https://eth-amm-sim.vercel.app](https://eth-amm-sim.vercel.app) → Cloudflare Tunnel `api-staging-eth-amm-sim.magro.dev` → Ubuntu Go (`127.0.0.1:8103`) + Anvil (`127.0.0.1:11545`). REST uses Vercel `/api/*` rewrites; WebSocket uses `VITE_WS_URL` / `.env.production`.
+- **Hosted demo:** [https://eth-amm-sim.vercel.app](https://eth-amm-sim.vercel.app) → Cloudflare Tunnel `api-staging-eth-amm-sim.magro.dev` → Ubuntu Go (`127.0.0.1:8103`) + Anvil (`127.0.0.1:11545`). REST and WebSocket both use the tunnel hostname directly (`VITE_API_URL` / `VITE_WS_URL` in `.env.production`); Vercel `/api/*` rewrites remain as a fallback.
 - **Same machine (local):** REST goes through Vite’s **`/api/*` proxy** to Go on `:8080`. WebSocket uses **`ws://127.0.0.1:8080/stream`**.
 - **UI against Ubuntu from your laptop:**  
   `VITE_DEV_BACKEND_URL=https://api-staging-eth-amm-sim.magro.dev VITE_WS_URL=wss://api-staging-eth-amm-sim.magro.dev/stream npm run dev`

@@ -2,11 +2,11 @@
 //
 // Hosted topology (production):
 //   Browser (https://eth-amm-sim.vercel.app)
-//     → same-origin /api/*  (Vercel rewrite)
-//     → https://api-staging-eth-amm-sim.magro.dev  (Cloudflare Tunnel)
+//     → https://api-staging-eth-amm-sim.magro.dev  (Cloudflare Tunnel; VITE_API_URL)
 //     → 127.0.0.1:8103 Go + 127.0.0.1:11545 Anvil on Ubuntu
-//   WebSocket cannot use Vercel rewrites, so the browser opens wss://…/stream
-//   on the tunnel hostname directly.
+//   WebSocket: wss://…/stream on the same tunnel hostname (VITE_WS_URL).
+//   Note: Vercel /api/* external rewrites are kept as a fallback but are flaky;
+//   production builds prefer direct tunnel calls (CORS allowlisted).
 //
 // Local topology (`npm run dev` / `make up`):
 //   Browser → Vite /api proxy → http://127.0.0.1:8080
