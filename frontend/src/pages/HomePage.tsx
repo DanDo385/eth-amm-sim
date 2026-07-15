@@ -9,11 +9,17 @@ export default function HomePage() {
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-gray-400">
           <p className="text-lg">Loading dashboard…</p>
           <p className="text-sm">
-            Open{' '}
-            <a href="http://localhost:3000" className="font-mono text-blue-400 underline">
-              http://localhost:3000
-            </a>{' '}
-            once the Vite dev server is ready.
+            Loading the dashboard from this origin. For local demos run{' '}
+            <span className="font-mono text-blue-400">make up</span>; hosted UI is{' '}
+            <a
+              href="https://eth-amm-sim.vercel.app"
+              className="font-mono text-blue-400 underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              eth-amm-sim.vercel.app
+            </a>
+            .
           </p>
         </div>
       }

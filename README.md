@@ -31,11 +31,30 @@ This repo is intentionally built for demoability:
 
 ## Architecture (Current)
 
+### Hosted (default portfolio demo)
+
+```
+Vercel SPA (https://eth-amm-sim.vercel.app)
+  - Dashboard (charts + controls)
+  - REST via same-origin `/api/*` (Vercel rewrite)
+  - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream
+          |
+          v
+Cloudflare Tunnel (api-staging-eth-amm-sim.magro.dev)
+          |
+          v
+Ubuntu VPS (localhost only)
+  Go backend 127.0.0.1:8103
+  Anvil       127.0.0.1:11545
+  AppleToken + AppleAMM
+```
+
+### Local development (`make up`)
+
 ```
 Vite + React SPA (localhost:3000)
-  - Dashboard (charts + controls)
-  - REST fetch for snapshots (via `/api/*` → Go in dev/preview)
-  - WebSocket for live updates
+  - REST via `/api/*` → Vite proxy → Go
+  - WebSocket → ws://127.0.0.1:8080/stream
           |
           v
 Go backend (localhost:8080)
@@ -62,13 +81,15 @@ Anvil (localhost:8545)
 +-------------------+      JSON-RPC / tx / calls      +----------------------+
 |  Go Backend       | <------------------------------> |   Anvil Chain        |
 |  (go-ethereum)    |                                  |  AppleToken + AMM    |
-|  :8080            |                                  |  :8545               |
+|  local :8080      |                                  |  local :8545         |
+|  Ubuntu :8103     |                                  |  Ubuntu :11545       |
 +---------^---------+                                  +----------------------+
           |  REST snapshots + WebSocket stream
+          |  (hosted: Cloudflare Tunnel api-staging-eth-amm-sim.magro.dev)
           |
 +-------------------------------------+
 | Vite + React App                    |
-| :3000 (proxy to :8080)              |
+| local :3000  or  eth-amm-sim.vercel.app |
 | Home dashboard + User Trading panel |
 | /performance page (account metrics) |
 +-------------------------------------+
@@ -341,9 +362,12 @@ make down
 Open [http://localhost:3000](http://localhost:3000), click **Start**, and watch metrics stream in.
 
 ## Web / LAN / Vercel
-- **Same machine:** REST goes through Vite’s **`/api/*` dev/preview proxy** to Go on `:8080` (no CORS issues). WebSocket uses **`ws://<host>:8080/stream`**, so it tracks the hostname you used in the browser (works for `localhost` or your LAN IP).
-- **Another device on your Wi‑Fi:** Start stack as usual, then open `http://<your-computer-LAN-IP>:3000`. Keep the Go backend on the same machine (`:8080` is already reachable on the LAN).
-- **Vercel (UI only):** Link the repo with **Root Directory = `frontend`**, or from `frontend/` run `vercel`. The build is a **static SPA** (`dist/`); configure **`VITE_API_URL`** (and **`VITE_WS_URL`** as **`wss://…/stream`**) for your public Go backend so the browser can reach REST/WebSocket from an HTTPS origin (or put both UI and API behind a gateway that preserves same-origin `/api`). See `frontend/.env.example`.
+
+- **Hosted demo:** [https://eth-amm-sim.vercel.app](https://eth-amm-sim.vercel.app) → Cloudflare Tunnel `api-staging-eth-amm-sim.magro.dev` → Ubuntu Go (`127.0.0.1:8103`) + Anvil (`127.0.0.1:11545`). REST uses Vercel `/api/*` rewrites; WebSocket uses `VITE_WS_URL` / `.env.production`.
+- **Same machine (local):** REST goes through Vite’s **`/api/*` proxy** to Go on `:8080`. WebSocket uses **`ws://127.0.0.1:8080/stream`**.
+- **UI against Ubuntu from your laptop:**  
+  `VITE_DEV_BACKEND_URL=https://api-staging-eth-amm-sim.magro.dev VITE_WS_URL=wss://api-staging-eth-amm-sim.magro.dev/stream npm run dev`
+- **Vercel project:** Root Directory = `frontend`. See `frontend/.env.example`, `frontend/.env.production`, and `frontend/vercel.json`.
 
 ## Manual Run (4 terminals)
 If you prefer to run each service yourself:
@@ -431,7 +455,7 @@ Non-browser clients may use `Authorization: Bearer <token>` on the upgrade reque
 #### Origin allowlist
 
 ```bash
-export ETH_AMM_SIM_ALLOWED_ORIGINS="https://your-app.vercel.app,http://localhost:3000"
+export ETH_AMM_SIM_ALLOWED_ORIGINS="https://eth-amm-sim.vercel.app,https://eth-amm-sim-dando385s-projects.vercel.app,http://localhost:3000"
 ```
 
 ### Health endpoints
@@ -466,7 +490,8 @@ Common knobs:
 - GET  `/user/balance`
 
 ## WebSocket
-- [ws://localhost:8080/stream](ws://localhost:8080/stream)
+- Local: [ws://localhost:8080/stream](ws://localhost:8080/stream)
+- Hosted: [wss://api-staging-eth-amm-sim.magro.dev/stream](wss://api-staging-eth-amm-sim.magro.dev/stream)
 - Message types: `trade`, `price`, `lp_metrics`, `key_event`, `session_state`, `account_update`, `trades`, `candles`, `events`.
 - When `ETH_AMM_SIM_API_TOKEN` is set, authenticate with `Sec-WebSocket-Protocol: eth-amm-sim.bearer.<token>` (or `Authorization: Bearer` for non-browser clients). Never put the token in the query string.
 
@@ -486,7 +511,7 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 - **`npm run build` stalls / `Operation timed out` on `node_modules/.bin/tsc`**: `npm run build` no longer invokes `tsc` (only **`vite build`**). Run types separately with **`npm run lint`**, or both with **`npm run verify`**. If `npm run lint` still times out, use the system Node binary (not an IDE‑bundled helper): `PATH="/opt/homebrew/bin:$PATH" npm run lint`.
 - **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser — client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
-- **No data in UI**: confirm backend is running on `:8080` and contracts were deployed.
+- **No data in UI**: confirm the connection chip shows **Ubuntu tunnel** (hosted) or **local backend**, then check `https://api-staging-eth-amm-sim.magro.dev/healthz` or local `:8080/healthz` and that contracts are deployed.
 - **Reset does not reseed / price not back near 1.0**: session must be idle (not running). Use **Stop/Pause** first, then **Reseed** reset.
 - **Deploy failed**: if manual redeploy runs on a dirty chain, LP account funds can be exhausted; use reseed reset (which runs `anvil_reset` before deploy) or restart from fresh Anvil.
 - **Deploy fails with `max fee per gas less than block base fee`**: update scripts and retry; repo `scripts/deploy.sh` now pins local gas price for Anvil deploys.

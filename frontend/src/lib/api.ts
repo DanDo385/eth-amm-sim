@@ -1,16 +1,19 @@
-// api.ts — REST client for the Go backend on :8080.
+// api.ts — REST client for the Go backend.
 //
 // URL resolution:
-//   - VITE_API_URL set → use that base URL (explicit / remote deploy).
-//   - Browser, unset → same-origin `/api/...` (Vite dev/preview proxy → Go;
-//     configure your host’s reverse proxy the same way for production static hosting).
+//   - VITE_API_URL set → call that origin directly (bypass proxy).
+//   - Otherwise → same-origin `/api/...`
+//       • Local Vite: proxied to VITE_DEV_BACKEND_URL or http://127.0.0.1:8080
+//       • Vercel: rewritten to https://api-staging-eth-amm-sim.magro.dev (Ubuntu)
 //
 // CONNECTIONS:
-//   - Backend routes: server/server.go setupRoutes → server/handlers.go
-//   - Dev proxy:       vite.config.ts `/api` → VITE_DEV_BACKEND_URL or :8080
+//   - Routes: backend/internal/server/server.go → handlers.go
+//   - Endpoints: lib/backend.ts
+
+import { getDirectApiBase } from '@/lib/backend';
 
 function restUrl(path: string): string {
-  const direct = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+  const direct = getDirectApiBase();
   if (direct) {
     return `${direct}${path}`;
   }

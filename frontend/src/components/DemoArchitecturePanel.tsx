@@ -1,23 +1,25 @@
+import { PUBLIC_API_ORIGIN, PUBLIC_UI_ORIGIN } from '@/lib/backend';
+
 const layers = [
   {
-    name: 'Foundry / Anvil',
-    detail: 'Local EVM chain, deterministic accounts, safe test capital.',
+    name: 'Foundry / Anvil (Ubuntu)',
+    detail: 'Localhost-bound EVM on the VPS (127.0.0.1:11545). Deterministic accounts, safe test capital.',
   },
   {
     name: 'Solidity AMM',
     detail: 'AppleToken + AppleAMM contracts deployed once. Logic is fixed at the contract address.',
   },
   {
-    name: 'Go / geth engine',
-    detail: 'Bots and user trades submit transactions through Ethereum-style bindings.',
+    name: 'Go / geth engine (Ubuntu)',
+    detail: 'Bots and user trades submit transactions on 127.0.0.1:8103 behind Cloudflare Tunnel.',
   },
   {
-    name: 'WebSocket stream',
-    detail: 'Trades, price candles, LP metrics, and key events stream from backend to UI.',
+    name: 'Cloudflare Tunnel',
+    detail: `${PUBLIC_API_ORIGIN} exposes REST + WebSocket without opening public ports on the VPS.`,
   },
   {
-    name: 'Vite + React dashboard',
-    detail: 'Recording surface explains causality: trade → reserves → price/TWAP → LP exposure.',
+    name: 'Vite + React (Vercel)',
+    detail: `${PUBLIC_UI_ORIGIN} serves the SPA; /api/* rewrites to the tunnel, wss hits /stream directly.`,
   },
 ];
 
@@ -27,7 +29,9 @@ export function DemoArchitecturePanel() {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-[0.22em] text-blue-300">Show Architecture</div>
-          <h2 className="mt-1 text-sm font-semibold text-white">Foundry/Anvil → Solidity AMM → Go/geth → WebSocket → Vite/React</h2>
+          <h2 className="mt-1 text-sm font-semibold text-white">
+            Anvil → Solidity AMM → Go (Ubuntu) → Tunnel → Vercel UI
+          </h2>
         </div>
         <span className="rounded-full border border-purple-400/40 bg-purple-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-200">
           Sim

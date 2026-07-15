@@ -2,12 +2,12 @@ const beats = [
   {
     time: "0:00-0:20",
     title: "Local EVM + immutable contracts",
-    detail: "Start Anvil, deploy Solidity AMM contracts with Foundry, then let the app prove the state changes in real time.",
+    detail: "Ubuntu runs Anvil + Go behind Cloudflare Tunnel; Vercel serves the SPA that proves state changes in real time.",
   },
   {
     time: "0:20-0:55",
     title: "Go/geth bot infrastructure",
-    detail: "Show the backend as production-shaped trading infrastructure: signed transactions, RPC calls, logs, websocket events, and deterministic sessions.",
+    detail: "Show the Ubuntu backend as production-shaped trading infrastructure: signed transactions, RPC calls, logs, websocket events, and deterministic sessions.",
   },
   {
     time: "0:55-1:35",

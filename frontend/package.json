@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3000",
-    "build": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js build && node -e \"console.log('\\n  Built. Run: npm run preview  →  http://localhost:3000  (backend must be on :8080)\\n')\"",
+    "build": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js build && node -e \"console.log('\\n  Built. Preview: npm run preview → http://localhost:3000\\n  Hosted: https://eth-amm-sim.vercel.app → Ubuntu tunnel api-staging-eth-amm-sim.magro.dev\\n')\"",
     "preview": "node ./scripts/check-node.cjs && node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port 3000",
     "lint": "node ./scripts/check-node.cjs && node ./node_modules/typescript/lib/tsc.js --noEmit",
     "verify": "npm run lint && npm run build"

@@ -119,7 +119,7 @@ export default function Dashboard() {
     }
   }, [sessionTrades]);
 
-  const { isConnected } = useWebSocket(handleWSMessage);
+  const { isConnected, backendTarget } = useWebSocket(handleWSMessage);
 
   useEffect(() => {
     api.getTrades(1000).then((data) => setTrades(data as Trade[])).catch(console.error);
@@ -155,11 +155,14 @@ export default function Dashboard() {
               Real-time AMM simulation with heterogeneous agents
             </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-400">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-center space-x-2">
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-sm text-gray-400">
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-gray-500">{backendTarget}</span>
           </div>
         </div>
 
