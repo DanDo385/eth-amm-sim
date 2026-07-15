@@ -1,10 +1,10 @@
-// lp.go — Liquidity Provider economics: impermanent loss, fees, and net PnL.
+// lp.go - Liquidity Provider economics: impermanent loss, fees, and net PnL.
 //
 // Clean separation of concepts:
-//   - HODL Value: value of initial tokens at current price
-//   - Theoretical IL: price-only AMM rebalancing drag (≤ 0, no fees, no path)
-//   - LP vs HODL PnL: realized performance vs HODL (can be +/-)
-//   - Net PnL: LP vs HODL PnL + fees
+//  - HODL Value: value of initial tokens at current price
+//  - Theoretical IL: price-only AMM rebalancing drag (≤ 0, no fees, no path)
+//  - LP vs HODL PnL: realized performance vs HODL (can be +/-)
+//  - Net PnL: LP vs HODL PnL + fees
 package metrics
 
 import (

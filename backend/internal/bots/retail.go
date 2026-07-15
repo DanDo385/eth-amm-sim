@@ -1,4 +1,4 @@
-// retail.go — Small, frequent noise trader bot (accounts 10-24).
+// retail.go - Small, frequent noise trader bot (accounts 10-24).
 //
 // Strategy: Pure random buy/sell (50/50 coin flip) with small trade sizes
 // (up to 15 ETH) at high frequency (1-4s intervals). 15 retail bots generate

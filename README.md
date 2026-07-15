@@ -35,9 +35,9 @@ This repo is intentionally built for demoability:
 
 ```
 Vercel SPA (https://eth-amm-sim.vercel.app)
-  - Dashboard (charts + controls)
-  - REST via same-origin `/api/*` (Vercel rewrite)
-  - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream
+ - Dashboard (charts + controls)
+ - REST via same-origin `/api/*` (Vercel rewrite)
+ - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream
           |
           v
 Cloudflare Tunnel (api-staging-eth-amm-sim.magro.dev)
@@ -53,17 +53,17 @@ Ubuntu VPS (localhost only)
 
 ```
 Vite + React SPA (localhost:3000)
-  - REST via `/api/*` → Vite proxy → Go
-  - WebSocket → ws://127.0.0.1:8080/stream
+ - REST via `/api/*` → Vite proxy → Go
+ - WebSocket → ws://127.0.0.1:8080/stream
           |
           v
 Go backend (localhost:8080)
-  - Session + bot orchestration
-  - On-chain executor (go-ethereum)
-  - In-memory store + metrics
+ - Session + bot orchestration
+ - On-chain executor (go-ethereum)
+ - In-memory store + metrics
           v
 Anvil (localhost:8545)
-  - AppleToken + AppleAMM contracts
+ - AppleToken + AppleAMM contracts
 ```
 
 ## System Visualizations (ASCII)
@@ -117,9 +117,9 @@ make up
          +--> [tmux:deploy]   make deploy
          |         |
          |         +--> contracts/script/Deploy.s.sol
-         |               - deploy AppleToken + AppleAMM
-         |               - set starting balances
-         |               - seed AMM liquidity
+         |              - deploy AppleToken + AppleAMM
+         |              - set starting balances
+         |              - seed AMM liquidity
          |
          +--> [tmux:bindings] make bindings (abigen)
          |
@@ -144,10 +144,10 @@ Executor (Go) -> signs tx -> sends to Anvil
            |
            v
       MemoryStore updates
-      - trades
-      - candles / TWAP / vol
-      - LP metrics
-      - key events
+     - trades
+     - candles / TWAP / vol
+     - LP metrics
+     - key events
            |
            +--> REST snapshot reads (frontend polling/fetch)
            |
@@ -171,30 +171,30 @@ Executor (Go) -> signs tx -> sends to Anvil
   |  +-------- [paused]
   |
   +-- reset (soft/hard/reseed)
-      - clear session/store state
-      - optionally normalize balances
-      - optionally anvil_reset + redeploy
+     - clear session/store state
+     - optionally normalize balances
+     - optionally anvil_reset + redeploy
 ```
 
 ### 5) Reset mode behavior (what each button does)
 
 ```text
 Reset (soft)
-  - session.Reset()
-  - clear in-memory trades/events/candles
-  - keep chain state
+ - session.Reset()
+ - clear in-memory trades/events/candles
+ - keep chain state
 
 Hard
-  - soft reset +
-  - reset account metrics manager
-  - normalize User/bot runtime balances
+ - soft reset +
+ - reset account metrics manager
+ - normalize User/bot runtime balances
 
 Reseed
-  - hard reset +
-  - anvil_reset
-  - redeploy contracts (Deploy.s.sol)
-  - clear nonce cache
-  - reinitialize LP + account baselines
+ - hard reset +
+ - anvil_reset
+ - redeploy contracts (Deploy.s.sol)
+ - clear nonce cache
+ - reinitialize LP + account baselines
 ```
 
 ### Interfaces
@@ -215,14 +215,14 @@ Reseed
 - AppleToken (ERC20) + AppleAMM (constant product, 0.30% fee) on Anvil.
 - Go executor that submits swaps and computes trade details.
 - Trading bots:
-  - Retail (15) small random trades
-  - Whale (3) large random trades
-  - MeanRev (3) EWMA mean reversion on trade-flow events
+ - Retail (15) small random trades
+ - Whale (3) large random trades
+ - MeanRev (3) EWMA mean reversion on trade-flow events
 - Session control (start/pause/resume/stop/reset) with per-session bot lifecycle.
 - Metrics computed in Go:
-  - 5s OHLC candles, 60s TWAP, volatility from observed returns
-  - LP metrics (IL, fees earned, net PnL)
-  - Account performance (equity curve, Sharpe, drawdown, win rate)
+ - 5s OHLC candles, 60s TWAP, volatility from observed returns
+ - LP metrics (IL, fees earned, net PnL)
+ - Account performance (equity curve, Sharpe, drawdown, win rate)
 - Dashboard components: Price, TWAP, Impact Curve (hover readout), Blotter, LP Stats, Key Events (clickable trade rows), AMM Details, User Trading (buy/sell).
 - Account analytics live on the dedicated `/performance` page.
 
@@ -312,9 +312,9 @@ Go is a natural fit for this project. The combination of cheap goroutines, value
 
 ## Prerequisites
 - **Foundry** (forge, anvil)
-- **Go** 1.25.x — **recommended:** install the patch release matching `backend/go.mod` (see `go` line), or keep **`GOTOOLCHAIN=auto`** so the toolchain can upgrade itself. The repo root **`.vscode/settings.json`** sets `GOTOOLCHAIN=auto` for the Go extension / `gopls`, which avoids IDE **packages.Load** failures when the module requires a newer patch than your default `go` binary.
-- **Node.js** **20.x or 22.x LTS** (npm). **Avoid Node 25+ for the frontend** until Vite/Rollup fully support it — Node 25 can throw **`ERR_INVALID_PACKAGE_CONFIG`** on `rollup/dist/es/package.json`. Use **`frontend/.nvmrc`** (`nvm use` / `fnm use`).
-- **Vite + React** — fast local dev server and static production build under `frontend/dist/` (see `frontend/package.json`).
+- **Go** 1.25.x - **recommended:** install the patch release matching `backend/go.mod` (see `go` line), or keep **`GOTOOLCHAIN=auto`** so the toolchain can upgrade itself. The repo root **`.vscode/settings.json`** sets `GOTOOLCHAIN=auto` for the Go extension / `gopls`, which avoids IDE **packages.Load** failures when the module requires a newer patch than your default `go` binary.
+- **Node.js** **20.x or 22.x LTS** (npm). **Avoid Node 25+ for the frontend** until Vite/Rollup fully support it - Node 25 can throw **`ERR_INVALID_PACKAGE_CONFIG`** on `rollup/dist/es/package.json`. Use **`frontend/.nvmrc`** (`nvm use` / `fnm use`).
+- **Vite + React** - fast local dev server and static production build under `frontend/dist/` (see `frontend/package.json`).
 - **tmux** (optional but recommended for `make up`)
 - **abigen** (from go-ethereum) for Go contract bindings
 - **jq** or **python3** for ABI extraction in `scripts/generate-bindings.sh`
@@ -382,9 +382,9 @@ make frontend
 
 ## Frontend checks
 
-- **`npm run build`** — runs **`vite build`** only (fast production bundle to `dist/`).
-- **`npm run lint`** — TypeScript check via **`node ./node_modules/typescript/lib/tsc.js --noEmit`** (avoids flaky `node_modules/.bin/tsc` shims that can error with **`Operation timed out`** on some macOS setups).
-- **`npm run verify`** — **`lint` then `build`** (use before commits / when you want both).
+- **`npm run build`** - runs **`vite build`** only (fast production bundle to `dist/`).
+- **`npm run lint`** - TypeScript check via **`node ./node_modules/typescript/lib/tsc.js --noEmit`** (avoids flaky `node_modules/.bin/tsc` shims that can error with **`Operation timed out`** on some macOS setups).
+- **`npm run verify`** - **`lint` then `build`** (use before commits / when you want both).
 
 ## Useful Make Targets
 - `make setup` - install deps and generate bindings
@@ -446,7 +446,7 @@ curl -sS -X POST http://127.0.0.1:8103/session/pause \
 Browsers cannot set `Authorization` on `WebSocket`. Pass the token as a subprotocol (not in the URL):
 
 ```javascript
-const token = /* from your secure backend/session bridge — never bake into the SPA bundle */;
+const token = /* from your secure backend/session bridge - never bake into the SPA bundle */;
 const ws = new WebSocket("wss://your-host/stream", [`eth-amm-sim.bearer.${token}`]);
 ```
 
@@ -460,8 +460,8 @@ export ETH_AMM_SIM_ALLOWED_ORIGINS="https://eth-amm-sim.vercel.app,https://eth-a
 
 ### Health endpoints
 
-- `GET /healthz` — process liveness: `uptime_seconds`, `ws_clients`, `broadcast_queue_len`
-- `GET /readyz` — same payload once the HTTP server has started (503 only if called before startup, which is unusual in normal operation)
+- `GET /healthz` - process liveness: `uptime_seconds`, `ws_clients`, `broadcast_queue_len`
+- `GET /readyz` - same payload once the HTTP server has started (503 only if called before startup, which is unusual in normal operation)
 
 Common knobs:
 - Session duration
@@ -470,8 +470,8 @@ Common knobs:
 - Volatility and LP metrics behavior
 
 ## API Endpoints (REST)
-- GET  `/healthz` — liveness JSON (`uptime_seconds`, `ws_clients`, `broadcast_queue_len`)
-- GET  `/readyz` — readiness JSON (same shape once the server has started)
+- GET  `/healthz` - liveness JSON (`uptime_seconds`, `ws_clients`, `broadcast_queue_len`)
+- GET  `/readyz` - readiness JSON (same shape once the server has started)
 - POST `/session/start` (optional body: `{ "duration": 300 }`)
 - POST `/session/pause`
 - POST `/session/resume`
@@ -506,10 +506,10 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 6. Open [http://localhost:3000/performance](http://localhost:3000/performance) to show account equity curves and Sharpe.
 
 ## Troubleshooting
-- **`go build` fails with `error obtaining VCS status: exit status 128`**: Go tries to stamp binaries with Git metadata; if `git` errors (sandbox, partial clone), build with **`GOFLAGS=-buildvcs=false`** — **`make backend`** / **`make clean`** already set this via the Makefile’s **`BACKEND_TOOLCHAIN`**.
+- **`go build` fails with `error obtaining VCS status: exit status 128`**: Go tries to stamp binaries with Git metadata; if `git` errors (sandbox, partial clone), build with **`GOFLAGS=-buildvcs=false`** - **`make backend`** / **`make clean`** already set this via the Makefile’s **`BACKEND_TOOLCHAIN`**.
 - **`Invalid package config` / `ERR_INVALID_PACKAGE_CONFIG` under `rollup/dist/es` when running `npm run dev`**: You are almost certainly on **Node 25+**. Switch to **Node 20 or 22** (see **`frontend/.nvmrc`**), then `cd frontend && rm -rf node_modules && npm install`.
 - **`npm run build` stalls / `Operation timed out` on `node_modules/.bin/tsc`**: `npm run build` no longer invokes `tsc` (only **`vite build`**). Run types separately with **`npm run lint`**, or both with **`npm run verify`**. If `npm run lint` still times out, use the system Node binary (not an IDE‑bundled helper): `PATH="/opt/homebrew/bin:$PATH" npm run lint`.
-- **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser — client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
+- **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser - client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
 - **No data in UI**: confirm the connection chip shows **Ubuntu tunnel** (hosted) or **local backend**, then check `https://api-staging-eth-amm-sim.magro.dev/healthz` or local `:8080/healthz` and that contracts are deployed.
 - **Reset does not reseed / price not back near 1.0**: session must be idle (not running). Use **Stop/Pause** first, then **Reseed** reset.
@@ -521,12 +521,12 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 
 ## Current Parameters (Defaults)
 - Accounts: 30 Anvil addresses; active 23
-  - 1 LP (index 0)
-  - 1 User (index 1)
-  - 15 Retail (indices 2-16)
-  - 3 Whale (indices 17-19)
-  - 3 MeanRev (indices 20-22)
-  - 7 Reserved (indices 23-29)
+ - 1 LP (index 0)
+ - 1 User (index 1)
+ - 15 Retail (indices 2-16)
+ - 3 Whale (indices 17-19)
+ - 3 MeanRev (indices 20-22)
+ - 7 Reserved (indices 23-29)
 - Session duration: 180s default (UI-configurable)
 - User execution baseline after startup/reset/reseed: 5,000 ETH + 5,000 APPL
 - Session analytics normalization baseline: 1,000 ETH + 1,000 APPL (for cross-account return comparability)

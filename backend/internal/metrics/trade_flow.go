@@ -1,17 +1,17 @@
-// trade_flow.go — Observes all trades and emits flow events for EWMA mean reversion.
+// trade_flow.go - Observes all trades and emits flow events for EWMA mean reversion.
 //
 // When a trade occurs, TradeFlowTracker computes:
-//   - Log return: r = ln(priceAfter / priceBefore)
-//   - Normalized flow: q = deltaReserve / reserve (liquidity-normalized trade size)
-//   - Liquidity-normalized return: rTilde = r / |q|
+//  - Log return: r = ln(priceAfter / priceBefore)
+//  - Normalized flow: q = deltaReserve / reserve (liquidity-normalized trade size)
+//  - Liquidity-normalized return: rTilde = r / |q|
 //
 // MeanRev bots subscribe to these events and feed them into their EWMA calculators
 // to compute z-scores for trading signals.
 //
 // CONNECTIONS:
-//   - Fed by: main.go trade callback → store.RecordTradeFlow()
-//   - Subscribers: bots/meanrev.go (each MeanRev bot subscribes independently)
-//   - Data source: executor.go Trade struct carries PriceBefore/After and reserves
+//  - Fed by: main.go trade callback → store.RecordTradeFlow()
+//  - Subscribers: bots/meanrev.go (each MeanRev bot subscribes independently)
+//  - Data source: executor.go Trade struct carries PriceBefore/After and reserves
 package metrics
 
 import (

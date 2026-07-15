@@ -123,7 +123,7 @@ const PerformancePage = () => {
   const selectedRef = useRef(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
 
-  // Handle WebSocket messages — stable identity (no deps on selected)
+  // Handle WebSocket messages - stable identity (no deps on selected)
   const handleWSMessage = useCallback((message: WSMessage) => {
     if (message.type === 'account_update') {
       const data = message.data as PerformanceData;
@@ -312,7 +312,7 @@ const PerformancePage = () => {
                           {trade.price.toFixed(4)}
                         </td>
                         <td className="px-4 py-2 text-right text-gray-300">
-                          {trade.closePrice > 0 ? trade.closePrice.toFixed(4) : '—'}
+                          {trade.closePrice > 0 ? trade.closePrice.toFixed(4) : '-'}
                         </td>
                         <td className={`px-4 py-2 text-right font-medium ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(4)}

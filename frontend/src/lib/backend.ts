@@ -1,4 +1,4 @@
-// backend.ts — Canonical API / WebSocket endpoints for eth-amm-sim.
+// backend.ts - Canonical API / WebSocket endpoints for eth-amm-sim.
 //
 // Hosted topology (production):
 //   Browser (https://eth-amm-sim.vercel.app)

@@ -1,12 +1,12 @@
-// impact.go — Price impact curve simulation using the constant product formula.
+// impact.go - Price impact curve simulation using the constant product formula.
 //
 // Models how much slippage (in basis points) a hypothetical trade would
 // experience at various sizes, given current pool reserves. Recalculated
 // whenever reserves change (updated by main.go poll loop).
 //
 // CONNECTIONS:
-//   - Updated by: main.go pollPrices → store.GetImpactCurve().UpdateReserves()
-//   - Frontend: GET /impact-curve → ImpactCurve component renders buy/sell curves
+//  - Updated by: main.go pollPrices → store.GetImpactCurve().UpdateReserves()
+//  - Frontend: GET /impact-curve → ImpactCurve component renders buy/sell curves
 package metrics
 
 import (

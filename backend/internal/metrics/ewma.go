@@ -1,4 +1,4 @@
-// ewma.go — Exponentially Weighted Moving Average calculator for mean reversion.
+// ewma.go - Exponentially Weighted Moving Average calculator for mean reversion.
 //
 // Maintains a running mean and variance of liquidity-normalized log returns
 // using exponential decay. The half-life parameter controls how quickly old
@@ -7,8 +7,8 @@
 // decide when to trade.
 //
 // CONNECTIONS:
-//   - Used by: bots/meanrev.go (each MeanRev bot has its own EWMACalculator)
-//   - Fed by: metrics/trade_flow.go emits trade flow events with normalized returns
+//  - Used by: bots/meanrev.go (each MeanRev bot has its own EWMACalculator)
+//  - Fed by: metrics/trade_flow.go emits trade flow events with normalized returns
 package metrics
 
 import (

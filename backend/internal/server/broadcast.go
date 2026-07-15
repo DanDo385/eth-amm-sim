@@ -1,4 +1,4 @@
-// broadcast.go — Pushes real-time data to all connected WebSocket clients.
+// broadcast.go - Pushes real-time data to all connected WebSocket clients.
 //
 // The frontend opens a WebSocket to /stream (via hooks/useWebSocket.ts).
 // When trades execute, prices update, or sessions change, main.go calls

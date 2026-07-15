@@ -8,14 +8,14 @@
 // goes to the server's REST/WebSocket handlers.
 //
 // MemoryStore also implements the metrics.PriceDataStore interface, which lets
-// metrics/price_provider.go wrap it as a PriceProvider for bots — breaking the
+// metrics/price_provider.go wrap it as a PriceProvider for bots - breaking the
 // import cycle between store and metrics packages.
 //
 // CONNECTIONS:
-//   - Writers: main.go (RecordTrade, RecordPrice, RecordTradeFlow, RecordEvent)
-//   - Readers: server/handlers.go (all GET endpoints read from MemoryStore)
-//   - Interface: implements metrics.PriceDataStore (GetCandles, GetTWAP, GetVolatility)
-//   - Reset: server/handlers.go handleSessionReset clears price, LP, trades, events
+//  - Writers: main.go (RecordTrade, RecordPrice, RecordTradeFlow, RecordEvent)
+//  - Readers: server/handlers.go (all GET endpoints read from MemoryStore)
+//  - Interface: implements metrics.PriceDataStore (GetCandles, GetTWAP, GetVolatility)
+//  - Reset: server/handlers.go handleSessionReset clears price, LP, trades, events
 package store
 
 import (

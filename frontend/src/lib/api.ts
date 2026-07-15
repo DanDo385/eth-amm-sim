@@ -1,14 +1,14 @@
-// api.ts — REST client for the Go backend.
+// api.ts - REST client for the Go backend.
 //
 // URL resolution:
-//   - VITE_API_URL set → call that origin directly (bypass proxy).
-//   - Otherwise → same-origin `/api/...`
+//  - VITE_API_URL set → call that origin directly (bypass proxy).
+//  - Otherwise → same-origin `/api/...`
 //       • Local Vite: proxied to VITE_DEV_BACKEND_URL or http://127.0.0.1:8080
 //       • Vercel: rewritten to https://api-staging-eth-amm-sim.magro.dev (Ubuntu)
 //
 // CONNECTIONS:
-//   - Routes: backend/internal/server/server.go → handlers.go
-//   - Endpoints: lib/backend.ts
+//  - Routes: backend/internal/server/server.go → handlers.go
+//  - Endpoints: lib/backend.ts
 
 import { getDirectApiBase } from '@/lib/backend';
 

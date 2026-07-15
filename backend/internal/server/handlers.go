@@ -1,4 +1,4 @@
-// handlers.go — HTTP handler implementations for all REST endpoints.
+// handlers.go - HTTP handler implementations for all REST endpoints.
 //
 // Each handler reads from MemoryStore or controls Session/Executor and returns
 // JSON. Frontend lib/api.ts calls these endpoints. User trade handlers
@@ -6,10 +6,10 @@
 // transactions for the User account (index 1).
 //
 // CONNECTIONS:
-//   - Frontend API client: frontend/lib/api.ts (fetches from these endpoints)
-//   - Session control: engine/session.go (Start/Stop/Reset/GetState)
-//   - Trade execution: engine/executor.go (user buy/sell → on-chain tx)
-//   - Data source: store/memory.go (candles, trades, LP metrics, events, accounts)
+//  - Frontend API client: frontend/lib/api.ts (fetches from these endpoints)
+//  - Session control: engine/session.go (Start/Stop/Reset/GetState)
+//  - Trade execution: engine/executor.go (user buy/sell → on-chain tx)
+//  - Data source: store/memory.go (candles, trades, LP metrics, events, accounts)
 package server
 
 import (

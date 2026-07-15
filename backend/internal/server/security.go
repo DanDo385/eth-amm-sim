@@ -66,7 +66,7 @@ func envIntOr(key string, fallback int) int {
 
 func (s *Server) logAuthStartupWarning() {
 	if s.security.apiToken == "" {
-		log.Printf("WARNING: ETH_AMM_SIM_API_TOKEN is unset — mutation and WebSocket authentication is disabled (local-dev mode)")
+		log.Printf("WARNING: ETH_AMM_SIM_API_TOKEN is unset - mutation and WebSocket authentication is disabled (local-dev mode)")
 	}
 }
 

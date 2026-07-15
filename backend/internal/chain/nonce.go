@@ -1,4 +1,4 @@
-// nonce.go — Thread-safe nonce tracking for concurrent bot transactions.
+// nonce.go - Thread-safe nonce tracking for concurrent bot transactions.
 //
 // Each Ethereum transaction needs a sequential nonce per sender address.
 // Because multiple bot goroutines submit transactions concurrently,

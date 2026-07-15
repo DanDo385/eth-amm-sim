@@ -1,4 +1,4 @@
-// types/index.ts — Shared frontend types
+// types/index.ts - Shared frontend types
 
 // --------------------
 // Session types

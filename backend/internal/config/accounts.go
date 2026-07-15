@@ -1,15 +1,15 @@
-// Package config contains account configuration — single source of truth for all
+// Package config contains account configuration - single source of truth for all
 // simulation accounts.
 //
 // SYSTEM ROLE:
 // This file defines every account's identity, starting allocation, and trading
 // parameters. It is the authoritative roster shared across the system:
 //
-//   - Deploy.s.sol reads these same Anvil addresses to mint tokens and redistribute ETH
-//   - cmd/simulator/main.go iterates Accounts to create bot goroutines
-//   - engine/executor.go uses Address()/PrivateKey() to sign transactions
-//   - server/handlers.go uses Accounts to list all accounts in the REST API
-//   - frontend/components/AccountMetrics.tsx displays per-account performance
+//  - Deploy.s.sol reads these same Anvil addresses to mint tokens and redistribute ETH
+//  - cmd/simulator/main.go iterates Accounts to create bot goroutines
+//  - engine/executor.go uses Address()/PrivateKey() to sign transactions
+//  - server/handlers.go uses Accounts to list all accounts in the REST API
+//  - frontend/components/AccountMetrics.tsx displays per-account performance
 //
 // ACCOUNT LAYOUT:
 //
@@ -188,10 +188,10 @@ func init() {
 		// RETAIL (Index 2-16)
 		// 15 small, frequent noise traders
 		// Parameters:
-		//   - MaxTradeSize: Maximum trade size in ETH (15 ETH)
-		//   - TradeFreqMin/Max: Random delay between trades (1-4 seconds)
-		//   - StartingApples: Initial APPL balance (40 APPL)
-		//   - MaxPosition: Maximum total position size (100 ETH equivalent)
+		//  - MaxTradeSize: Maximum trade size in ETH (15 ETH)
+		//  - TradeFreqMin/Max: Random delay between trades (1-4 seconds)
+		//  - StartingApples: Initial APPL balance (40 APPL)
+		//  - MaxPosition: Maximum total position size (100 ETH equivalent)
 		// ═══════════════════════════════════════════════════════════════
 	}
 
@@ -213,10 +213,10 @@ func init() {
 	// WHALES (Index 17-19)
 	// 3 large, infrequent traders with random buy/sell (no directional bias)
 	// Parameters:
-	//   - MaxTradeSize: Maximum trade size in ETH (400-600 ETH)
-	//   - TradeFreqMin/Max: Random delay between trades (45-90 seconds)
-	//   - StartingApples: Initial APPL balance (5,000 APPL each)
-	//   - MaxPosition: Maximum total position size (1500-2000 ETH equivalent)
+	//  - MaxTradeSize: Maximum trade size in ETH (400-600 ETH)
+	//  - TradeFreqMin/Max: Random delay between trades (45-90 seconds)
+	//  - StartingApples: Initial APPL balance (5,000 APPL each)
+	//  - MaxPosition: Maximum total position size (1500-2000 ETH equivalent)
 	// ═══════════════════════════════════════════════════════════════
 	Accounts = append(Accounts, AccountConfig{
 		Index:          17,
@@ -253,11 +253,11 @@ func init() {
 	// MEAN REVERSION (Index 20-22)
 	// 3 EWMA-based mean reversion bots with different sensitivities
 	// Parameters:
-	//   - MaxTradeSize: Trade size in ETH (50-150 ETH, converted to APPL for sells)
-	//   - TriggerLevels: Z-score thresholds (e.g., [0.75, 1.0, 1.25])
-	//   - HalfLifeTrades: EWMA half-life in number of trades (25-75 trades)
-	//   - StartingApples: Initial APPL balance (1,000 APPL each, matches deployment)
-	//   - MaxPosition: Maximum total position size (300-500 ETH equivalent)
+	//  - MaxTradeSize: Trade size in ETH (50-150 ETH, converted to APPL for sells)
+	//  - TriggerLevels: Z-score thresholds (e.g., [0.75, 1.0, 1.25])
+	//  - HalfLifeTrades: EWMA half-life in number of trades (25-75 trades)
+	//  - StartingApples: Initial APPL balance (1,000 APPL each, matches deployment)
+	//  - MaxPosition: Maximum total position size (300-500 ETH equivalent)
 	//
 	// MeanRev1: Fast (25 trades half-life), low thresholds → trades frequently
 	// MeanRev2: Medium (50 trades half-life), moderate thresholds

@@ -1,4 +1,4 @@
-// whale.go — Large opportunistic trader bot (accounts 17-19).
+// whale.go - Large opportunistic trader bot (accounts 17-19).
 //
 // Strategy: Whales randomly buy or sell with equal probability (no directional bias).
 // Trade sizes are large (up to 600 ETH) with long intervals (45-90s, ~2-4 trades per session).

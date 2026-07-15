@@ -1,13 +1,13 @@
-// useWebSocket.ts — Persistent WebSocket connection to backend /stream.
+// useWebSocket.ts - Persistent WebSocket connection to backend /stream.
 //
 // URL resolution (see lib/backend.ts):
-//   - VITE_WS_URL → explicit override
-//   - localhost → ws://127.0.0.1:8080/stream (local `make up`)
-//   - otherwise → wss://api-staging-eth-amm-sim.magro.dev/stream (Ubuntu tunnel)
+//  - VITE_WS_URL → explicit override
+//  - localhost → ws://127.0.0.1:8080/stream (local `make up`)
+//  - otherwise → wss://api-staging-eth-amm-sim.magro.dev/stream (Ubuntu tunnel)
 //
 // CONNECTIONS:
-//   - Backend: server/broadcast.go handleWebSocket + sendInitialState
-//   - Consumers: Dashboard / PerformancePage handleWSMessage
+//  - Backend: server/broadcast.go handleWebSocket + sendInitialState
+//  - Consumers: Dashboard / PerformancePage handleWSMessage
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WSMessage } from '@/types';

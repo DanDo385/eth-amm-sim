@@ -1,4 +1,4 @@
-// useSession.ts — Manages simulation lifecycle (start / stop / reset).
+// useSession.ts - Manages simulation lifecycle (start / stop / reset).
 //
 // Provides the session state to page.tsx and SessionControls. REST calls
 // go through lib/api.ts → backend POST /session/{start,stop,reset}.
@@ -6,9 +6,9 @@
 // (dispatched by page.tsx handleWSMessage → updateFromWS).
 //
 // CONNECTIONS:
-//   - REST:      lib/api.ts → server/handlers.go handleSession{Start,Stop,Reset}
-//   - WebSocket: page.tsx receives "session_state" → calls updateFromWS
-//   - Backend:   engine/session.go manages the actual state machine
+//  - REST:      lib/api.ts → server/handlers.go handleSession{Start,Stop,Reset}
+//  - WebSocket: page.tsx receives "session_state" → calls updateFromWS
+//  - Backend:   engine/session.go manages the actual state machine
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ResetMode, SessionState } from '@/types';

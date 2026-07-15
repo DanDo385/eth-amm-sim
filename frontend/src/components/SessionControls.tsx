@@ -1,14 +1,14 @@
-// SessionControls.tsx — Start / Stop / Reset buttons for the simulation.
+// SessionControls.tsx - Start / Stop / Reset buttons for the simulation.
 //
 // Drives the simulation lifecycle via hooks/useSession.ts → lib/api.ts
 // → backend POST /session/{start,stop,reset}. Real-time state updates
 // (elapsed time, status transitions) arrive via WebSocket "session_state".
 //
 // CONNECTIONS:
-//   - Backend:     engine/session.go state machine (idle → running → completed)
-//   - REST:        handlers.go handleSessionStart/Stop/Reset
-//   - WebSocket:   broadcast.go sends "session_state" on transitions
-//   - State hook:  hooks/useSession.ts provides session state + action callbacks
+//  - Backend:     engine/session.go state machine (idle → running → completed)
+//  - REST:        handlers.go handleSessionStart/Stop/Reset
+//  - WebSocket:   broadcast.go sends "session_state" on transitions
+//  - State hook:  hooks/useSession.ts provides session state + action callbacks
 
 import { useState } from 'react';
 import type { ResetMode, SessionState } from '@/types';

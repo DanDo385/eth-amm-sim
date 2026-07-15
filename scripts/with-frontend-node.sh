@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# with-frontend-node.sh — run frontend commands with an LTS Node runtime.
+# with-frontend-node.sh - run frontend commands with an LTS Node runtime.
 #
 # Why this wrapper exists:
 # - Frontend tooling in this repo is validated on Node 20.x / 22.x LTS.

@@ -1,9 +1,9 @@
-// meanrev.go — EWMA-based mean reversion bot (accounts 4-6).
+// meanrev.go - EWMA-based mean reversion bot (accounts 4-6).
 //
 // Strategy: Subscribes to trade flow events (via metrics/trade_flow.go) and
 // maintains an EWMA of liquidity-normalized log returns. When the z-score
 // crosses configured trigger levels (e.g., ±0.75σ, ±1.0σ), the bot trades
-// against the deviation — buying when price is below the moving average and
+// against the deviation - buying when price is below the moving average and
 // selling when above.
 //
 // Three variants with different sensitivities:
@@ -13,11 +13,11 @@
 //	MeanRev3: Slow (175-trade half-life), high thresholds → trades rarely
 //
 // CONNECTIONS:
-//   - Subscribes to: metrics/trade_flow.go TradeFlowTracker for trade events
-//   - Uses: metrics/ewma.go EWMACalculator for z-score computation
-//   - Reads: metrics/price_provider.go PriceProvider for current price (to size sells)
-//   - Executes: via engine/executor.go → contracts/src/AppleAMM.sol
-//   - Config: config/accounts.go TriggerLevels and HalfLifeTrades parameters
+//  - Subscribes to: metrics/trade_flow.go TradeFlowTracker for trade events
+//  - Uses: metrics/ewma.go EWMACalculator for z-score computation
+//  - Reads: metrics/price_provider.go PriceProvider for current price (to size sells)
+//  - Executes: via engine/executor.go → contracts/src/AppleAMM.sol
+//  - Config: config/accounts.go TriggerLevels and HalfLifeTrades parameters
 package bots
 
 import (

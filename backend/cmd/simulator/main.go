@@ -9,7 +9,7 @@
 //  1. Load config and contract addresses (from broadcast JSON written by deploy.sh)
 //  2. Connect to Anvil at localhost:8545 (chain/client.go)
 //  3. Verify contracts are deployed by reading pool reserves
-//  4. Create Executor (engine/executor.go) — the bridge to on-chain contract calls
+//  4. Create Executor (engine/executor.go) - the bridge to on-chain contract calls
 //  5. Create bots from config/accounts.go definitions, each wired to the Executor
 //  6. Start price polling goroutine (every 2s reads reserves → updates metrics → broadcasts)
 //  7. Start HTTP+WebSocket server (server/server.go) on :8080 for the frontend

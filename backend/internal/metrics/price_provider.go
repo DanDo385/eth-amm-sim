@@ -1,14 +1,14 @@
-// price_provider.go — Adapter that gives bots read-only access to price data.
+// price_provider.go - Adapter that gives bots read-only access to price data.
 //
 // Defines the PriceProvider interface (used by bots) and PriceDataStore interface
 // (implemented by store/memory.go). This file exists to break the import cycle
-// between the metrics and store packages — bots depend on PriceProvider (an
+// between the metrics and store packages - bots depend on PriceProvider (an
 // interface in metrics/) rather than importing store/ directly.
 //
 // CONNECTIONS:
-//   - Interface consumers: bots/meanrev.go
-//   - Implementation: store/memory.go implements PriceDataStore
-//   - Created in: cmd/simulator/main.go → metrics.NewPriceProvider(memStore)
+//  - Interface consumers: bots/meanrev.go
+//  - Implementation: store/memory.go implements PriceDataStore
+//  - Created in: cmd/simulator/main.go → metrics.NewPriceProvider(memStore)
 package metrics
 
 // PriceDataStore defines the interface for accessing price data.

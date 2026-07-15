@@ -1,13 +1,13 @@
-// TWAPChart.tsx — Time-Weighted Average Price and standard deviation chart.
+// TWAPChart.tsx - Time-Weighted Average Price and standard deviation chart.
 //
 // Computes TWAP and rolling standard deviation client-side from candle data.
 // Visualizes price stability and volatility over the simulation window.
 // Candle data originates from the same source as PriceChart (metrics/price.go).
 //
 // CONNECTIONS:
-//   - Backend data:  metrics/price.go Candle close prices (used for TWAP calc)
-//   - Data hook:     hooks/usePriceData.ts provides candle array
-//   - Types:         types/index.ts Candle, Trade, SessionState
+//  - Backend data:  metrics/price.go Candle close prices (used for TWAP calc)
+//  - Data hook:     hooks/usePriceData.ts provides candle array
+//  - Types:         types/index.ts Candle, Trade, SessionState
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createChart, IChartApi, ISeriesApi, LineData, Time } from 'lightweight-charts';

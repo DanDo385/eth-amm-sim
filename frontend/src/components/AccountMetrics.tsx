@@ -1,4 +1,4 @@
-// AccountMetrics.tsx — Per-bot performance dashboard (PnL, Sharpe, drawdown).
+// AccountMetrics.tsx - Per-bot performance dashboard (PnL, Sharpe, drawdown).
 //
 // Displays each bot's trading performance with equity curves and trade history.
 // Data arrives two ways:
@@ -6,10 +6,10 @@
 //   2. Real-time: WebSocket "account_update" → page.tsx updates accounts state
 //
 // CONNECTIONS:
-//   - Backend data:  metrics/account.go AccountPerformance (computed per trade)
-//   - REST endpoint: server/handlers.go handleGetAccounts
-//   - WebSocket msg: "account_update" from broadcast.go BroadcastAccountUpdate
-//   - Types:         types/index.ts PerformanceData, EquityPoint, TradeRecord
+//  - Backend data:  metrics/account.go AccountPerformance (computed per trade)
+//  - REST endpoint: server/handlers.go handleGetAccounts
+//  - WebSocket msg: "account_update" from broadcast.go BroadcastAccountUpdate
+//  - Types:         types/index.ts PerformanceData, EquityPoint, TradeRecord
 
 import { useState, useEffect } from 'react';
 import type { PerformanceData } from '@/types';

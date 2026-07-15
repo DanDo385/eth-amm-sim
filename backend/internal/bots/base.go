@@ -1,4 +1,4 @@
-// base.go — Shared foundation for all trading bot types.
+// base.go - Shared foundation for all trading bot types.
 //
 // SYSTEM ROLE:
 // BaseBot holds the account config, executor reference, store reference, and
@@ -11,10 +11,10 @@
 // to the MemoryStore and broadcast them via WebSocket to the frontend.
 //
 // CONNECTIONS:
-//   - Config: config/accounts.go defines each bot's parameters
-//   - Executor: engine/executor.go submits transactions to contracts/src/AppleAMM.sol
-//   - Store: store/memory.go for metrics access (price data, account metrics)
-//   - Lifecycle: engine/orchestrator.go starts/stops bots via context cancellation
+//  - Config: config/accounts.go defines each bot's parameters
+//  - Executor: engine/executor.go submits transactions to contracts/src/AppleAMM.sol
+//  - Store: store/memory.go for metrics access (price data, account metrics)
+//  - Lifecycle: engine/orchestrator.go starts/stops bots via context cancellation
 package bots
 
 import (

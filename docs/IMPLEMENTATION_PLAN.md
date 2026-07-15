@@ -1,4 +1,4 @@
-# Implementation plan — stable baseline & recovery path
+# Implementation plan - stable baseline & recovery path
 
 This document is for humans (and agents) who hit repeated **toolchain**, **dependency**, and **“it works on my machine”** failures. It does **not** mean “throw away the simulator logic.” It means: **lock the contract between OS, Node, Go, and the repo** so the *same* demo story runs reliably.
 
@@ -33,10 +33,10 @@ None of that invalidates **Solidity + Foundry + Go + a small dashboard**. It inv
 A maintainer (or CI) should be able to do **exactly this** on a clean machine:
 
 1. Install **Foundry**, **Go** (matches `backend/go.mod` / README), **Node 20 or 22 LTS** (see **`frontend/.nvmrc`**; **Node 25+** currently breaks Vite/Rollup).
-2. `make setup` — contracts deps, `frontend` npm install, bindings.
+2. `make setup` - contracts deps, `frontend` npm install, bindings.
 3. `make up` (or manual four terminals from README).
 4. Open `http://localhost:3000`, click **Start**, see live updates.
-5. From `frontend/`: `npm run verify` — **lint + production bundle** completes without manual hacks.
+5. From `frontend/`: `npm run verify` - **lint + production bundle** completes without manual hacks.
 
 If any step needs “try five random Stack Overflow fixes,” the **toolchain contract** is still broken.
 
@@ -45,15 +45,15 @@ If any step needs “try five random Stack Overflow fixes,” the **toolchain co
 ## 4. Dependency constitution (rules going forward)
 
 1. **Pin what demos depend on**
-   - **React** / **Vite**: prefer **exact** or tight ranges on anything that broke before; avoid canary unless the whole team opts in.
-   - **Go**: `go` line in `go.mod` must match what README claims; prefer **`GOTOOLCHAIN=auto`** in editor + Makefile for local dev (see `.vscode/settings.json`).
+  - **React** / **Vite**: prefer **exact** or tight ranges on anything that broke before; avoid canary unless the whole team opts in.
+  - **Go**: `go` line in `go.mod` must match what README claims; prefer **`GOTOOLCHAIN=auto`** in editor + Makefile for local dev (see `.vscode/settings.json`).
 
 2. **One Node on PATH for project commands**
-   - Document: “Use Homebrew Node” *or* “Use nvm Node” — pick one primary story in README.
-   - Optional: add **`.node-version`** (or `.tool-versions`) with the version you actually test.
+  - Document: “Use Homebrew Node” *or* “Use nvm Node” - pick one primary story in README.
+  - Optional: add **`.node-version`** (or `.tool-versions`) with the version you actually test.
 
 3. **Scripts call Node explicitly where shims failed**
-   - `package.json` already uses `node ./node_modules/vite/bin/vite.js` and `node ./node_modules/typescript/lib/tsc.js` for fragile environments — **keep that pattern** until the team standardizes on a single Node layout.
+  - `package.json` already uses `node ./node_modules/vite/bin/vite.js` and `node ./node_modules/typescript/lib/tsc.js` for fragile environments - **keep that pattern** until the team standardizes on a single Node layout.
 
 4. **Recovery recipe** (paste into README / runbook if needed)
    ```bash
@@ -63,13 +63,13 @@ If any step needs “try five random Stack Overflow fixes,” the **toolchain co
    ```
 
 5. **Do not vendor half the internet into git**
-   - `contracts/lib/*` from `forge install` belongs in `.gitignore` + documented `forge install` step, **or** committed intentionally with a clear policy — pick one and stick to it (massive untracked `lib/` trees confuse agents and humans alike).
+  - `contracts/lib/*` from `forge install` belongs in `.gitignore` + documented `forge install` step, **or** committed intentionally with a clear policy - pick one and stick to it (massive untracked `lib/` trees confuse agents and humans alike).
 
 ---
 
 ## 5. Phased roadmap
 
-### Phase 0 — Inventory (½ day)
+### Phase 0 - Inventory (½ day)
 
 - [ ] List **one** supported matrix: macOS version, Node x.y, Go x.y, Foundry version.
 - [x] Confirm `docs/SESSION_BOT_LIFECYCLE.md` exists and is linked from `AGENTS.md` and README.
@@ -77,7 +77,7 @@ If any step needs “try five random Stack Overflow fixes,” the **toolchain co
 
 **Exit:** README + `AGENTS.md` agree on stack and commands.
 
-### Phase 1 — Toolchain lock (½–1 day)
+### Phase 1 - Toolchain lock (½-1 day)
 
 - [ ] Add **`.node-version`** (optional but high leverage).
 - [ ] Ensure **`.vscode/settings.json`** `GOTOOLCHAIN=auto` is committed (already done) or document alternative for Goland/Cursor users.
@@ -85,17 +85,17 @@ If any step needs “try five random Stack Overflow fixes,” the **toolchain co
 
 **Exit:** New clone + documented installs → `make setup` succeeds.
 
-### Phase 2 — Frontend “boring mode” (1–2 days)
+### Phase 2 - Frontend “boring mode” (1-2 days)
 
 Goal: **boring** `package.json`, predictable builds.
 
 - [ ] Eliminate remaining sharp edges: audit `npm audit` *consciously* (no blind `--force`).
 - [ ] Ensure `npm run verify` is the **only** blessed CI frontend check.
-- [ ] Optional **greenfield UI folder**: `frontend-v2/` from official `npm create vite@latest` template, then **copy** `src/components`, `hooks`, `lib`, `types` in small PRs — only if incremental cleanup fails.
+- [ ] Optional **greenfield UI folder**: `frontend-v2/` from official `npm create vite@latest` template, then **copy** `src/components`, `hooks`, `lib`, `types` in small PRs - only if incremental cleanup fails.
 
 **Exit:** `npm run verify` < 2 minutes on a normal laptop; no intermittent `.bin` timeouts.
 
-### Phase 3 — Backend & contracts hygiene (1 day)
+### Phase 3 - Backend & contracts hygiene (1 day)
 
 - [ ] `go test ./...` where tests exist; document “no tests” vs add smoke tests for config parsing.
 - [ ] Standardize **broadcast JSON** path and document failure modes (deploy window).
@@ -103,7 +103,7 @@ Goal: **boring** `package.json`, predictable builds.
 
 **Exit:** Backend builds with documented Go policy; deploy/bindings story is one linear narrative.
 
-### Phase 4 — Single demo script (½ day)
+### Phase 4 - Single demo script (½ day)
 
 - [ ] `make demo-120` (or `scripts/demo.sh`) is the **canonical** Loom path; everything else is “advanced.”
 
@@ -126,7 +126,7 @@ Goal: **boring** `package.json`, predictable builds.
 - [ ] Golden path (section 3) works on a **fresh clone** with only README prerequisites.
 - [ ] No duplicate/conflicting “how to run frontend” stories.
 - [ ] CI (if re-added) runs `frontend npm run verify` + `backend go test`/`go build` + `forge test` as separate explicit jobs.
-- [ ] This file is outdated **on purpose** only when phases complete — then update README and shrink this doc to a short “maintenance” section.
+- [ ] This file is outdated **on purpose** only when phases complete - then update README and shrink this doc to a short “maintenance” section.
 
 ---
 

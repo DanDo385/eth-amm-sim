@@ -45,7 +45,7 @@ frontend:
 	@echo "→ http://localhost:3000  (after Vite prints Local URL). If odd proxy/chunk errors: make frontend-fresh"
 	./scripts/with-frontend-node.sh npm run dev
 
-# Clean Vite cache/output then dev — fixes stale chunk / proxy issues after failed builds
+# Clean Vite cache/output then dev - fixes stale chunk / proxy issues after failed builds
 frontend-fresh:
 	cd frontend && rm -rf dist .vite .next
 	./scripts/with-frontend-node.sh npm run dev

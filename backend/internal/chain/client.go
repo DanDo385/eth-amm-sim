@@ -1,16 +1,16 @@
 // Package chain provides Ethereum client connectivity and nonce management.
 //
 // SYSTEM ROLE:
-// This is the lowest layer of the backend — it speaks JSON-RPC to the Anvil
+// This is the lowest layer of the backend - it speaks JSON-RPC to the Anvil
 // node started by scripts/start-anvil.sh. Every on-chain read (reserves,
 // prices, balances) and every transaction (swaps, approvals) flows through
 // Client. NonceManager (nonce.go) ensures concurrent bot goroutines never
 // collide on nonces.
 //
 // CONNECTIONS:
-//   - Used by: engine/executor.go (all contract interactions)
-//   - Depends on: Anvil running at localhost:8545 (started by scripts/start-anvil.sh)
-//   - Config: RPC URL and chain ID from config/config.go
+//  - Used by: engine/executor.go (all contract interactions)
+//  - Depends on: Anvil running at localhost:8545 (started by scripts/start-anvil.sh)
+//  - Config: RPC URL and chain ID from config/config.go
 package chain
 
 import (

@@ -1,4 +1,4 @@
-// server.go — HTTP REST API and WebSocket server on :8080.
+// server.go - HTTP REST API and WebSocket server on :8080.
 //
 // SYSTEM ROLE:
 // This is the backend's interface to the frontend. It exposes REST endpoints
@@ -8,18 +8,18 @@
 //
 // ROUTES (see handlers.go for implementations):
 //
-//	POST /session/{start,pause,resume,stop,reset}  — Control simulation lifecycle
-//	GET  /session/state               — Current session status
-//	GET  /candles, /trades, /events   — Market data
-//	GET  /lp/metrics                  — LP performance
-//	GET  /accounts                    — All account metrics
-//	POST /trade/{buy,sell}            — User manual trading
-//	WS   /stream                      — Real-time WebSocket feed
+//	POST /session/{start,pause,resume,stop,reset} - Control simulation lifecycle
+//	GET  /session/state              - Current session status
+//	GET  /candles, /trades, /events  - Market data
+//	GET  /lp/metrics                 - LP performance
+//	GET  /accounts                   - All account metrics
+//	POST /trade/{buy,sell}           - User manual trading
+//	WS   /stream                     - Real-time WebSocket feed
 //
 // CONNECTIONS:
-//   - Frontend: lib/api.ts makes REST calls; hooks/useWebSocket.ts opens /stream
-//   - Backend: reads from store/memory.go, controls engine/session.go
-//   - Broadcast: server/broadcast.go pushes trade/price/event data to WS clients
+//  - Frontend: lib/api.ts makes REST calls; hooks/useWebSocket.ts opens /stream
+//  - Backend: reads from store/memory.go, controls engine/session.go
+//  - Broadcast: server/broadcast.go pushes trade/price/event data to WS clients
 package server
 
 import (
@@ -60,7 +60,7 @@ type Server struct {
 	accountUpdateMu      sync.Mutex
 	lastAccountUpdateAt  map[string]time.Time
 
-	// Session finalization guard — ensures FinalizeAccountsForSession runs
+	// Session finalization guard - ensures FinalizeAccountsForSession runs
 	// exactly once per session, whether stopped manually or by auto-expire.
 	sessionFinalized int32
 

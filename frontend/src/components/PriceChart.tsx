@@ -1,14 +1,14 @@
-// PriceChart.tsx — OHLC candlestick chart for APPL/ETH price.
+// PriceChart.tsx - OHLC candlestick chart for APPL/ETH price.
 //
 // Uses TradingView's lightweight-charts library to render candles.
 // Initial candle history comes from GET /candles; live updates arrive
 // via WebSocket "price" messages → usePriceData.addCandle → this component.
 //
 // CONNECTIONS:
-//   - Backend data:  metrics/price.go Candle (OHLC aggregated per interval)
-//   - WebSocket msg: "price" from broadcast.go BroadcastPrice
-//   - Data hook:     hooks/usePriceData.ts manages candle state
-//   - Types:         types/index.ts Candle
+//  - Backend data:  metrics/price.go Candle (OHLC aggregated per interval)
+//  - WebSocket msg: "price" from broadcast.go BroadcastPrice
+//  - Data hook:     hooks/usePriceData.ts manages candle state
+//  - Types:         types/index.ts Candle
 
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';

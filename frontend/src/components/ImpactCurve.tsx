@@ -1,4 +1,4 @@
-// ImpactCurve.tsx — Constant product curve (ETH vs APPL reserves).
+// ImpactCurve.tsx - Constant product curve (ETH vs APPL reserves).
 //
 // Visualizes the pool reserves along the invariant x*y=k curve, with a highlighted
 // trade path from selling 500 APPL to buying 100 APPL. This makes the price
@@ -6,12 +6,12 @@
 // states.
 //
 // CONNECTIONS:
-//   - Pool reserves: lpMetrics (currentApples/currentETH) from /lp/metrics
-//   - Fallback:      infer reserves from impact curve points when metrics not ready
-//   - Backend data:  metrics/impact.go CalculateBuyCurve/CalculateSellCurve
-//   - REST endpoint: server/handlers.go handleGetImpactCurve
-//   - Reserve updates: main.go pollPrices → impact.UpdateReserves
-//   - Types:         types/index.ts ImpactPoint, LPMetrics
+//  - Pool reserves: lpMetrics (currentApples/currentETH) from /lp/metrics
+//  - Fallback:      infer reserves from impact curve points when metrics not ready
+//  - Backend data:  metrics/impact.go CalculateBuyCurve/CalculateSellCurve
+//  - REST endpoint: server/handlers.go handleGetImpactCurve
+//  - Reserve updates: main.go pollPrices → impact.UpdateReserves
+//  - Types:         types/index.ts ImpactPoint, LPMetrics
 
 import { useMemo, useRef, useState } from 'react';
 import type { ImpactPoint, LPMetrics } from '@/types';
@@ -34,7 +34,7 @@ type Reserves = {
 };
 
 const formatNumber = (value: number, maxDecimals: number = 2) => {
-  if (!Number.isFinite(value)) return '—';
+  if (!Number.isFinite(value)) return '-';
   return value.toLocaleString('en-US', { maximumFractionDigits: maxDecimals });
 };
 

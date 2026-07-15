@@ -1,4 +1,4 @@
-// session.go — Controls the simulation session lifecycle (idle → running → completed).
+// session.go - Controls the simulation session lifecycle (idle → running → completed).
 //
 // A session wraps an Orchestrator and a timer. When the frontend user clicks
 // "Start" (SessionControls → POST /session/start → server/handlers.go), Session
@@ -9,9 +9,9 @@
 // frontend SessionControls component in real time.
 //
 // CONNECTIONS:
-//   - REST API: server/handlers.go calls Start/Stop/Reset/GetState
-//   - Frontend: SessionControls reads session state; useSession hook polls it
-//   - Orchestrator: session.run() calls orchestrator.Start/Stop
+//  - REST API: server/handlers.go calls Start/Stop/Reset/GetState
+//  - Frontend: SessionControls reads session state; useSession hook polls it
+//  - Orchestrator: session.run() calls orchestrator.Start/Stop
 package engine
 
 import (
@@ -244,10 +244,10 @@ func (s *Session) run(ctx context.Context) {
 
 // Stop stops the current session, or normalizes a finished session to idle.
 //
-//   - running: cancel context; run() ends the session as completed (existing path).
-//   - completed: move to idle and clear timestamps so the UI matches first load;
+//  - running: cancel context; run() ends the session as completed (existing path).
+//  - completed: move to idle and clear timestamps so the UI matches first load;
 //     idempotent for clients that call POST /session/stop after the timer ends.
-//   - idle: no-op (idempotent).
+//  - idle: no-op (idempotent).
 func (s *Session) Stop() error {
 	s.mu.Lock()
 

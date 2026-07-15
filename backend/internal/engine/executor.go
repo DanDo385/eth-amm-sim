@@ -1,4 +1,4 @@
-// executor.go — The bridge between Go bot logic and on-chain smart contracts.
+// executor.go - The bridge between Go bot logic and on-chain smart contracts.
 //
 // SYSTEM ROLE:
 // Executor is the single point through which all bot and user trades reach the
@@ -14,11 +14,11 @@
 //	  and broadcasts via WebSocket → frontend Blotter and PriceChart update
 //
 // CONNECTIONS:
-//   - Contract ABI: Manually packed (packSwapETHForApples, etc.) to match
+//  - Contract ABI: Manually packed (packSwapETHForApples, etc.) to match
 //     contracts/src/AppleAMM.sol function signatures
-//   - Callers: bots/whale.go, retail.go, meanrev.go
-//   - Callbacks: main.go registers OnTrade to feed MemoryStore and WebSocket
-//   - Frontend: Trade data flows through server/broadcast.go → frontend WebSocket
+//  - Callers: bots/whale.go, retail.go, meanrev.go
+//  - Callbacks: main.go registers OnTrade to feed MemoryStore and WebSocket
+//  - Frontend: Trade data flows through server/broadcast.go → frontend WebSocket
 package engine
 
 import (

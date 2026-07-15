@@ -1,4 +1,4 @@
-// bot.go — Defines the Bot interface contract for all trading bots.
+// bot.go - Defines the Bot interface contract for all trading bots.
 //
 // SYSTEM ROLE:
 // This file defines the minimal Bot interface that all trading bot implementations
@@ -15,18 +15,18 @@
 //
 // NOTE ON DUPLICATE INTERFACES:
 // engine/orchestrator.go defines its own Bot interface (without Type()) to avoid
-// import cycles. Both interfaces are intentionally similar — all bot implementations
+// import cycles. Both interfaces are intentionally similar - all bot implementations
 // satisfy both interfaces. This is a common Go pattern for breaking circular
 // dependencies.
 //
-// The Bot interface is minimal by design — it only exposes lifecycle methods needed
+// The Bot interface is minimal by design - it only exposes lifecycle methods needed
 // by the orchestrator. Bot-specific functionality (trading logic, EWMA state, etc.)
 // is encapsulated in each bot's implementation (whale.go, retail.go, meanrev.go).
 //
 // CONNECTIONS:
-//   - Used by: engine/orchestrator.go (manages bot lifecycle via its own Bot interface)
-//   - Implemented by: All bot types (WhaleBot, RetailBot, MeanRevBot)
-//   - Base implementation: base.go provides BaseBot struct with common functionality
+//  - Used by: engine/orchestrator.go (manages bot lifecycle via its own Bot interface)
+//  - Implemented by: All bot types (WhaleBot, RetailBot, MeanRevBot)
+//  - Base implementation: base.go provides BaseBot struct with common functionality
 package bots
 
 import (

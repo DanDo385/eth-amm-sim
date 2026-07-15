@@ -1,4 +1,4 @@
-// Dashboard.tsx — main client dashboard (lazy-loaded from HomePage).
+// Dashboard.tsx - main client dashboard (lazy-loaded from HomePage).
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';
