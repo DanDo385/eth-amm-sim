@@ -1,6 +1,18 @@
 {
   "project": "eth-amm-sim",
-  "generatedAt": "2026-07-16",
+  "generatedAt": "2026-07-17",
   "previewGif": "/gif/preview.gif",
-  "screenshotsDir": "/screenshots"
+  "screenshotsDir": "/screenshots",
+  "shortClip": {
+    "youtubeUrl": "https://www.youtube.com/watch?v=n2oC_-Z9y2o",
+    "youtubeId": "n2oC_-Z9y2o",
+    "privacy": "unlisted",
+    "title": "AMM Simulation Engine - Short Walkthrough"
+  },
+  "longClip": {
+    "youtubeUrl": "https://www.youtube.com/watch?v=TzVOlbpZvjg",
+    "youtubeId": "TzVOlbpZvjg",
+    "privacy": "unlisted",
+    "title": "AMM Simulation Engine - Full Walkthrough"
+  }
 }
