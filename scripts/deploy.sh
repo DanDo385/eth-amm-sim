@@ -106,6 +106,34 @@ echo "Deploying contracts to Anvil..."
 cd "$(dirname "$0")/../contracts"
 
 # ==============================================================================
+# Ensure forge is on PATH
+# ==============================================================================
+# systemd backend units (and Go reseed via exec) often inherit a minimal PATH
+# that omits ~/.foundry/bin. The oneshot deploy unit sets this explicitly;
+# reseed must work without that.
+ensure_forge_on_path() {
+  if command -v forge >/dev/null 2>&1; then
+    return 0
+  fi
+  local candidates=(
+    "${FOUNDRY_BIN:-}"
+    "${HOME:-}/.foundry/bin"
+    "/home/deploy/.foundry/bin"
+    "/root/.foundry/bin"
+  )
+  local d
+  for d in "${candidates[@]}"; do
+    [ -n "$d" ] && [ -x "$d/forge" ] || continue
+    PATH="$d:$PATH"
+    export PATH
+    return 0
+  done
+  echo "error: forge not found on PATH (install Foundry via foundryup, or set FOUNDRY_BIN)" >&2
+  return 127
+}
+ensure_forge_on_path
+
+# ==============================================================================
 # Run the Forge deployment script
 # ==============================================================================
 #

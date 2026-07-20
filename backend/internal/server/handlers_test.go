@@ -3,6 +3,9 @@ package server
 import (
 	"math/big"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"eth-amm-sim/internal/config"
@@ -97,6 +100,33 @@ func TestParseResetMode(t *testing.T) {
 					mode, hard, reseed, tt.wantMode, tt.wantHard, tt.wantReseed)
 			}
 		})
+	}
+}
+
+func TestEnvironWithFoundryPathPrependsBin(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "forge")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FOUNDRY_BIN", dir)
+	t.Setenv("HOME", filepath.Join(dir, "no-home"))
+
+	env := environWithFoundryPath([]string{"FOO=1", "PATH=/usr/bin"})
+	var path string
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			path = strings.TrimPrefix(kv, "PATH=")
+		}
+	}
+	if path == "" {
+		t.Fatal("expected PATH in env")
+	}
+	if !strings.HasPrefix(path, dir+":") && path != dir {
+		t.Fatalf("expected Foundry bin first on PATH, got %q", path)
+	}
+	if !strings.Contains(path, "/usr/bin") {
+		t.Fatalf("expected original PATH retained, got %q", path)
 	}
 }
 

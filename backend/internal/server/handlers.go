@@ -442,6 +442,7 @@ func (s *Server) reseedChainAndRedeploy(ctx context.Context) error {
 
 	cmd := exec.CommandContext(ctx, "bash", "scripts/deploy.sh")
 	cmd.Dir = projectRoot
+	cmd.Env = environWithFoundryPath(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("deploy script failed: %w; output: %s", err, strings.TrimSpace(string(out)))
@@ -472,6 +473,45 @@ func findProjectRootForScripts() (string, error) {
 		dir = parent
 	}
 	return "", fmt.Errorf("could not find project root for deploy script")
+}
+
+// environWithFoundryPath ensures forge is discoverable when reseed runs under
+// systemd (backend units often omit ~/.foundry/bin from PATH).
+func environWithFoundryPath(base []string) []string {
+	pathVal := ""
+	out := make([]string, 0, len(base)+1)
+	for _, kv := range base {
+		if strings.HasPrefix(kv, "PATH=") {
+			pathVal = strings.TrimPrefix(kv, "PATH=")
+			continue
+		}
+		out = append(out, kv)
+	}
+
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("FOUNDRY_BIN")),
+		filepath.Join(os.Getenv("HOME"), ".foundry", "bin"),
+		"/home/deploy/.foundry/bin",
+		"/root/.foundry/bin",
+	}
+	for _, dir := range candidates {
+		if dir == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, "forge")); err != nil {
+			continue
+		}
+		if pathVal == "" {
+			pathVal = dir
+		} else if !strings.Contains(":"+pathVal+":", ":"+dir+":") {
+			pathVal = dir + ":" + pathVal
+		}
+		break
+	}
+	if pathVal != "" {
+		out = append(out, "PATH="+pathVal)
+	}
+	return out
 }
 
 func hasDir(path string) bool {
