@@ -112,47 +112,61 @@ export const TradingPanel = ({ session, balanceRefreshToken = 0 }: TradingPanelP
     // For SELL: we spend APPL (negative) and receive ETH (positive)
     let ethChange: string | undefined;
     let appleChange: string | undefined;
+    let ethUnits = 0;
+    let appleUnits = 0;
 
     if (isBuy) {
       // BUY: ethAmount is the ETH spent (negative change)
       if (result.ethAmount) {
-        const ethSpent = Number(result.ethAmount) / 1e18;
-        ethChange = `-${ethSpent.toFixed(4)}`;
+        ethUnits = Number(result.ethAmount) / 1e18;
+        ethChange = `-${ethUnits.toFixed(4)}`;
       }
-      // appleAmount might not be in response, so we'll show "?" if not available
       if (result.appleAmount) {
-        const appleReceived = Number(result.appleAmount) / 1e18;
-        appleChange = `+${appleReceived.toFixed(4)}`;
+        appleUnits = Number(result.appleAmount) / 1e18;
+        appleChange = `+${appleUnits.toFixed(4)}`;
       } else {
         appleChange = '?';
       }
     } else {
       // SELL: appleAmount is the APPL spent (negative change)
       if (result.appleAmount) {
-        const appleSpent = Number(result.appleAmount) / 1e18;
-        appleChange = `-${appleSpent.toFixed(4)}`;
+        appleUnits = Number(result.appleAmount) / 1e18;
+        appleChange = `-${appleUnits.toFixed(4)}`;
       }
-      // ethAmount might not be in response, so we'll show "?" if not available
       if (result.ethAmount) {
-        const ethReceived = Number(result.ethAmount) / 1e18;
-        ethChange = `+${ethReceived.toFixed(4)}`;
+        ethUnits = Number(result.ethAmount) / 1e18;
+        ethChange = `+${ethUnits.toFixed(4)}`;
       } else {
         ethChange = '?';
       }
     }
 
-    // Build balance change string
-    const balanceChange = ethChange !== undefined || appleChange !== undefined
-      ? ` | Δ Bal: ${ethChange ?? '?'} ETH / ${appleChange ?? '?'} APPL`
-      : '';
+    // Execution price in ETH per APPL (same convention as the blotter).
+    let priceLine = '';
+    if (ethUnits > 0 && appleUnits > 0) {
+      const ethPerAppl = ethUnits / appleUnits;
+      const applPerEth = appleUnits / ethUnits;
+      priceLine = `Price: ${ethPerAppl.toFixed(6)} ETH/APPL (${applPerEth.toFixed(4)} APPL per ETH)`;
+    }
+
+    const fillLine = isBuy
+      ? `Fill: ${ethUnits > 0 ? ethUnits.toFixed(4) : amount} ETH → ${appleUnits > 0 ? appleUnits.toFixed(4) : '?'} APPL`
+      : `Fill: ${appleUnits > 0 ? appleUnits.toFixed(4) : amount} APPL → ${ethUnits > 0 ? ethUnits.toFixed(4) : '?'} ETH`;
+
+    const balanceChange =
+      ethChange !== undefined || appleChange !== undefined
+        ? `Δ Bal: ${ethChange ?? '?'} ETH / ${appleChange ?? '?'} APPL`
+        : '';
 
     return [
       `${label}: ${dir} ${size}`,
+      fillLine,
+      priceLine,
       balanceChange,
-      ` | Tx ${shortHash}...`,
+      `Tx ${shortHash}...`,
     ]
       .filter(Boolean)
-      .join('');
+      .join('\n');
   };
 
   const handleBuy = async () => {
