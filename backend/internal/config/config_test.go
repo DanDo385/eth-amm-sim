@@ -1,3 +1,4 @@
+// config_test.go - Broadcast JSON address loading (run-latest preference).
 package config
 
 import (

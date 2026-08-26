@@ -8,8 +8,10 @@ import "../src/AppleAMM.sol";
 
 /**
  * @title Deploy Script
- * @notice Deploys AppleToken and AppleAMM, then seeds with initial liquidity
- * 
+ * @notice Deploys AppleToken and AppleAMM, then seeds with initial liquidity.
+ * @dev Invoked by scripts/deploy.sh (and Ubuntu reseed via Go handlers).
+ *      Broadcast JSON is read by backend/internal/config for contract addresses.
+ *
  * Account allocation (Anvil accounts 0-29):
  * 0: Deployer/LP - Seeds pool with 25,000 APPL + 25,000 ETH (initial price: 1 ETH/APPL)
  *     Gets 30,000 ETH total (25k liquidity + 5k for gas)

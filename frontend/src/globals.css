@@ -1,3 +1,9 @@
+/* globals.css - Tailwind layers + demo-oriented trade row accents.
+ *
+ * Whale / buy / sell row classes keep the blotter readable on Loom recordings.
+ * Colors align with tailwind.config.cjs (bull/bear/surface).
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

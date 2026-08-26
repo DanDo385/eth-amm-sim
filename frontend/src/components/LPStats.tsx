@@ -1,3 +1,12 @@
+// LPStats.tsx - Presentational LP economics strip (IL, fees, vs HODL).
+//
+// Does not compute metrics - only formats values from the Go backend so the
+// dashboard stays causality-focused: trade → reserves → LP exposure.
+//
+// CONNECTIONS:
+//  - Data:    hooks/usePriceData.ts + WS "lp_metrics"
+//  - Backend: metrics/lp.go → GET /lp/metrics / broadcast
+//  - Types:   types/index.ts LPMetrics
 
 import type { LPMetrics } from '@/types';
 

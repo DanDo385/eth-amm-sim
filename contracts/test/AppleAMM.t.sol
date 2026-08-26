@@ -7,7 +7,9 @@ import "../src/AppleAMM.sol";
 
 /**
  * @title AppleAMM Tests
- * @notice Tests for AMM core functionality: swaps, liquidity, invariants
+ * @notice Core AMM behavior: liquidity add/remove, buys/sells, fee, invariant.
+ * @dev Mirrors the constant-product path used by Go bots (engine/executor.go)
+ *      and the frontend impact curve. Run with `make test-contracts` / forge test.
  */
 contract AppleAMMTest is Test {
     AppleToken public token;

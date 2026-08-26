@@ -1,3 +1,4 @@
+// security_test.go - Auth, CORS, rate-limit, and WebSocket subprotocol checks.
 package server_test
 
 import (

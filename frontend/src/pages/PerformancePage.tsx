@@ -1,9 +1,19 @@
+// PerformancePage.tsx - Per-account performance analytics view.
+//
+// Pulls AccountPerformance from REST/WS and renders equity curves plus trade
+// blotter rows. Metrics (Sharpe, drawdown, PnL) are computed in Go.
+//
+// CONNECTIONS:
+//  - Backend: metrics/account.go → GET /accounts, /accounts/{nick}/performance
+//  - WS:      "performance" / account updates via useWebSocket
+//  - Types:   types/index.ts PerformanceData, EquityPoint, TradeRecord
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import type { PerformanceData, WSMessage, EquityPoint } from '@/types';
 import * as api from '@/lib/api';
 
-// Simple equity chart component
+// Simple equity chart component (inline SVG; no financial calc beyond pathing).
 const EquityChart = ({ data, height = 200 }: { data: EquityPoint[]; height?: number }) => {
   if (data.length < 2) {
     return (

@@ -1,3 +1,4 @@
+// orchestrator_test.go - Bot orchestrator start/stop lifecycle under context cancel.
 package engine
 
 import (

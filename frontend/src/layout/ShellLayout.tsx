@@ -1,3 +1,12 @@
+// ShellLayout.tsx - Shared chrome (brand + nav) wrapping routed pages.
+//
+// Keeps Dashboard and Performance under one composition so Loom recordings
+// stay orientation-stable when switching views.
+//
+// CONNECTIONS:
+//  - Routes: App.tsx (parent <Route element={<ShellLayout />}>)
+//  - Child pages render via <Outlet />
+
 import { NavLink, Outlet } from 'react-router-dom';
 
 export default function ShellLayout() {

@@ -36,7 +36,7 @@ type LPMetrics struct {
 	history []LPSnapshot
 }
 
-// Snapshot for charts
+// Snapshot for charts (sampled over time for the LP strip / history series).
 type LPSnapshot struct {
 	Timestamp     time.Time `json:"timestamp"`
 	AppleReserve  float64   `json:"appleReserve"`
@@ -50,7 +50,7 @@ type LPSnapshot struct {
 	NetPnL        float64   `json:"netPnL"`
 }
 
-// API response
+// API response payload for REST/WS (frontend types/index.ts LPMetrics).
 type LPMetricsData struct {
 	InitialApples   float64      `json:"initialApples"`
 	InitialETH      float64      `json:"initialETH"`

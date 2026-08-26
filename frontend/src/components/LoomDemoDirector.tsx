@@ -1,3 +1,12 @@
+// LoomDemoDirector.tsx - Suggested narration beats for a ~3 minute Loom.
+//
+// Presentational timing guide only; does not drive session/bots. Keeps the
+// demo story anchored on causality (local chain → contracts → Go → UI).
+//
+// CONNECTIONS:
+//  - Narrative: DEMO_GUIDE.md / README demo principle
+//  - Live UI:   Dashboard.tsx session + whale path
+
 const beats = [
   {
     time: "0:00-0:20",

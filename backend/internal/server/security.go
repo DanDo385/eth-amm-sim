@@ -1,3 +1,15 @@
+// security.go - API token auth, CORS allowlist, and per-IP rate limits.
+//
+// Protects mutation/WS endpoints when ETH_AMM_SIM_API_TOKEN is set. Hosted
+// SPA demos may run with token unset (local-dev mode) while keeping CORS +
+// rate limits. WS can authenticate via Authorization Bearer or the
+// eth-amm-sim.bearer.<token> subprotocol.
+//
+// CONNECTIONS:
+//  - Wired in: server.go middleware stack
+//  - Env:      ETH_AMM_SIM_API_TOKEN, ETH_AMM_SIM_ALLOWED_ORIGINS,
+//              ETH_AMM_SIM_TRUST_X_FORWARDED_FOR, ETH_AMM_SIM_RATE_LIMIT_*
+//  - Tests:    security_test.go
 package server
 
 import (

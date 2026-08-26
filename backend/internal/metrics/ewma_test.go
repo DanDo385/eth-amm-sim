@@ -1,3 +1,4 @@
+// ewma_test.go - EWMA / volatility update and reset behavior.
 package metrics
 
 import "testing"

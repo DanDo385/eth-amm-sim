@@ -7,7 +7,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title AppleToken Tests
- * @notice Basic tests for the AppleToken ERC20 contract
+ * @notice Unit tests for the APPL ERC20 used by AppleAMM.
+ * @dev Covers mint/burn ownership, transfers, and initial metadata.
+ *      Deployed by contracts/script/Deploy.s.sol; Go bindings in
+ *      backend/internal/contracts/apple_token.go.
  */
 contract AppleTokenTest is Test {
     AppleToken public token;

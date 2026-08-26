@@ -1,3 +1,12 @@
+// HomePage.tsx - Lazy-loads the live AMM dashboard (code-split for Vite).
+//
+// Suspense fallback explains local vs hosted entry points so cold loads
+// on Vercel still orient viewers during Loom demos.
+//
+// CONNECTIONS:
+//  - Dashboard: components/Dashboard.tsx (heavy charts + WS)
+//  - Route:     App.tsx index route
+
 import { Suspense, lazy } from 'react';
 
 const Dashboard = lazy(() => import('@/components/Dashboard'));

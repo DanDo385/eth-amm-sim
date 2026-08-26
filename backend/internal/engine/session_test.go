@@ -1,3 +1,4 @@
+// session_test.go - Session timer, pause/resume, and status transitions.
 package engine
 
 import (

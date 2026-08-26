@@ -1,3 +1,7 @@
+// handlers_test.go - Unit tests for reset-mode parsing and User balance leak detection.
+//
+// Covers soft/hard/reseed query parsing and the Anvil default User ETH leak
+// signature used after incomplete reseed flows.
 package server
 
 import (

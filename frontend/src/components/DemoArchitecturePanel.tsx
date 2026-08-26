@@ -1,3 +1,12 @@
+// DemoArchitecturePanel.tsx - Hosted topology cheat-sheet for demos.
+//
+// Lists the Ubuntu → tunnel → Vercel path so viewers see the full engineering
+// loop, not just charts.
+//
+// CONNECTIONS:
+//  - Origins: lib/backend.ts PUBLIC_* constants
+//  - Ops:     Ubuntu systemd (anvil :11545, Go :8103) + Cloudflare Tunnel
+
 import { PUBLIC_API_ORIGIN, PUBLIC_UI_ORIGIN } from '@/lib/backend';
 
 const layers = [

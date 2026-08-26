@@ -1,3 +1,13 @@
+// AmmDetailsPanel.tsx - Inspect one trade's AMM before/after state.
+//
+// Shows spot move, reserve deltas, fee, execution price, and a counterfactual
+// opposite-side quote from pre-trade reserves - useful for Loom narration.
+//
+// CONNECTIONS:
+//  - Selection: Dashboard / KeyEvents click → Trade
+//  - Backend:   engine/types.go Trade (priceBefore/After, reserves*, fee)
+//  - Math:      local constant-product quotes mirror AppleAMM.sol
+
 import type { Trade } from '@/types';
 
 interface AmmDetailsPanelProps {

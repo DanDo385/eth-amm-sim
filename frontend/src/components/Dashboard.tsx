@@ -1,4 +1,14 @@
-// Dashboard.tsx - main client dashboard (lazy-loaded from HomePage).
+// Dashboard.tsx - Live AMM observability surface (lazy-loaded from HomePage).
+//
+// Owns WebSocket fan-in for session/trades/events/LP/candles and wires
+// presentational panels. Financial metrics stay on the Go backend; this file
+// only merges streams and filters to the active session window.
+//
+// CONNECTIONS:
+//  - Hooks:     useSession, usePriceData, useWebSocket
+//  - REST:      lib/api.ts (impact curve, trades backfill, reset)
+//  - WS msgs:   server/broadcast.go (trade, candle, event, lp_metrics, session)
+//  - Panels:    PriceChart, TWAPChart, Blotter, LPStats, ImpactCurve, TradingPanel
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SessionControls } from '@/components/SessionControls';

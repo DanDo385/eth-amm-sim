@@ -1,3 +1,10 @@
+// Toast.tsx - Ephemeral bottom-right notice (user trade confirmations).
+//
+// Multi-line messages (fill + ETH/APPL price) from TradingPanel. Auto-dismisses.
+//
+// CONNECTIONS:
+//  - Producer: components/TradingPanel.tsx buildToastMessage
+//  - Trade API: lib/api.ts tradeBuy / tradeSell → handlers.go
 
 import { useEffect } from 'react';
 

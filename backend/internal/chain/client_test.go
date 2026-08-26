@@ -1,3 +1,4 @@
+// client_test.go - Anvil JSON-RPC helpers (setBalance payload shape).
 package chain
 
 import (
