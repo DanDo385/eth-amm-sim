@@ -5,11 +5,11 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://api-staging-eth-amm-sim.magro.dev/$1"
+      "source": "/api/:path*",
+      "destination": "https://api-staging-eth-amm-sim.magro.dev/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
