@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eth-amm-sim — Interactive Architecture Docs</title>
+<style>
+  :root {
+    --bg:            #12131a;
+    --bg-raised:     #1a1c25;
+    --bg-sunken:     #0d0e13;
+    --border:        #2b2e3c;
+    --border-strong: #3d4152;
+    --text:          #e6e7ee;
+    --text-dim:      #a4a7b8;
+    --text-faint:    #6f7386;
+    --accent:        #7c9cf5;
+    --accent-dim:    #3a4a7a;
+    --go:            #7ad4e6;
+    --ts:            #6f9bf0;
+    --sol:           #c9a2f0;
+    --shell:         #8fd18a;
+    --json:          #e0b26b;
+    --misc:          #5a5f73;
+    --ok:            #7fce8f;
+    --warn:          #e0b26b;
+    --unknown:       #d98f8f;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --maxw: 60rem;
+    --gap: clamp(1rem, 2.5vw, 2rem);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:            #f6f7fa;
+      --bg-raised:     #ffffff;
+      --bg-sunken:     #eceef3;
+      --border:        #d9dce6;
+      --border-strong: #c2c6d4;
+      --text:          #1b1d26;
+      --text-dim:      #4b4f60;
+      --text-faint:    #7c8091;
+      --accent:        #3b5bdb;
+      --accent-dim:    #b8c4f0;
+      --go:            #1f8fa6;
+      --ts:            #2f5bc4;
+      --sol:           #8b4fc0;
+      --shell:         #3f8f3a;
+      --json:          #b07d28;
+      --misc:          #9aa0b2;
+      --ok:            #2e8a45;
+      --warn:          #a9781f;
+      --unknown:       #b64a4a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 0 var(--gap);
+  }
+
+  /* ---- header / provenance ---- */
+  header.masthead {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-sunken);
+    padding: 2.5rem 0 1.75rem;
+  }
+  header.masthead h1 {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    line-height: 1.15;
+    margin: 0 0 .35rem;
+    letter-spacing: -0.02em;
+  }
+  header.masthead .tagline {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin: 0 0 1.5rem;
+    max-width: 46rem;
+  }
+  .provenance {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: .5rem 1.5rem;
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+  }
+  .provenance div { overflow-wrap: anywhere; }
+  .provenance b { color: var(--text-dim); font-weight: 600; }
+
+  /* ---- nav ---- */
+  nav.toc {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav.toc ul {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: .6rem var(--gap);
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem 1.1rem;
+    font-size: .82rem;
+  }
+  nav.toc a {
+    color: var(--text-dim);
+    font-weight: 500;
+    padding: .15rem 0;
+    border-bottom: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--text); text-decoration: none; }
+
+  /* ---- sections ---- */
+  section {
+    padding: 3rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section > .wrap > h2 {
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 .4rem;
+    scroll-margin-top: 3.5rem;
+  }
+  .section-lead {
+    color: var(--text-dim);
+    margin: 0 0 1.75rem;
+    max-width: 44rem;
+  }
+  h3 { font-size: 1.12rem; margin: 2rem 0 .6rem; letter-spacing: -0.01em; }
+  h4 { font-size: .95rem; margin: 1.25rem 0 .4rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: .5rem 0; }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: .3rem 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .86em;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: .08em .35em;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.5;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+  /* ---- syntax highlight ---- */
+  .tok-kw   { color: var(--sol); }
+  .tok-fn   { color: var(--ts); }
+  .tok-str  { color: var(--shell); }
+  .tok-num  { color: var(--json); }
+  .tok-com  { color: var(--text-faint); font-style: italic; }
+  .tok-type { color: var(--go); }
+
+  /* ---- tables ---- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .88rem;
+    margin: 1rem 0;
+  }
+  th, td {
+    text-align: left;
+    padding: .5rem .7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  tbody tr:hover { background: var(--bg-raised); }
+
+  /* ---- bar chart ---- */
+  .chart { margin: 1.5rem 0; display: flex; flex-direction: column; gap: .55rem; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr 5rem;
+    align-items: center;
+    gap: .75rem;
+    font-size: .85rem;
+  }
+  .bar-row .lang { color: var(--text-dim); font-weight: 500; }
+  .bar-track {
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    height: 1.15rem;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 2px 0 0 2px;
+    min-width: 2px;
+    transition: width .8s cubic-bezier(.2,.7,.2,1);
+  }
+  .bar-row .val { font-family: var(--mono); font-size: .8rem; color: var(--text-faint); text-align: right; }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .78rem; color: var(--text-faint); margin-top: .75rem; }
+  .legend span::before {
+    content: "";
+    display: inline-block;
+    width: .7rem; height: .7rem;
+    border-radius: 2px;
+    margin-right: .35rem;
+    vertical-align: baseline;
+    background: var(--sw, var(--misc));
+  }
+
+  /* ---- architecture interactive diagram ---- */
+  .diagram {
+    display: grid;
+    gap: .75rem;
+    margin: 1.5rem 0;
+  }
+  .tier {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+  .tier > button {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: .95rem;
+    font-weight: 600;
+    padding: .85rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  .tier > button:hover { background: var(--bg-sunken); }
+  .tier > button .tier-tag {
+    font-family: var(--mono);
+    font-size: .72rem;
+    font-weight: 500;
+    color: var(--text-faint);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: .05rem .4rem;
+  }
+  .tier > button .chev { margin-left: auto; color: var(--text-faint); transition: transform .2s; }
+  .tier[data-open="true"] > button .chev { transform: rotate(90deg); }
+  .tier-body {
+    display: none;
+    padding: 0 1rem 1rem;
+    font-size: .87rem;
+    color: var(--text-dim);
+  }
+  .tier[data-open="true"] .tier-body { display: block; }
+  .tier-body ul { margin: .5rem 0 0; }
+  .flow-arrow {
+    text-align: center;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1;
+  }
+  .boundary-note {
+    font-size: .78rem;
+    color: var(--text-faint);
+    font-style: italic;
+    text-align: center;
+    margin: .2rem 0;
+  }
+
+  /* ---- module cards ---- */
+  details.card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    margin: .6rem 0;
+  }
+  details.card > summary {
+    cursor: pointer;
+    padding: .8rem 1rem;
+    font-weight: 600;
+    font-size: .95rem;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+  }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::before {
+    content: "▸";
+    color: var(--text-faint);
+    font-size: .8rem;
+  }
+  details.card[open] > summary::before { content: "▾"; }
+  details.card > summary .path {
+    font-family: var(--mono);
+    font-size: .76rem;
+    color: var(--text-faint);
+    font-weight: 400;
+    margin-left: auto;
+  }
+  .card-body {
+    padding: 0 1rem 1rem;
+    font-size: .88rem;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    margin-top: -1px;
+    padding-top: .85rem;
+  }
+  .card-body dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; margin: .5rem 0 0; }
+  .card-body dt { color: var(--text-faint); font-size: .8rem; }
+  .card-body dd { margin: 0; }
+
+  /* ---- flows ---- */
+  .flow {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    padding: 1.1rem 1.2rem 1.2rem;
+    margin: 1rem 0;
+  }
+  .flow > h3 { margin: 0 0 .2rem; font-size: 1rem; }
+  .flow > p.flow-sub { margin: 0 0 .9rem; font-size: .84rem; color: var(--text-faint); }
+  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  ol.steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: .35rem 0 .35rem 2.2rem;
+    font-size: .87rem;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: .3rem;
+    width: 1.5rem; height: 1.5rem;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    font-family: var(--mono);
+    font-size: .75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+  }
+  ol.steps > li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: .72rem;
+    top: 1.9rem;
+    bottom: -.1rem;
+    width: 1px;
+    background: var(--border);
+  }
+  ol.steps code { font-size: .8rem; }
+
+  /* ---- deep analysis badges ---- */
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .1rem .45rem;
+    border-radius: 4px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge.verified  { color: var(--ok);      border-color: var(--ok);      background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .badge.supported { color: var(--warn);    border-color: var(--warn);    background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .badge.unverified{ color: var(--unknown); border-color: var(--unknown); background: color-mix(in srgb, var(--unknown) 12%, transparent); }
+
+  .finding {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+    border-radius: 0 6px 6px 0;
+    background: var(--bg-raised);
+    padding: .8rem 1rem;
+    margin: .7rem 0;
+  }
+  .finding.verified  { border-left-color: var(--ok); }
+  .finding.supported { border-left-color: var(--warn); }
+  .finding.unverified{ border-left-color: var(--unknown); }
+  .finding h4 {
+    margin: 0 0 .35rem;
+    font-size: .92rem;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+    display: flex;
+    gap: .55rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .finding p { margin: .3rem 0 0; font-size: .86rem; color: var(--text-dim); }
+
+  .risk-sev { font-family: var(--mono); font-size: .74rem; font-weight: 600; }
+  .risk-sev.medium { color: var(--warn); }
+  .risk-sev.low { color: var(--text-faint); }
+
+  footer {
+    padding: 2rem 0 3rem;
+    color: var(--text-faint);
+    font-size: .8rem;
+  }
+  footer .wrap > p { margin: .3rem 0; }
+
+  /* ---- responsive ---- */
+  @media (max-width: 768px) {
+    body { font-size: 15px; }
+    section { padding: 2.25rem 0; }
+    .bar-row { grid-template-columns: 5.5rem 1fr 3.8rem; gap: .5rem; font-size: .8rem; }
+    .card-body dl { grid-template-columns: 1fr; gap: .1rem; }
+    .card-body dt { margin-top: .5rem; }
+    details.card > summary { flex-wrap: wrap; }
+    details.card > summary .path { margin-left: 1.4rem; width: 100%; }
+    nav.toc ul { gap: .2rem .8rem; font-size: .78rem; }
+  }
+  @media (max-width: 375px) {
+    :root { --gap: .85rem; }
+    header.masthead { padding: 1.75rem 0 1.25rem; }
+    .provenance { grid-template-columns: 1fr; font-size: .74rem; }
+    .bar-row { grid-template-columns: 1fr; gap: .15rem; }
+    .bar-row .val { text-align: left; }
+    pre { font-size: .72rem; }
+    ol.steps > li { padding-left: 1.9rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .bar-fill { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <h1>eth-amm-sim</h1>
+    <p class="tagline">
+      An AMM execution simulator: a local Anvil EVM chain runs Solidity contracts
+      (AppleToken, AppleAMM), a concurrent Go backend drives 21+ trading-bot
+      goroutines and streams state over WebSocket, and a React&nbsp;18 SPA renders
+      the live market.
+    </p>
+    <div class="provenance">
+      <div><b>commit</b><br>ec8e3d9e0c3bf1b3e836539716b7671408c76154</div>
+      <div><b>commit state</b><br>detached HEAD · dirty working tree</div>
+      <div><b>generated</b><br>2026-08-31T16:47:12Z</div>
+      <div><b>source analysis</b><br>2026-08-31T16:43:28Z (oss-project-analyzer)</div>
+      <div><b>input: README.md</b><br>sha256 fb6a54f0ec85…3708f3c31b</div>
+      <div><b>input: metrics.md</b><br>sha256 0adc6d2a2e45…c4a70d6bf66</div>
+      <div><b>input: architecture-map.txt</b><br>sha256 31774bdf6bef…09b6b40e</div>
+      <div><b>input: deep-analysis.md</b><br>sha256 844294f98209…21ec3bf</div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#metrics">Metrics</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#modules">Modules</a></li>
+    <li><a href="#flows">Critical Flows</a></li>
+    <li><a href="#deep">Deep Analysis</a></li>
+  </ul>
+</nav>
+
+<!-- ============================ OVERVIEW ============================ -->
+<section id="overview">
+  <div class="wrap">
+    <h2>Overview</h2>
+    <p class="section-lead">
+      A four-tier system for demonstrating and observing automated market-maker
+      execution against a deterministic local chain.
+    </p>
+
+    <p>
+      <strong>eth-amm-sim</strong> is a multi-agent trading simulator plus a
+      real-time observability SPA. It exists to produce a repeatable, watchable
+      demo: start a session, watch ~21 bots trade a constant-product pool for two
+      to three minutes, and see price, TWAP, liquidity-provider PnL, price impact,
+      and a trade blotter update live.
+    </p>
+
+    <h3>The four tiers</h3>
+    <table>
+      <thead><tr><th>Tier</th><th>Stack</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Anvil chain</td>
+          <td>Foundry Anvil, chainId 31337</td>
+          <td>Deterministic local EVM with 30 funded accounts on port 8545.</td>
+        </tr>
+        <tr>
+          <td>Contracts</td>
+          <td>Solidity ^0.8.20, OpenZeppelin</td>
+          <td><code>AppleToken</code> (ERC20) and <code>AppleAMM</code> (x·y=k, 30&nbsp;bps fee), deployed and seeded by <code>Deploy.s.sol</code>.</td>
+        </tr>
+        <tr>
+          <td>Go backend</td>
+          <td>Go 1.25, go-ethereum, gorilla/mux + gorilla/websocket</td>
+          <td>Bot goroutines, ABI-encoded swap execution, 2s chain poll loop, metrics aggregation, REST + WebSocket fan-out on port 8080.</td>
+        </tr>
+        <tr>
+          <td>Frontend SPA</td>
+          <td>Vite 5, React 18.3, TypeScript 5.8, Tailwind, lightweight-charts</td>
+          <td>Live dashboard and per-account performance views; all data I/O confined to hooks.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Key structural takeaways</h3>
+    <ul>
+      <li>Clean layered Go backend; two <code>errgroup</code>s own every goroutine (process-level and per-session bot pool) with graceful SIGINT/SIGTERM drain.</li>
+      <li><code>internal/config</code> is the cross-language hub — the 30-account roster is re-derived independently in Go and in <code>Deploy.s.sol</code> with no shared schema.</li>
+      <li>Largest test gap: <code>internal/bots/</code> (~850 LOC of strategy logic, 0 tests) and the entire frontend.</li>
+      <li>Two representations of the AMM ABI (hand-packed calldata in <code>executor.go</code> plus generated bindings) invite silent drift.</li>
+      <li>All state is in-memory and unbounded — fine for a 3-minute demo, a slow leak for an always-on staging instance.</li>
+    </ul>
+
+    <h3>Test evidence</h3>
+    <p>
+      Both suites passed during analysis: <code>go test ./...</code> (backend
+      packages <code>chain</code>, <code>config</code>, <code>engine</code>,
+      <code>metrics</code>, <code>server</code>) and <code>forge test</code>
+      (22/22 for <code>AppleAMM.t.sol</code> and <code>AppleToken.t.sol</code>).
+      The frontend has no test suite; <code>bots</code>, <code>store</code>, and
+      <code>cmd</code> have no test files.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ METRICS ============================ -->
+<section id="metrics">
+  <div class="wrap">
+    <h2>Metrics</h2>
+    <p class="section-lead">
+      From <code>cloc --vcs=git</code> (v2.02) over git-tracked files only.
+      Excludes <code>.git/</code>, <code>frontend/node_modules/</code>,
+      <code>contracts/lib/</code> submodules, and build output.
+    </p>
+
+    <h3>Lines of code by language</h3>
+    <div class="chart" id="langChart" role="img" aria-label="Bar chart of code lines by language">
+      <!-- bars injected by script; noscript fallback below -->
+    </div>
+    <div class="legend">
+      <span style="--sw:var(--go)">Go</span>
+      <span style="--sw:var(--ts)">TypeScript</span>
+      <span style="--sw:var(--json)">JSON / data</span>
+      <span style="--sw:var(--sol)">Solidity</span>
+      <span style="--sw:var(--shell)">Shell</span>
+      <span style="--sw:var(--misc)">Config / markup</span>
+    </div>
+
+    <noscript>
+    <table>
+      <thead><tr><th>Language</th><th class="num">Files</th><th class="num">Code</th></tr></thead>
+      <tbody>
+        <tr><td>Go</td><td class="num">37</td><td class="num">7,143</td></tr>
+        <tr><td>TypeScript</td><td class="num">27</td><td class="num">2,907</td></tr>
+        <tr><td>JSON</td><td class="num">6</td><td class="num">2,889</td></tr>
+        <tr><td>Markdown</td><td class="num">4</td><td class="num">678</td></tr>
+        <tr><td>Solidity</td><td class="num">5</td><td class="num">599</td></tr>
+        <tr><td>Bourne Shell</td><td class="num">6</td><td class="num">466</td></tr>
+        <tr><td>CSS</td><td class="num">1</td><td class="num">69</td></tr>
+        <tr><td>TOML</td><td class="num">3</td><td class="num">61</td></tr>
+        <tr><td>Make</td><td class="num">1</td><td class="num">44</td></tr>
+        <tr><td>JavaScript</td><td class="num">3</td><td class="num">37</td></tr>
+        <tr><td>HTML</td><td class="num">1</td><td class="num">20</td></tr>
+        <tr><td>SVG</td><td class="num">1</td><td class="num">17</td></tr>
+      </tbody>
+    </table>
+    </noscript>
+
+    <p style="font-size:.82rem;color:var(--text-faint)">
+      Total tracked source: <strong>14,930</strong> lines of code across 95 files
+      (plus 2,400 blank, 3,130 comment). JSON is dominated by
+      <code>frontend/package-lock.json</code> and generated ABI / broadcast
+      fixtures — not hand-written.
+    </p>
+
+    <h3>Application code by component</h3>
+    <table>
+      <thead><tr><th>Component</th><th>Language</th><th class="num">Code</th><th>Path</th></tr></thead>
+      <tbody>
+        <tr><td>Backend — entrypoint / wiring</td><td>Go</td><td class="num">~570</td><td><code>backend/cmd/simulator/main.go</code></td></tr>
+        <tr><td>Backend — engine</td><td>Go</td><td class="num">~1,700</td><td><code>backend/internal/engine/</code></td></tr>
+        <tr><td>Backend — metrics</td><td>Go</td><td class="num">~1,340</td><td><code>backend/internal/metrics/</code></td></tr>
+        <tr><td>Backend — server (REST + WS)</td><td>Go</td><td class="num">~1,500</td><td><code>backend/internal/server/</code></td></tr>
+        <tr><td>Backend — bots</td><td>Go</td><td class="num">~850</td><td><code>backend/internal/bots/</code></td></tr>
+        <tr><td>Backend — chain / config / store / bindings</td><td>Go</td><td class="num">~1,200</td><td><code>backend/internal/{chain,config,store,contracts}/</code></td></tr>
+        <tr><td>Contracts — <code>AppleAMM.sol</code></td><td>Solidity</td><td class="num">394</td><td><code>contracts/src/AppleAMM.sol</code></td></tr>
+        <tr><td>Contracts — <code>Deploy.s.sol</code></td><td>Solidity</td><td class="num">279</td><td><code>contracts/script/Deploy.s.sol</code></td></tr>
+        <tr><td>Contracts — <code>AppleToken.sol</code></td><td>Solidity</td><td class="num">30</td><td><code>contracts/src/AppleToken.sol</code></td></tr>
+        <tr><td>Frontend SPA</td><td>TS / TSX</td><td class="num">~2,907</td><td><code>frontend/src/</code></td></tr>
+        <tr><td>Dev / deploy scripts</td><td>Shell</td><td class="num">~466</td><td><code>scripts/</code>, <code>contracts/</code>, <code>frontend/scripts/</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Test code</h3>
+    <table>
+      <thead><tr><th>Suite</th><th class="num">Files</th><th class="num">Test funcs</th><th class="num">Test LOC</th><th>Command</th></tr></thead>
+      <tbody>
+        <tr><td>Go (<code>*_test.go</code>)</td><td class="num">7</td><td class="num">24</td><td class="num">696</td><td><code>cd backend &amp;&amp; go test ./...</code></td></tr>
+        <tr><td>Solidity (<code>*.t.sol</code>)</td><td class="num">2</td><td class="num">22</td><td class="num">396</td><td><code>cd contracts &amp;&amp; forge test</code></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;color:var(--text-faint)">
+      Test-to-source ratio (application code): Go ≈ 696 / 7,143 ≈ <strong>9.7%</strong>;
+      Solidity ≈ 396 / 599 ≈ <strong>66%</strong>. Go test files:
+      <code>config/config_test.go</code>, <code>server/handlers_test.go</code>,
+      <code>server/security_test.go</code>, <code>chain/client_test.go</code>,
+      <code>engine/orchestrator_test.go</code>, <code>engine/session_test.go</code>,
+      <code>metrics/ewma_test.go</code>.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ ARCHITECTURE ============================ -->
+<section id="architecture">
+  <div class="wrap">
+    <h2>Architecture</h2>
+    <p class="section-lead">
+      Three processes across two network boundaries. Click a tier to expand its
+      internal components. The full ASCII map from the analyzer is reproduced below.
+    </p>
+
+    <div class="diagram" id="diagram">
+      <div class="tier" data-open="true">
+        <button type="button" aria-expanded="true">
+          <span>Browser — <code>localhost:3000</code></span>
+          <span class="tier-tag">Vite + React 18 SPA</span>
+          <span class="chev">▸</span>
+        </button>
+        <div class="tier-body">
+          <p>Presentational components fed entirely by three hooks that own all network I/O.</p>
+          <ul>
+            <li><code>hooks/useWebSocket</code> — persistent <code>/stream</code> connection with reconnect</li>
+            <li><code>hooks/useSession</code>, <code>hooks/usePriceData</code> — REST + derived state</li>
+            <li><code>lib/api.ts</code> (REST calls), <code>lib/backend.ts</code> (URL resolution: env → localhost → staging tunnel)</li>
+            <li>Charts: <code>PriceChart</code>, <code>TWAPChart</code>, <code>ImpactCurve</code> via <code>lightweight-charts</code></li>
+            <li><code>types/index.ts</code> — wire types, hand-mirrored from Go JSON tags</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flow-arrow">▲ WS push &nbsp;&nbsp; ▼ REST JSON</div>
+      <div class="boundary-note">═══ process / network boundary ═══</div>
+
+      <div class="tier" data-open="true">
+        <button type="button" aria-expanded="true">
+          <span>Go backend process — <code>:8080</code></span>
+          <span class="tier-tag">cmd/simulator/main.go</span>
+          <span class="chev">▸</span>
+        </button>
+        <div class="tier-body">
+          <p>Layered packages. <code>main.go</code> wires everything and hosts the <code>OnTrade</code> closure and the price-poll loop.</p>
+          <ul>
+            <li><code>server/</code> — gorilla/mux REST (19 routes) + <code>/stream</code> WebSocket; CORS, rate limiting; fan-out broadcaster with drop logging</li>
+            <li><code>engine/</code> — <code>Executor</code> (ABI-encode/sign/send swaps, derive price), <code>Orchestrator</code> (bot goroutine lifecycle via errgroup), <code>Session</code> (idle→running→completed)</li>
+            <li><code>bots/</code> — <code>BaseBot</code> + <code>WhaleBot</code> (accts 17–19), <code>RetailBot</code> (2–16), <code>MeanRevBot</code> (20–22)</li>
+            <li><code>metrics/</code> — price/TWAP/volatility, LP impermanent-loss/fees/PnL, EWMA mean-reversion, 50-point impact curve, per-account mark-to-market, trade-flow pub/sub</li>
+            <li><code>store/</code> — <code>MemoryStore</code>: single in-memory source of truth; implements <code>metrics.PriceDataStore</code></li>
+            <li><code>chain/</code> — go-ethereum RPC client, deterministic Anvil keys, per-account nonce manager</li>
+            <li><code>contracts/</code> — generated Go bindings (<code>apple_amm.go</code>, <code>apple_token.go</code>)</li>
+            <li><code>config/</code> — 30-account roster, bot params, AMM seeding constants, thresholds</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flow-arrow">▲ eth_call / eth_sendRawTransaction (go-ethereum RPC)</div>
+      <div class="boundary-note">═══ process / network boundary ═══</div>
+
+      <div class="tier" data-open="true">
+        <button type="button" aria-expanded="true">
+          <span>Anvil chain — <code>:8545</code></span>
+          <span class="tier-tag">chainId 31337 · 30 accounts</span>
+          <span class="chev">▸</span>
+        </button>
+        <div class="tier-body">
+          <ul>
+            <li><code>AppleToken</code> — OpenZeppelin ERC20 + Ownable, owner-mint only</li>
+            <li><code>AppleAMM</code> — constant-product x·y=k, 30&nbsp;bps fee retained in pool, LP-token accounting, ReentrancyGuard, SafeERC20, slippage-protected <code>swapETHForApples</code> / <code>swapApplesForETH</code>, <code>getSpotPrice</code> / <code>getReserves</code> / <code>getTotalFees</code></li>
+            <li>Deployed and seeded (25,000 APPL + 25,000 ETH, initial price 1.0) by <code>Deploy.s.sol</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3>ASCII architecture map</h3>
+<pre aria-label="ASCII architecture map"><code>   ┌───────────────────────────┐         ┌──────────────────────────────────┐
+   │   Browser (localhost:3000)│         │        Anvil chain :8545          │
+   │   Vite + React SPA        │         │   (chainId 31337, 30 accounts)    │
+   │                           │         │                                  │
+   │  hooks/useWebSocket ──────┼─ WS ──┐ │   AppleToken (ERC20)             │
+   │  hooks/useSession   ──────┼─REST─┐│ │   AppleAMM   (x*y=k, 30 bps fee) │
+   │  lib/api.ts               │      ││ │   deployed by Deploy.s.sol       │
+   └───────────────────────────┘      ││ └────────────▲────────────────────┘
+                 ▲                    ││              │ eth_call / eth_sendRawTx
+       WS push   │ REST JSON          ││              │ (go-ethereum RPC)
+                 │                    ▼▼              │
+   ==========================================================================
+   │  Go backend process  (cmd/simulator/main.go)   :8080                    │
+   │                                                                        │
+   │   server/  ◄──REST── handlers ──► engine/Session ──► engine/Orchestr.  │
+   │     │  ▲                                                   │            │
+   │     │  │ BroadcastTrade/Price/LP/Event/Account             ▼            │
+   │  WS /stream                                        ┌──────────────┐     │
+   │     │  │                                           │ bot goroutines│    │
+   │     ▼  │                                           │ whale/retail/ │    │
+   │  ┌───────────────┐   OnTrade callback ◄────────────┤ meanrev (21)  │    │
+   │  │  store/       │◄──────────────┐                  └──────┬───────┘    │
+   │  │  MemoryStore  │               │                         │ Swap*      │
+   │  │  (price, LP,  │               │                         ▼            │
+   │  │  accounts,    │        ┌──────┴───────────┐     ┌────────────────┐   │
+   │  │  impact,      │◄───────┤ engine/Executor  ├────►│ contracts/     │   │
+   │  │  trades,      │ Trade  │ ABI-encode+sign  │ RPC │ Go bindings    │───┼─► Anvil
+   │  │  events)      │ struct │ tx, derive price │◄────┤ apple_amm.go   │   │
+   │  └──────┬────────┘        └──────▲───────────┘     └────────────────┘   │
+   │        │                        │                                      │
+   │        │   price poll loop (every 2s): GetSpotPrice / GetReserves /    │
+   │        └────────────────────────┘  GetTotalFees ─► update metrics ─► WS │
+   ==========================================================================</code></pre>
+
+    <h3>Coupling notes</h3>
+    <ul>
+      <li><code>config.Accounts</code> is the single roster shared by <code>Deploy.s.sol</code>, <code>main.go</code>, <code>Executor</code>, <code>/accounts</code>, and the frontend.</li>
+      <li><code>store</code> imports <code>engine</code> (stores <code>engine.Trade</code>); <code>engine</code> never imports <code>store</code> — the <code>OnTrade</code> closure in <code>main.go</code> inverts the dependency.</li>
+      <li>The <code>store ↔ metrics</code> cycle is broken by the <code>metrics.PriceDataStore</code> interface; bots get a read-only <code>PriceProvider</code> view.</li>
+      <li>The contract ABI exists twice: hand-packed in <code>executor.go</code> and generated in <code>internal/contracts</code>.</li>
+      <li>No database, auth, or queue — all state is in-memory and reset per session.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================ MODULES ============================ -->
+<section id="modules">
+  <div class="wrap">
+    <h2>Modules</h2>
+    <p class="section-lead">
+      Major components with responsibilities, key types, and test status. Expand a
+      card for detail.
+    </p>
+
+    <h3>Backend — <code>backend/</code> (module <code>eth-amm-sim</code>, Go 1.25)</h3>
+
+    <details class="card">
+      <summary><span><code>cmd/simulator</code> — process entrypoint &amp; wiring</span><span class="path">main.go · ~570 LOC</span></summary>
+      <div class="card-body">
+        <p>Loads config, resolves contract addresses (env → broadcast JSON → hardcoded Anvil defaults), connects to Anvil, verifies the pool, builds bots, registers <code>OnTrade</code>, and runs the price-poll loop + HTTP server + shutdown watcher inside one <code>errgroup</code>.</p>
+        <dl>
+          <dt>Carries</dt><dd>~200 LOC of business logic in <code>package main</code>: event-severity thresholds, trade-flow gating, key-event construction, price-move classifier.</dd>
+          <dt>Tests</dt><dd>None — untestable without a full wiring harness.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/engine</code> — execution, orchestration, session</span><span class="path">engine/ · ~1,700 LOC</span></summary>
+      <div class="card-body">
+        <p><code>Executor</code> ABI-encodes, signs, and sends swaps, then derives <code>amountOut</code> and price from <code>LogSwap</code> + constant-product math, emitting a <code>Trade</code>. <code>Orchestrator</code> owns the bot goroutine lifecycle via a second <code>errgroup</code> tied to the session context. <code>Session</code> is an idle→running→completed state machine with a duration timer.</p>
+        <dl>
+          <dt>Key types</dt><dd><code>Executor</code>, <code>Orchestrator</code>, <code>Session</code>, <code>Trade</code></dd>
+          <dt>Tests</dt><dd><code>orchestrator_test.go</code>, <code>session_test.go</code> (lifecycle). <code>Executor</code> calldata packing / price derivation untested.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/bots</code> — strategy goroutines</span><span class="path">bots/ · ~850 LOC</span></summary>
+      <div class="card-body">
+        <p>One goroutine per non-LP / non-User account. <code>RetailBot</code> (accounts 2–16) = random noise trades; <code>WhaleBot</code> (17–19) = large, infrequent, high-impact trades; <code>MeanRevBot</code> (20–22) = EWMA z-score reversion with three tuned half-lives. RNG lives in <code>base.go</code> (<code>RandomDelay</code> / <code>RandomSize</code>).</p>
+        <dl>
+          <dt>Key types</dt><dd><code>Bot</code> interface, <code>BaseBot</code>, <code>WhaleBot</code>, <code>RetailBot</code>, <code>MeanRevBot</code></dd>
+          <dt>Tests</dt><dd><strong>Zero.</strong> Highest-value test gap — this is the demo's core behavior.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/metrics</code> — market analytics</span><span class="path">metrics/ · ~1,340 LOC</span></summary>
+      <div class="card-body">
+        <p>Price / TWAP / volatility candles, LP impermanent-loss / fees-earned / net-PnL, EWMA return tracker (feeds MeanRev bots), 50-point price-impact curve, per-account mark-to-market, trade-flow pub/sub.</p>
+        <dl>
+          <dt>Key types</dt><dd><code>PriceMetrics</code>, <code>LPMetrics</code>, <code>ImpactCurve</code>, <code>AccountMetricsManager</code>, <code>TradeFlowTracker</code></dd>
+          <dt>Tests</dt><dd><code>ewma_test.go</code> only — EWMA math is covered; the rest is not.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/store</code> — single source of truth</span><span class="path">store/memory.go</span></summary>
+      <div class="card-body">
+        <p><code>MemoryStore</code> composes every metrics object plus the trade blotter and key-events list. Implements <code>metrics.PriceDataStore</code> (<code>GetCandles</code> / <code>GetTWAP</code> / <code>GetVolatility</code>) to break the store↔metrics cycle.</p>
+        <dl>
+          <dt>Key types</dt><dd><code>MemoryStore</code>, <code>KeyEvent</code></dd>
+          <dt>Tests</dt><dd>None. History arrays (<code>trades</code>, <code>events</code>, candles) are unbounded.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/server</code> — REST + WebSocket</span><span class="path">server/ · ~1,500 LOC</span></summary>
+      <div class="card-body">
+        <p>gorilla/mux REST (19 routes) + gorilla/websocket <code>/stream</code>; CORS + rate limiting; fan-out broadcaster with "channel full" drop logging and a <code>lastBroadcastDropLog</code> rate limiter. <code>server.Server</code> holds router, session, store, executor, the WS client set, the broadcast channel, and several mutexes — a central chokepoint.</p>
+        <dl>
+          <dt>Key types</dt><dd><code>Server</code></dd>
+          <dt>Tests</dt><dd><code>handlers_test.go</code>, <code>security_test.go</code> — handlers and CORS/rate-limit covered.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>internal/chain</code> · <code>internal/contracts</code> · <code>internal/config</code></span><span class="path">~1,200 LOC combined</span></summary>
+      <div class="card-body">
+        <p><code>chain</code>: go-ethereum RPC wrapper, deterministic Anvil keys, per-account <code>NonceManager</code> (<code>client_test.go</code>). <code>contracts</code>: abigen-style generated bindings (<code>apple_amm.go</code>, <code>apple_token.go</code>). <code>config</code>: <strong>the cross-language hub</strong> — 30-account roster, bot type/params, AMM seeding constants, thresholds (<code>config_test.go</code>). Imported by <code>engine</code>, <code>bots</code>, <code>server</code>, <code>store</code>, <code>cmd</code>.</p>
+        <dl>
+          <dt>Key types</dt><dd><code>Client</code>, <code>NonceManager</code>, <code>Account</code>, <code>BotType</code>, <code>Config</code></dd>
+        </dl>
+      </div>
+    </details>
+
+    <h3>Contracts — <code>contracts/</code> (Foundry, Solidity ^0.8.20)</h3>
+
+    <details class="card">
+      <summary><span><code>AppleAMM.sol</code> — constant-product AMM</span><span class="path">contracts/src/ · 394 LOC</span></summary>
+      <div class="card-body">
+        <p>x·y=k pool with a 30&nbsp;bps fee retained in the pool, LP-token accounting, <code>ReentrancyGuard</code>, <code>SafeERC20</code>, custom errors, slippage-protected <code>swapETHForApples</code> / <code>swapApplesForETH</code>, and read helpers <code>getSpotPrice</code> / <code>getReserves</code> / <code>getTotalFees</code>.</p>
+        <dl>
+          <dt>Tests</dt><dd><code>AppleAMM.t.sol</code> — 15 tests: invariant preservation, price impact, slippage protection, fee accumulation, multi-swap invariant, revert-on-empty-pool.</dd>
+        </dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>AppleToken.sol</code> — ERC20</span><span class="path">contracts/src/ · 30 LOC</span></summary>
+      <div class="card-body">
+        <p>OpenZeppelin <code>ERC20</code> + <code>Ownable</code>, owner-mint only.</p>
+        <dl><dt>Tests</dt><dd><code>AppleToken.t.sol</code> — 7 tests: mint auth, transfer, ownership.</dd></dl>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span><code>Deploy.s.sol</code> — deploy + seed script</span><span class="path">contracts/script/ · 279 LOC</span></summary>
+      <div class="card-body">
+        <p>Deploys both contracts, mints APPL to all 30 Anvil accounts, normalizes ETH balances (LP 25k + gas, User 5k, bots 1k), seeds the pool with 25,000 APPL + 25,000 ETH (initial price 1.0), and writes the broadcast JSON that the backend reads at startup.</p>
+        <dl><dt>Risk</dt><dd>Hardcoded Anvil private keys (local-only, by design).</dd></dl>
+      </div>
+    </details>
+
+    <h3>Frontend — <code>frontend/src/</code> (Vite 5 + React 18.3 + TS 5.8)</h3>
+
+    <details class="card">
+      <summary><span>App shell &amp; routing</span><span class="path">main.tsx → App.tsx</span></summary>
+      <div class="card-body">
+        <p><code>react-router-dom</code> v6: <code>ShellLayout</code> (nav chrome) wraps <code>HomePage</code> (live dashboard) and <code>PerformancePage</code> (per-account analytics).</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span>Hooks — all data I/O</span><span class="path">hooks/</span></summary>
+      <div class="card-body">
+        <p>Per <code>AGENTS.md</code>, components never fetch directly. <code>useWebSocket</code> holds the persistent <code>/stream</code> connection with reconnect; <code>useSession</code> and <code>usePriceData</code> expose session state and derived price series. <code>lib/backend.ts</code> resolves REST/WS URLs (env override → localhost → staging tunnel).</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span>Components (14, mostly presentational)</span><span class="path">components/</span></summary>
+      <div class="card-body">
+        <p><code>Dashboard</code>, <code>PriceChart</code>, <code>TWAPChart</code>, <code>Blotter</code>, <code>LPStats</code>, <code>ImpactCurve</code>, <code>KeyEvents</code>, <code>TradingPanel</code>, <code>SessionControls</code>, <code>AccountMetrics</code>, <code>AmmDetailsPanel</code>, <code>Toast</code>, plus Loom* demo aids. Charts via <code>lightweight-charts</code>.</p>
+        <dl><dt>Wire types</dt><dd><code>types/index.ts</code> mirrors backend JSON tags — manual sync, no codegen.</dd></dl>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ============================ FLOWS ============================ -->
+<section id="flows">
+  <div class="wrap">
+    <h2>Critical Flows</h2>
+    <p class="section-lead">
+      Four execution paths that define the system. The first two are the demo's
+      hot loop.
+    </p>
+
+    <div class="flow">
+      <h3>A · Session start (control plane)</h3>
+      <p class="flow-sub">Operator clicks "start" → bots spawn</p>
+      <ol class="steps">
+        <li>SPA <code>SessionControls</code> issues <code>POST /session/start</code> with a duration.</li>
+        <li><code>handlers.handleSessionStart</code> calls <code>Session.Start(ctx, duration)</code>.</li>
+        <li><code>Session</code> transitions idle → running, arms its timer.</li>
+        <li><code>Orchestrator.Start(ctx)</code> spawns <code>bot.Run</code> for every non-LP / non-User account inside an <code>errgroup</code>.</li>
+        <li>Status is broadcast over WS; the SPA re-renders.</li>
+        <li>Timer expiry or <code>POST /session/stop</code> cancels <code>ctx</code> → all bots exit → <code>StatusCompleted</code>.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h3>B · Bot / user trade → UI</h3>
+      <p class="flow-sub">A swap becomes pixels</p>
+      <ol class="steps">
+        <li><code>bot.Run</code> loop (or <code>POST /trade/{buy,sell}</code>) decides to trade.</li>
+        <li><code>Executor.SwapETHForApples</code> / <code>SwapApplesForETH</code>: <code>NonceManager.Next</code> → sign tx → Anvil <code>eth_sendRawTransaction</code>.</li>
+        <li>Executor reads <code>LogSwap</code> + constant-product math → builds an <code>engine.Trade</code>.</li>
+        <li><code>OnTrade</code> callback (registered in <code>main.go:163</code>) fires:
+          <ul>
+            <li><code>MemoryStore.RecordTrade</code></li>
+            <li><code>MemoryStore.RecordTradeFlow</code> → notifies MeanRev bots (EWMA z-score)</li>
+            <li><code>MemoryStore.RecordEvent</code> → large / critical trade thresholds</li>
+          </ul>
+        </li>
+        <li><code>server.BroadcastTrade</code> / <code>BroadcastEvent</code> / <code>BroadcastAccountUpdate</code> (up to 3 frames).</li>
+        <li>WS <code>/stream</code> fan-out → SPA <code>handleWSMessage</code> → <code>Blotter</code> / <code>KeyEvents</code> / <code>AccountMetrics</code> / <code>PriceChart</code> re-render.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h3>C · Market-data poll (parallel loop)</h3>
+      <p class="flow-sub"><code>main.pollPrices</code>, 2-second ticker</p>
+      <ol class="steps">
+        <li>Ticker fires; <code>Executor.GetSpotPrice</code>, then <code>GetReserves</code>, then <code>GetTotalFees</code> — three sequential <code>eth_call</code> round-trips.</li>
+        <li><code>MemoryStore.RecordPrice</code> → candle / TWAP / volatility update.</li>
+        <li><code>LPMetrics.UpdateState</code> → impermanent loss, fees earned, net PnL.</li>
+        <li><code>ImpactCurve.UpdateReserves</code> → 50-point slippage curve.</li>
+        <li><code>server.BroadcastPrice</code> / <code>BroadcastLPMetrics</code> → WS → <code>PriceChart</code> / <code>TWAPChart</code> / <code>LPStats</code> / <code>ImpactCurve</code>.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h3>D · Deploy / reseed</h3>
+      <p class="flow-sub">Fresh pool for a new demo</p>
+      <ol class="steps">
+        <li><code>scripts/deploy.sh</code> runs <code>forge script Deploy.s.sol --broadcast</code> against Anvil.</li>
+        <li>Foundry writes <code>broadcast/Deploy.s.sol/31337/run-latest.json</code>.</li>
+        <li>On backend startup, <code>config.LoadAddressesFromBroadcast</code> reads that file.</li>
+        <li>Backend verifies the pool exists and is seeded before accepting sessions.</li>
+      </ol>
+    </div>
+
+    <h4>Concurrency model</h4>
+    <p style="font-size:.87rem;color:var(--text-dim)">
+      One <code>errgroup</code> in <code>main</code> coordinates {price-poll, HTTP
+      server, shutdown watcher}. A second <code>errgroup</code> in
+      <code>Orchestrator</code> owns the ~21 bot goroutines, all tied to the
+      session context. Graceful shutdown on SIGINT/SIGTERM: stop session → 500 ms
+      bot drain → 5 s server shutdown timeout. This satisfies the
+      <code>AGENTS.md</code> "no orphaned workers" rule.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ DEEP ANALYSIS ============================ -->
+<section id="deep">
+  <div class="wrap">
+    <h2>Deep Analysis</h2>
+    <p class="section-lead">
+      Findings from the structural pass (no dynamic profiling). Confidence:
+      <span class="badge verified">verified</span> confirmed from code/tests/runs ·
+      <span class="badge supported">supported</span> strong code evidence, not measured ·
+      <span class="badge unverified">unverified</span> plausible, needs profiling.
+    </p>
+
+    <h3>Verified facts &amp; coupling</h3>
+
+    <div class="finding verified">
+      <h4><span class="badge verified">verified</span> Inverted <code>store ↔ engine</code> dependency</h4>
+      <p><code>store</code> imports <code>engine</code> (stores <code>engine.Trade</code>); <code>engine</code> never imports <code>store</code>. The write path is closed by a closure in <code>main.go</code>. Confirmed by <code>grep</code> of imports and <code>main.go:163-208</code>. Consequence: <code>main.go</code> carries ~120 LOC of business logic that arguably belongs in a package.</p>
+    </div>
+
+    <div class="finding verified">
+      <h4><span class="badge verified">verified</span> <code>store ↔ metrics</code> cycle broken by interface</h4>
+      <p><code>MemoryStore</code> implements <code>metrics.PriceDataStore</code> (<code>GetCandles</code>/<code>GetTWAP</code>/<code>GetVolatility</code>); <code>metrics.NewPriceProvider(memStore)</code> gives bots a read-only view. Idiomatic Go cycle-break. Confirmed via <code>store/memory.go</code> doc comment + <code>main.go:135</code>.</p>
+    </div>
+
+    <div class="finding verified">
+      <h4><span class="badge verified">verified</span> Frontend/backend wire contract is hand-synced</h4>
+      <p><code>frontend/src/types/index.ts</code> mirrors Go JSON tags; <code>AGENTS.md</code> explicitly instructs updating both together. No codegen or schema.</p>
+    </div>
+
+    <div class="finding verified">
+      <h4><span class="badge verified">verified</span> go-ethereum dominates the dependency surface</h4>
+      <p><code>backend/go.mod</code> has 4 direct requires but pulls ~35 indirect modules (gnark-crypto, blst, c-kzg, otel, gopsutil, and notably a <code>ProjectZKM/Ziren</code> zkVM runtime). Build/CI cost and supply-chain surface are dominated by go-ethereum, not project code.</p>
+    </div>
+
+    <div class="finding verified">
+      <h4><span class="badge verified">verified</span> Both test suites pass</h4>
+      <p><code>go test ./...</code>: PASS (<code>chain</code> 2.57s, <code>config</code> 1.40s, <code>engine</code> 3.90s, <code>metrics</code> 3.43s, <code>server</code> 1.18s). <code>forge test</code>: 22/22 PASS (~40 ms). <code>bots</code>, <code>store</code>, <code>contracts</code>, <code>cmd</code>, and the frontend have no tests.</p>
+    </div>
+
+    <h3>Supported hypotheses</h3>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> H2 — Collapse the dual AMM ABI representation</h4>
+      <p><code>executor.go</code> hand-packs calldata (<code>packSwapETHForApples</code>, …) while <code>internal/contracts/apple_amm.go</code> holds generated bindings for the same functions. Switching <code>Executor</code> to the bindings (or deleting the unused ones) removes a silent drift class and ~100+ LOC of manual <code>abi.Arguments</code> packing. Verify which is on the call path first — <code>packSwap*</code> appears to be; bindings may be dead code.</p>
+    </div>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> H3 — Unbounded in-memory history growth</h4>
+      <p><code>MemoryStore</code>'s doc comment references "unbounded price history and trade blotter arrays." Fine for a 2–3 minute demo, but the always-on staging instance (there is a <code>start-staging-anvil.sh</code> and a staging WS tunnel) will grow without bound. Add a ring buffer / retention cap on <code>trades</code>, <code>events</code>, and candle history. Low effort; prevents slow OOM.</p>
+    </div>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> H6 — <code>main.go</code> carries package-worthy logic</h4>
+      <p>The <code>OnTrade</code> closure (event-severity thresholds, trade-flow gating, key-event construction) and the <code>pollPrices</code> price-move classifier are ~200 LOC of business rules in <code>package main</code>, untestable without a full wiring harness. Extracting <code>internal/events</code> (or <code>internal/pipeline</code>) would enable H1-style testing and shrink <code>main</code> to pure composition.</p>
+    </div>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> <code>config</code> is a deliberate hub with cross-language drift risk</h4>
+      <p><code>internal/config</code> is imported by <code>engine</code>, <code>bots</code>, <code>server</code>, <code>store</code>, and <code>cmd</code>; its Anvil addresses are independently re-derived by <code>Deploy.s.sol</code> and displayed by the frontend. Imports are verified; the drift risk (no compiler catches Go↔Solidity divergence) is an inference.</p>
+    </div>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> Server God-object</h4>
+      <p><code>server.Server</code> holds router, session, store, executor, WS client set, broadcast channel, and several mutexes; it is passed into the <code>OnTrade</code> closure and the poll loop. Central chokepoint, but keeps fan-out logic in one place. Supported by the <code>server.go</code> struct definition.</p>
+    </div>
+
+    <div class="finding supported">
+      <h4><span class="badge supported">supported</span> H1 — Bot strategy logic is the highest-value place to add tests <span class="badge verified">verified gap</span></h4>
+      <p>The zero-test state of <code>internal/bots/</code> is verified; the recommendation is the hypothesis. It holds the demo's core behavior (whale impact sizing, retail frequency, MeanRev z-score triggers with three tuned half-lives). <code>AGENTS.md</code> demands "deterministic enough for repeatable demos" — seam the RNG (<code>RandomDelay</code>/<code>RandomSize</code> in <code>base.go</code>) behind an interface and table-test the MeanRev trigger boundaries. Low effort, directly de-risks the demo narrative.</p>
+    </div>
+
+    <h3>Unverified hypotheses</h3>
+
+    <div class="finding unverified">
+      <h4><span class="badge unverified">unverified</span> H4 — Price-poll does 3 sequential RPC round-trips every 2s</h4>
+      <p><code>pollPrices</code> calls <code>GetSpotPrice</code>, then <code>GetReserves</code>, then <code>GetTotalFees</code> serially each tick (<code>main.go:458-532</code>); <code>GetSpotPrice</code> is derivable from reserves. Collapsing to one <code>getReserves</code> + <code>getTotalFees</code> call (or a multicall) roughly halves poll-loop RPC traffic. Negligible against local Anvil; matters only against a remote RPC. Needs measurement.</p>
+    </div>
+
+    <div class="finding unverified">
+      <h4><span class="badge unverified">unverified</span> H5 — WebSocket broadcast fan-out under many clients</h4>
+      <p><code>server.Server</code> has a single <code>broadcast chan interface{}</code> with "channel full" drop logging and a <code>lastBroadcastDropLog</code> rate limiter — implying observed backpressure. Each trade triggers up to 3 separate broadcasts. Coalescing per-tick state into one framed message would cut serialization and lock contention. Profile with N simulated WS clients before investing.</p>
+    </div>
+
+    <div class="finding unverified">
+      <h4><span class="badge unverified">unverified</span> H7 — go-ethereum dominates build/dependency surface (fix is unverified)</h4>
+      <p>The dependency fact is verified (see above); whether a lighter RPC client (<code>ethclient</code> alone, or a minimal JSON-RPC wrapper — the project already hand-packs ABIs) could drop most of the ~35-module transitive tree is not. High effort, meaningful CI-time and supply-chain payoff; verify feature usage first.</p>
+    </div>
+
+    <h3>Structural risk register</h3>
+    <table>
+      <thead><tr><th>Risk</th><th>Severity</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Go↔Solidity account-roster drift (no shared schema)</td><td><span class="risk-sev medium">Medium</span></td><td>H1 / obs. 1</td></tr>
+        <tr><td>Frontend wire types hand-synced to Go JSON</td><td><span class="risk-sev medium">Medium</span></td><td>obs. 5, <code>AGENTS.md</code></td></tr>
+        <tr><td>No end-to-end (Anvil + backend) integration test</td><td><span class="risk-sev medium">Medium</span></td><td>§5</td></tr>
+        <tr><td>Hardcoded Anvil private keys in <code>Deploy.s.sol</code> / <code>chain/accounts.go</code></td><td><span class="risk-sev low">Low</span> (by design, local only)</td><td><code>Deploy.s.sol:25</code></td></tr>
+        <tr><td>Detached-HEAD working state, dirty tree</td><td><span class="risk-sev low">Low</span></td><td><code>git status</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Illustrative code — the <code>OnTrade</code> wiring</h3>
+<pre><code><span class="tok-com">// main.go — the closure that inverts store → engine and hosts ~120 LOC of rules</span>
+executor.<span class="tok-fn">OnTrade</span>(<span class="tok-kw">func</span>(t *engine.<span class="tok-type">Trade</span>) {
+    memStore.<span class="tok-fn">RecordTrade</span>(t)
+    memStore.<span class="tok-fn">RecordTradeFlow</span>(t)           <span class="tok-com">// feeds MeanRev EWMA z-score</span>
+    <span class="tok-kw">if</span> sev := <span class="tok-fn">classify</span>(t); sev >= <span class="tok-type">EventLarge</span> {
+        memStore.<span class="tok-fn">RecordEvent</span>(<span class="tok-fn">newKeyEvent</span>(t, sev))
+        srv.<span class="tok-fn">BroadcastEvent</span>(t)
+    }
+    srv.<span class="tok-fn">BroadcastTrade</span>(t)
+    srv.<span class="tok-fn">BroadcastAccountUpdate</span>(t.From)
+})
+</code></pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Generated from <code>.analysis/</code> outputs of the oss-project-analyzer skill (structural pass, 2026-08-31T16:43:28Z).</p>
+    <p>Commit <code>ec8e3d9e0c3bf1b3e836539716b7671408c76154</code> · docs rendered 2026-08-31T16:47:12Z · self-contained, no external dependencies.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- language bar chart ----
+  var langs = [
+    { name: "Go",           code: 7143, files: 37, color: "var(--go)" },
+    { name: "TypeScript",   code: 2907, files: 27, color: "var(--ts)" },
+    { name: "JSON",         code: 2889, files: 6,  color: "var(--json)" },
+    { name: "Markdown",     code: 678,  files: 4,  color: "var(--misc)" },
+    { name: "Solidity",     code: 599,  files: 5,  color: "var(--sol)" },
+    { name: "Bourne Shell", code: 466,  files: 6,  color: "var(--shell)" },
+    { name: "CSS",          code: 69,   files: 1,  color: "var(--misc)" },
+    { name: "TOML",         code: 61,   files: 3,  color: "var(--misc)" },
+    { name: "Make",         code: 44,   files: 1,  color: "var(--misc)" },
+    { name: "JavaScript",   code: 37,   files: 3,  color: "var(--misc)" },
+    { name: "HTML",         code: 20,   files: 1,  color: "var(--misc)" },
+    { name: "SVG",          code: 17,   files: 1,  color: "var(--misc)" }
+  ];
+  var max = langs[0].code;
+  var chart = document.getElementById("langChart");
+  if (chart) {
+    langs.forEach(function (l) {
+      var row = document.createElement("div");
+      row.className = "bar-row";
+
+      var name = document.createElement("span");
+      name.className = "lang";
+      name.textContent = l.name;
+
+      var track = document.createElement("div");
+      track.className = "bar-track";
+      var fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.background = l.color;
+      fill.style.width = "0%";
+      fill.title = l.code.toLocaleString() + " LOC across " + l.files + " file" + (l.files === 1 ? "" : "s");
+      track.appendChild(fill);
+
+      var val = document.createElement("span");
+      val.className = "val";
+      val.textContent = l.code.toLocaleString();
+
+      row.appendChild(name);
+      row.appendChild(track);
+      row.appendChild(val);
+      chart.appendChild(row);
+
+      // animate in
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          fill.style.width = (l.code / max * 100).toFixed(1) + "%";
+        });
+      });
+    });
+  }
+
+  // ---- interactive architecture tiers ----
+  document.querySelectorAll(".tier > button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tier = btn.parentElement;
+      var open = tier.getAttribute("data-open") === "true";
+      tier.setAttribute("data-open", open ? "false" : "true");
+      btn.setAttribute("aria-expanded", open ? "false" : "true");
+    });
+  });
+
+  // ---- active-section highlight in nav ----
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var map = {};
+  links.forEach(function (a) {
+    var id = a.getAttribute("href").slice(1);
+    var el = document.getElementById(id);
+    if (el) map[id] = a;
+  });
+  if ("IntersectionObserver" in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var a = map[e.target.id];
+        if (!a) return;
+        if (e.isIntersecting) {
+          links.forEach(function (l) { l.style.color = ""; l.style.borderBottomColor = "transparent"; });
+          a.style.color = "var(--text)";
+          a.style.borderBottomColor = "var(--accent)";
+        }
+      });
+    }, { rootMargin: "-40% 0px -55% 0px" });
+    Object.keys(map).forEach(function (id) { obs.observe(document.getElementById(id)); });
+  }
+})();
+</script>
+
+</body>
+</html>

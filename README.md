@@ -6,13 +6,27 @@ Local AMM simulation designed as a portfolio-grade demo for a Solutions Engineer
 
 - Loom guide: [`DEMO_GUIDE.md`](./DEMO_GUIDE.md)
 - Recommended launcher: `make demo-120`
-- Recommended video length: 120 seconds primary, 180 seconds deep cut
 - Demo focus: AMM execution lab
-- Best GIF loop: start bots -> whale trade -> price/TWAP/LP panels move
 - Thumbnail hook: `AMM EXECUTION LAB`
-- Loom link: TBD
-- Preview MP4/GIF: TBD
 - Demo notes script: [`.hermes/workspace/projects/eth-amm-sim/DEMO.md`](file:///Users/danmagro/.hermes/workspace/projects/eth-amm-sim/DEMO.md)
+
+### Live demo assets (captured 2026-08-28)
+
+![Preview](public/gif/preview.gif)
+
+**Video walkthroughs:**
+- [Short walkthrough (90s)](https://www.youtube.com/watch?v=n2oC_-Z9y2o)
+- [Full walkthrough (3min)](https://www.youtube.com/watch?v=TzVOlbpZvjg)
+
+**Key screenshots:**
+- [Dashboard idle](public/screenshots/01-dashboard-idle.png)
+- [Session running with bots](public/screenshots/02-session-running.png)
+- [Live trading activity](public/screenshots/03-live-trading.png)
+- [Whale trade impact](public/screenshots/04-whale-trade-impact.png)
+- [Performance metrics](public/screenshots/05-performance-metrics.png)
+- [Final state](public/screenshots/06-final-state.png)
+
+All media captured from a live simulation with 330+ trades executed through WebSocket-driven real-time updates.
 
 
 ## Why this project exists

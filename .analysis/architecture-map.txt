@@ -1,0 +1,144 @@
+================================================================================
+ PROJECT ARCHITECTURE MAP
+================================================================================
+ Project     : eth-amm-sim
+ Scope       : Full repository (backend Go, Solidity contracts, React frontend,
+               dev/deploy scripts) — git-tracked source only
+ Type        : AMM execution simulation on a local Anvil EVM chain
+               (multi-agent trading simulator + real-time observability SPA)
+ Root path   : /Users/openclaw/Code/eth-amm-sim
+ Commit      : ec8e3d9  (detached HEAD; "Even out file-level comments ...")
+ Generated   : 2026-08-31T16:43:28Z
+================================================================================
+
+LEGEND
+  │ ├── └──   structural containment           ►   synchronous call / request
+  ▼           data flow (downstream)            ◄   response / callback
+  ▲           data flow (upstream)              ==  process / network boundary
+
+
+TOP-LEVEL LAYOUT
+────────────────────────────────────────────────────────────────────────────────
+eth-amm-sim/
+├── contracts/         Foundry project — immutable Solidity AMM + ERC20
+│   ├── src/           AppleToken.sol (ERC20), AppleAMM.sol (x*y=k, 30 bps fee)
+│   ├── script/        Deploy.s.sol — deploy + seed 25k/25k liquidity, fund 30 accts
+│   ├── test/          AppleAMM.t.sol (15), AppleToken.t.sol (7)  — forge test
+│   └── lib/           forge-std, openzeppelin-contracts (submodules, excluded)
+│
+├── backend/           Go concurrent simulator (module eth-amm-sim, go 1.25)
+│   ├── cmd/simulator/ main.go — process entrypoint, wires all components
+│   └── internal/
+│       ├── chain/     go-ethereum RPC client, account keys, nonce manager
+│       ├── contracts/ generated Go bindings (apple_amm.go, apple_token.go)
+│       ├── config/    account roster (30 Anvil accts), AMM + app constants
+│       ├── engine/    Executor (tx bridge), Orchestrator (bot goroutines),
+│       │              Session (idle→running→completed lifecycle), Trade type
+│       ├── bots/      base + whale (17-19) / retail (2-16) / meanrev (20-22)
+│       ├── metrics/   price/TWAP/vol, LP (IL, fees, PnL), EWMA mean-rev,
+│       │              impact curve, per-account mark-to-market, trade flow
+│       ├── store/     MemoryStore — single in-memory source of truth
+│       └── server/    gorilla/mux REST + gorilla/websocket /stream, broadcast,
+│                      security (CORS/rate-limit), handlers
+│
+├── frontend/          Vite + React 18 SPA (TS, Tailwind, lightweight-charts)
+│   └── src/
+│       ├── main.tsx / App.tsx        BrowserRouter + Routes
+│       ├── layout/ShellLayout.tsx    nav chrome
+│       ├── pages/   HomePage, PerformancePage
+│       ├── hooks/   useWebSocket, useSession, usePriceData  (own all data I/O)
+│       ├── lib/     api.ts (REST), backend.ts (URL resolution)
+│       ├── components/ Dashboard, PriceChart, TWAPChart, Blotter, LPStats,
+│       │              ImpactCurve, KeyEvents, TradingPanel, SessionControls,
+│       │              AccountMetrics, AmmDetailsPanel, Toast, Loom* demo aids
+│       └── types/index.ts            shared wire types (mirror Go JSON)
+│
+├── scripts/           deploy.sh, dev-up.sh, generate-bindings.sh, start-anvil.sh,
+│                      post-deploy.sh, with-frontend-node.sh
+├── docs/              IMPLEMENTATION_PLAN.md, SESSION_BOT_LIFECYCLE.md
+├── Makefile           anvil / deploy / bindings / backend / frontend / up / down
+└── AGENTS.md          canonical contributor + agent instructions
+
+
+RUNTIME COMPONENT TOPOLOGY
+────────────────────────────────────────────────────────────────────────────────
+
+   ┌───────────────────────────┐         ┌──────────────────────────────────┐
+   │   Browser (localhost:3000)│         │        Anvil chain :8545          │
+   │   Vite + React SPA        │         │   (chainId 31337, 30 accounts)    │
+   │                           │         │                                   │
+   │  hooks/useWebSocket ──────┼─ WS ──┐ │   AppleToken (ERC20)              │
+   │  hooks/useSession   ──────┼─REST─┐│ │   AppleAMM   (x*y=k, 30 bps fee)  │
+   │  lib/api.ts               │      ││ │   deployed by Deploy.s.sol        │
+   └───────────────────────────┘      ││ └────────────▲─────────────────────┘
+                 ▲                    ││              │ eth_call / eth_sendRawTx
+       WS push   │ REST JSON          ││              │ (go-ethereum RPC)
+                 │                    ▼▼              │
+   ==========================================================================
+   │  Go backend process  (cmd/simulator/main.go)   :8080                    │
+   │                                                                         │
+   │   server/  ◄──REST── handlers ──► engine/Session ──► engine/Orchestrator│
+   │     │  ▲                                                   │             │
+   │     │  │ BroadcastTrade/Price/LP/Event/Account             ▼             │
+   │  WS /stream                                        ┌──────────────┐      │
+   │     │  │                                           │ bot goroutines│     │
+   │     ▼  │                                           │ whale/retail/ │     │
+   │  ┌───────────────┐   OnTrade callback ◄────────────┤ meanrev (21)  │     │
+   │  │  store/       │◄──────────────┐                  └──────┬───────┘      │
+   │  │  MemoryStore  │               │                         │ Swap*        │
+   │  │  (price, LP,  │               │                         ▼             │
+   │  │  accounts,    │        ┌──────┴───────────┐     ┌────────────────┐    │
+   │  │  impact,      │◄───────┤ engine/Executor  ├────►│ contracts/     │    │
+   │  │  trades,      │ Trade  │ ABI-encode+sign  │ RPC │ Go bindings    │────┼─► Anvil
+   │  │  events)      │ struct │ tx, derive price │◄────┤ apple_amm.go   │    │
+   │  └──────┬────────┘        └──────▲───────────┘     └────────────────┘    │
+   │         │                       │                                        │
+   │         │   price poll loop (every 2s): GetSpotPrice / GetReserves /     │
+   │         └───────────────────────┘  GetTotalFees ─► update metrics ─► WS  │
+   ==========================================================================
+
+
+CRITICAL EXECUTION PATHS
+────────────────────────────────────────────────────────────────────────────────
+ A. Session start
+    SPA SessionControls ► POST /session/start ► handlers.handleSessionStart
+    ► Session.Start(duration) ► Orchestrator.Start(ctx) ► errgroup: bot.Run(ctx)
+    ► state broadcast (WS) ◄ SPA re-renders
+
+ B. Bot / user trade → UI
+    bot.Run loop (or POST /trade/{buy,sell})
+    ► Executor.SwapETHForApples / SwapApplesForETH
+    ► NonceManager.Next ► sign tx ► Anvil eth_sendRawTransaction
+    ► parse LogSwap / constant-product math ► Trade struct
+    ► OnTrade callback (main.go): MemoryStore.RecordTrade
+       + RecordTradeFlow (feeds MeanRev EWMA) + RecordEvent (large trades)
+    ► server.BroadcastTrade / BroadcastEvent / BroadcastAccountUpdate
+    ► WS /stream ◄ SPA Blotter / KeyEvents / AccountMetrics update
+
+ C. Market-data poll
+    main.pollPrices ticker(2s) ► Executor.GetSpotPrice / GetReserves / GetTotalFees
+    ► MemoryStore.RecordPrice (candles/TWAP/vol) + LPMetrics.UpdateState (IL/fees/PnL)
+    + ImpactCurve.UpdateReserves
+    ► server.BroadcastPrice / BroadcastLPMetrics
+    ► WS /stream ◄ SPA PriceChart / TWAPChart / LPStats / ImpactCurve
+
+ D. Deploy / reseed
+    scripts/deploy.sh ► forge script Deploy.s.sol --broadcast ► Anvil
+    ► broadcast/Deploy.s.sol/31337/run-latest.json
+    ► config.LoadAddressesFromBroadcast ◄ backend startup verification
+
+
+KEY RELATIONSHIPS / COUPLING NOTES
+────────────────────────────────────────────────────────────────────────────────
+ * config.Accounts is the single roster shared by Deploy.s.sol (addresses),
+   main.go (bot creation), Executor (signing), handlers (/accounts), and the
+   frontend AccountMetrics view.
+ * store ─► engine import: MemoryStore stores engine.Trade values. engine does
+   NOT import store; the OnTrade callback in main.go inverts the dependency.
+ * metrics ◄─ store via metrics.PriceDataStore interface (implemented by
+   MemoryStore) to break the store↔metrics cycle; bots get a PriceProvider view.
+ * Contract ABI is hand-packed in executor.go AND available as generated
+   bindings in internal/contracts — two representations of the same interface.
+ * Frontend types/index.ts must be kept in sync with Go JSON tags by hand.
+ * No database, auth, or queue — all state is in-memory and reset per session.
+================================================================================
