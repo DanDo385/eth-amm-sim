@@ -1,0 +1,46 @@
+{
+  "project": "eth-amm-sim",
+  "generatedAt": "2026-08-31",
+  "previewGif": "/gif/preview.gif",
+  "screenshotsDir": "/screenshots",
+  "shortClip": {
+    "localPath": "/demos/short/short.mp4",
+    "duration": 90,
+    "dimensions": "1280x720",
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "youtubeUrl": "https://www.youtube.com/watch?v=n2oC_-Z9y2o",
+    "youtubeId": "n2oC_-Z9y2o",
+    "privacy": "unlisted",
+    "title": "AMM Simulation Engine - Short Walkthrough"
+  },
+  "longClip": {
+    "localPath": "/demos/detailed/detailed.mp4",
+    "duration": 180,
+    "dimensions": "1280x720",
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "youtubeUrl": "https://www.youtube.com/watch?v=TzVOlbpZvjg",
+    "youtubeId": "TzVOlbpZvjg",
+    "privacy": "unlisted",
+    "title": "AMM Simulation Engine - Full Walkthrough"
+  },
+  "screenshots": [
+    "01-dashboard-active.png",
+    "02-bots-trading.png",
+    "03-price-movement.png",
+    "04-whale-trade.png",
+    "05-metrics-evolving.png",
+    "06-session-progress.png"
+  ],
+  "capture": {
+    "method": "Chrome CDP headless",
+    "viewport": "1280x720",
+    "backend": "http://127.0.0.1:8103",
+    "frontend": "http://localhost:3000",
+    "sessionDuration": 180,
+    "tradesExecuted": 330,
+    "whaleTradeEth": 5,
+    "note": "Captured from live simulation with WebSocket-driven real-time updates"
+  }
+}
