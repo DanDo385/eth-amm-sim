@@ -27,86 +27,136 @@ async function captureFrame() {
   frameCount++;
 }
 
+async function getSessionStatus() {
+  try {
+    const statusElement = await page.locator('text=/Idle|Running|Completed|Stopped/i').first();
+    const status = await statusElement.textContent();
+    return status?.trim() || 'Unknown';
+  } catch {
+    return 'Unknown';
+  }
+}
+
 try {
-  console.log('Phase 1: Initial dashboard view (15s)');
+  console.log('Phase 1: Navigate to dashboard (5s)');
   await page.goto('http://localhost:3000?backend=http://localhost:8080', { waitUntil: 'networkidle' });
   await page.waitForSelector('h1:has-text("Market Dashboard")', { timeout: 30000 });
   
-  // Capture frames at 2 fps for 15 seconds
-  for (let i = 0; i < 30; i++) {
-    await captureFrame();
-    await sleep(500);
-  }
-
-  console.log('Phase 2: Starting trading session (5s)');
-  const startButton = page.getByRole('button', { name: /start/i });
-  await startButton.waitFor({ timeout: 10000 });
-  await startButton.click();
-  
-  // Capture frames at 2 fps for 5 seconds
+  // Capture initial state
   for (let i = 0; i < 10; i++) {
     await captureFrame();
     await sleep(500);
   }
 
-  console.log('Phase 3: Observing bot trading activity (30s)');
-  // Capture frames at 2 fps for 30 seconds
-  for (let i = 0; i < 60; i++) {
-    await captureFrame();
-    await sleep(500);
-    if (i % 10 === 0) {
-      console.log(`Phase 3: Captured ${i + 1}/60 frames...`);
+  console.log('Phase 2: Stop current session if running (10s)');
+  const initialStatus = await getSessionStatus();
+  console.log(`Initial session status: ${initialStatus}`);
+  
+  if (initialStatus === 'Running') {
+    const stopButton = page.getByRole('button', { name: /stop/i });
+    await stopButton.waitFor({ timeout: 5000 });
+    await stopButton.click();
+    console.log('Clicked Stop button');
+    await sleep(2000);
+    
+    // Capture stop action
+    for (let i = 0; i < 6; i++) {
+      await captureFrame();
+      await sleep(500);
+    }
+  } else {
+    // Capture current state
+    for (let i = 0; i < 6; i++) {
+      await captureFrame();
+      await sleep(500);
     }
   }
 
-  console.log('Phase 4: Executing user trade - buying 1000 APPL (15s)');
-  // Find the "Buy APPL with ETH" section and target its input
-  const buySection = page.locator('label:has-text("Buy APPL with ETH")').locator('..').locator('input[type="number"]');
-  await buySection.scrollIntoViewIfNeeded();
-  await sleep(1000);
+  console.log('Phase 3: Reseed session (10s)');
+  const reseedButton = page.getByRole('button', { name: /reseed/i });
+  await reseedButton.waitFor({ timeout: 5000 });
+  await reseedButton.click();
+  console.log('Clicked Reseed button');
+  await sleep(3000);
   
-  await buySection.fill('1000');
-  await sleep(1000);
-  
-  // Capture frame before clicking buy
-  await captureFrame();
-  
-  // Click the buy button (it's in the same section)
-  const buyButton = buySection.locator('..').locator('button:has-text("Buy")');
-  await buyButton.click();
-  console.log('User trade executed: Buy 1000 APPL');
-  
-  // Capture frames at 2 fps for 14 seconds after trade
-  for (let i = 0; i < 28; i++) {
+  // Capture reseed action
+  for (let i = 0; i < 14; i++) {
     await captureFrame();
     await sleep(500);
   }
 
-  console.log('Phase 5: Observing price movement and impact (30s)');
-  // Scroll to price chart to show the impact
-  const priceChart = page.locator('text=APPL/ETH Price').first();
-  await priceChart.scrollIntoViewIfNeeded();
+  console.log('Phase 4: Start new session (5s)');
+  const startButton = page.getByRole('button', { name: /start/i });
+  await startButton.waitFor({ timeout: 10000 });
+  await startButton.click();
+  console.log('Clicked Start button');
   
-  // Capture frames at 2 fps for 30 seconds
-  for (let i = 0; i < 60; i++) {
+  // Capture session start
+  for (let i = 0; i < 10; i++) {
     await captureFrame();
     await sleep(500);
-    if (i % 10 === 0) {
-      console.log(`Phase 5: Captured ${i + 1}/60 frames...`);
-    }
   }
 
-  console.log('Phase 6: Final metrics view (20s)');
-  // Scroll to LP stats section
-  const lpStats = page.locator('text=LP Value').first();
-  await lpStats.scrollIntoViewIfNeeded();
-  
-  // Capture frames at 2 fps for 20 seconds
+  console.log('Phase 5: Observe bot trading (20s)');
   for (let i = 0; i < 40; i++) {
     await captureFrame();
     await sleep(500);
     if (i % 10 === 0) {
-      console.log(`Phase 6: Captured ${i + 1}/40 frames...`);
+      console.log(`Phase 5: Captured ${i + 1}/40 frames...`);
+    }
+  }
+
+  console.log('Phase 6: Execute user trade - buy 500 APPL (15s)');
+  // Scroll to User Trading section
+  const userTradingSection = page.locator('text=User Trading').first();
+  await userTradingSection.scrollIntoViewIfNeeded();
+  await sleep(1000);
+  
+  // Find the "Buy APPL with ETH" input
+  const buyInput = page.locator('label:has-text("Buy APPL with ETH")').locator('..').locator('input[type="number"]');
+  await buyInput.scrollIntoViewIfNeeded();
+  await sleep(500);
+  
+  // Clear and fill with 500
+  await buyInput.fill('500');
+  console.log('Filled buy input with 500');
+  await sleep(1000);
+  
+  // Capture before clicking buy
+  await captureFrame();
+  
+  // Click the Buy button
+  const buyButton = page.locator('label:has-text("Buy APPL with ETH")').locator('..').locator('button:has-text("Buy")');
+  await buyButton.click();
+  console.log('Clicked Buy button for 500 APPL');
+  
+  // Capture the trade execution
+  for (let i = 0; i < 20; i++) {
+    await captureFrame();
+    await sleep(500);
+  }
+
+  console.log('Phase 7: Observe price impact (20s)');
+  const priceChart = page.locator('text=APPL/ETH Price').first();
+  await priceChart.scrollIntoViewIfNeeded();
+  
+  for (let i = 0; i < 40; i++) {
+    await captureFrame();
+    await sleep(500);
+    if (i % 10 === 0) {
+      console.log(`Phase 7: Captured ${i + 1}/40 frames...`);
+    }
+  }
+
+  console.log('Phase 8: Show final metrics (15s)');
+  const lpStats = page.locator('text=LP Value').first();
+  await lpStats.scrollIntoViewIfNeeded();
+  
+  for (let i = 0; i < 30; i++) {
+    await captureFrame();
+    await sleep(500);
+    if (i % 10 === 0) {
+      console.log(`Phase 8: Captured ${i + 1}/30 frames...`);
     }
   }
 
@@ -118,7 +168,7 @@ try {
   );
   
   console.log(`Video saved to: ${OUT}/detailed.mp4`);
-  console.log(`Recording complete. Total duration: ~115 seconds`);
+  console.log(`Recording complete. Total duration: ~100 seconds`);
   
 } catch (error) {
   console.error('Error during recording:', error.message);
