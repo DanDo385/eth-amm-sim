@@ -3,7 +3,7 @@
 // URL resolution (see lib/backend.ts):
 //  - VITE_WS_URL → explicit override
 //  - localhost → ws://127.0.0.1:8080/stream (local `make up`)
-//  - otherwise → wss://api-staging-eth-amm-sim.magro.dev/stream (Ubuntu tunnel)
+//  - otherwise → tunnel wss URL (Vercel cannot proxy WebSockets)
 //
 // CONNECTIONS:
 //  - Backend: server/broadcast.go handleWebSocket + sendInitialState

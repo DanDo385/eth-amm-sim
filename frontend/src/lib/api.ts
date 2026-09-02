@@ -4,7 +4,8 @@
 //  - VITE_API_URL set → call that origin directly (bypass proxy).
 //  - Otherwise → same-origin `/api/...`
 //       • Local Vite: proxied to VITE_DEV_BACKEND_URL or http://127.0.0.1:8080
-//       • Vercel: rewritten to https://api-staging-eth-amm-sim.magro.dev (Ubuntu)
+//       • Vercel: rewritten to the Ubuntu Cloudflare Tunnel (browser URL stays
+//         https://eth-amm-sim.vercel.app/api/...)
 //
 // CONNECTIONS:
 //  - Routes: backend/internal/server/server.go → handlers.go

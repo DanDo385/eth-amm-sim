@@ -2,23 +2,27 @@
 //
 // Hosted topology (production):
 //   Browser (https://eth-amm-sim.vercel.app)
-//     → https://api-staging-eth-amm-sim.magro.dev  (Cloudflare Tunnel; VITE_API_URL)
-//     → 127.0.0.1:8103 Go + 127.0.0.1:11545 Anvil on Ubuntu
-//   WebSocket: wss://…/stream on the same tunnel hostname (VITE_WS_URL).
-//   Note: Vercel /api/* external rewrites are kept as a fallback but are flaky;
-//   production builds prefer direct tunnel calls (CORS allowlisted).
+//     REST → same-origin /api/*  (Vercel rewrite)
+//          → https://api-staging-eth-amm-sim.magro.dev  (Cloudflare Tunnel)
+//          → 127.0.0.1:8103 Go + 127.0.0.1:11545 Anvil on Ubuntu
+//     WS   → wss://api-staging-eth-amm-sim.magro.dev/stream
+//          Vercel static rewrites cannot proxy WebSockets, so the browser
+//          opens the tunnel hostname for /stream only.
 //
 // Local topology (`npm run dev` / `make up`):
 //   Browser → Vite /api proxy → http://127.0.0.1:8080
 //   WebSocket → ws://127.0.0.1:8080/stream
 
-/** Public Cloudflare Tunnel origin for the Ubuntu Go API. */
-export const PUBLIC_API_ORIGIN = 'https://api-staging-eth-amm-sim.magro.dev';
+/** Public Cloudflare Tunnel origin (Ubuntu Go). Used for WebSocket only in production. */
+export const PUBLIC_TUNNEL_ORIGIN = 'https://api-staging-eth-amm-sim.magro.dev';
+
+/** @deprecated Use PUBLIC_TUNNEL_ORIGIN. Kept so older comments/imports still compile. */
+export const PUBLIC_API_ORIGIN = PUBLIC_TUNNEL_ORIGIN;
 
 /** Public WebSocket URL (Ubuntu via Cloudflare Tunnel). */
-export const PUBLIC_WS_URL = `${PUBLIC_API_ORIGIN.replace(/^http/i, 'ws')}/stream`;
+export const PUBLIC_WS_URL = `${PUBLIC_TUNNEL_ORIGIN.replace(/^http/i, 'ws')}/stream`;
 
-/** Hosted Vite SPA. */
+/** Hosted Vite SPA — also the public REST origin via /api/*. */
 export const PUBLIC_UI_ORIGIN = 'https://eth-amm-sim.vercel.app';
 
 /** Default local Go listen address used by `make backend` / Vite proxy. */
@@ -53,11 +57,25 @@ export function getWebSocketUrl(): string {
   return PUBLIC_WS_URL;
 }
 
+/**
+ * Public REST origin shown in the UI.
+ * Hosted SPA uses the Vercel hostname; local uses the Vite origin.
+ */
+export function getPublicRestOrigin(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return PUBLIC_UI_ORIGIN;
+}
+
 /** Short label for the connection chip in the dashboard. */
 export function describeBackendTarget(): string {
+  if (typeof window !== 'undefined' && !isLocalHostname(window.location.hostname)) {
+    return window.location.host;
+  }
   const ws = getWebSocketUrl();
   if (ws.includes('api-staging-eth-amm-sim.magro.dev')) {
-    return 'Ubuntu tunnel';
+    return 'eth-amm-sim.vercel.app';
   }
   if (ws.includes('127.0.0.1') || ws.includes('localhost')) {
     return 'local backend';

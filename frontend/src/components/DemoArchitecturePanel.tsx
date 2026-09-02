@@ -7,7 +7,7 @@
 //  - Origins: lib/backend.ts PUBLIC_* constants
 //  - Ops:     Ubuntu systemd (anvil :11545, Go :8103) + Cloudflare Tunnel
 
-import { PUBLIC_API_ORIGIN, PUBLIC_UI_ORIGIN } from '@/lib/backend';
+import { PUBLIC_TUNNEL_ORIGIN, PUBLIC_UI_ORIGIN, getPublicRestOrigin } from '@/lib/backend';
 
 const layers = [
   {
@@ -24,11 +24,11 @@ const layers = [
   },
   {
     name: 'Cloudflare Tunnel',
-    detail: `${PUBLIC_API_ORIGIN} exposes REST + WebSocket without opening public ports on the VPS.`,
+    detail: `REST is same-origin on ${getPublicRestOrigin()}/api. WebSocket still uses ${PUBLIC_TUNNEL_ORIGIN}/stream (Vercel cannot proxy WS).`,
   },
   {
     name: 'Vite + React (Vercel)',
-    detail: `${PUBLIC_UI_ORIGIN} serves the SPA; /api/* rewrites to the tunnel, wss hits /stream directly.`,
+    detail: `${PUBLIC_UI_ORIGIN} is the public hostname for the SPA and REST. Tunnel hostname is transport-only for /stream.`,
   },
 ];
 
