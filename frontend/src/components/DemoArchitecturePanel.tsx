@@ -24,7 +24,7 @@ const layers = [
   },
   {
     name: 'Cloudflare Tunnel',
-    detail: `REST is same-origin on ${getPublicRestOrigin()}/api. WebSocket still uses ${PUBLIC_TUNNEL_ORIGIN}/stream (Vercel cannot proxy WS).`,
+    detail: `REST is same-origin on ${getPublicRestOrigin()}/api → Ubuntu ${PUBLIC_TUNNEL_ORIGIN}. If Ubuntu /healthz fails, REST + WS fail over to the MacBook backup hostname. Vercel cannot proxy WebSockets.`,
   },
   {
     name: 'Vite + React (Vercel)',
@@ -39,7 +39,7 @@ export function DemoArchitecturePanel() {
         <div>
           <div className="text-xs uppercase tracking-[0.22em] text-blue-300">Show Architecture</div>
           <h2 className="mt-1 text-sm font-semibold text-white">
-            Anvil → Solidity AMM → Go (Ubuntu) → Tunnel → Vercel UI
+            Anvil → Solidity AMM → Go (Ubuntu, MBP backup) → Tunnel → Vercel UI
           </h2>
         </div>
         <span className="rounded-full border border-purple-400/40 bg-purple-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-200">

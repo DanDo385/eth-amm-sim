@@ -5,13 +5,14 @@
 //  - Otherwise → same-origin `/api/...`
 //       • Local Vite: proxied to VITE_DEV_BACKEND_URL or http://127.0.0.1:8080
 //       • Vercel: rewritten to the Ubuntu Cloudflare Tunnel (browser URL stays
-//         https://eth-amm-sim.vercel.app/api/...)
+//         https://eth-amm-sim.vercel.app/api/...) until Ubuntu /healthz fails,
+//         then REST goes to the MBP backup tunnel.
 //
 // CONNECTIONS:
 //  - Routes: backend/internal/server/server.go → handlers.go
 //  - Endpoints: lib/backend.ts
 
-import { getDirectApiBase } from '@/lib/backend';
+import { ensureHostedOrigin, getDirectApiBase } from '@/lib/backend';
 
 function restUrl(path: string): string {
   const direct = getDirectApiBase();
@@ -23,6 +24,7 @@ function restUrl(path: string): string {
 
 // Generic fetch wrapper
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  await ensureHostedOrigin();
   const response = await fetch(restUrl(path), {
     ...options,
     headers: {

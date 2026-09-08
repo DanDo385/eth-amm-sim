@@ -6,7 +6,7 @@ Do not add separate root-level `.cursorrules`, `CLAUDE.md`, `GEMINI.md`, or tool
 
 ## Related documentation
 
-- **[README.md](./README.md)** - local setup, Makefile targets, HTTP/WebSocket endpoints, and current system behavior. Keep it aligned when you change bots, metrics, or routes.
+- **[README.md](./README.md)** - local setup, Makefile targets, HTTP/WebSocket endpoints, hosted Ubuntu-primary / MBP-backup origins, and current system behavior. Keep it aligned when you change bots, metrics, or routes.
 - **`docs/SESSION_BOT_LIFECYCLE.md`** - session vs process lifetime, bot shutdown, and finalize ordering.
 - **[docs/IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md)** - stable baseline roadmap, toolchain contract, and recovery phases when dependency/tooling drift causes confusion.
 

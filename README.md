@@ -50,17 +50,21 @@ This repo is intentionally built for demoability:
 ```
 Vercel SPA (https://eth-amm-sim.vercel.app)
  - Dashboard (charts + controls)
- - REST → same-origin `/api/*` (browser URL stays on eth-amm-sim.vercel.app)
- - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream
+ - REST → same-origin `/api/*` → Ubuntu Cloudflare Tunnel (primary)
+ - REST/WS fail over → https://api-backup-eth-amm-sim.magro.dev (MacBook)
+ - WebSocket → wss://api-staging-eth-amm-sim.magro.dev/stream (Ubuntu)
           |
-          v
-Cloudflare Tunnel (api-staging-eth-amm-sim.magro.dev)  [Ubuntu origin]
+          +--> Cloudflare Tunnel api-staging-eth-amm-sim.magro.dev  [Ubuntu primary]
+          |         |
+          |         v
+          |    Ubuntu VPS (localhost only)
+          |      Go 127.0.0.1:8103  Anvil 127.0.0.1:11545
           |
-          v
-Ubuntu VPS (localhost only)
-  Go backend 127.0.0.1:8103
-  Anvil       127.0.0.1:11545
-  AppleToken + AppleAMM
+          +--> Cloudflare Tunnel api-backup-eth-amm-sim.magro.dev  [MacBook backup]
+                    |
+                    v
+               MacBook (localhost only)
+                 Go 127.0.0.1:8103  Anvil 127.0.0.1:11545
 ```
 
 ### Local development (`make up`)
@@ -377,7 +381,7 @@ Open [http://localhost:3000](http://localhost:3000), click **Start**, and watch 
 
 ## Web / LAN / Vercel
 
-- **Hosted demo:** [https://eth-amm-sim.vercel.app](https://eth-amm-sim.vercel.app) is the public UI **and** REST origin (`/api/*` rewritten in `frontend/vercel.json` to the Ubuntu Cloudflare Tunnel). WebSocket still uses `wss://api-staging-eth-amm-sim.magro.dev/stream` because Vercel cannot proxy long-lived Go WebSockets. Origin of truth for Go + Anvil is Ubuntu (`127.0.0.1:8103` / `:11545`), not the MacBook.
+- **Hosted demo:** [https://eth-amm-sim.vercel.app](https://eth-amm-sim.vercel.app) is the public UI **and** REST origin (`/api/*` rewritten in `frontend/vercel.json` to the Ubuntu Cloudflare Tunnel). WebSocket uses `wss://api-staging-eth-amm-sim.magro.dev/stream` because Vercel cannot proxy long-lived Go WebSockets. If Ubuntu `/healthz` fails, the SPA switches REST and WebSocket to the MacBook backup hostname `https://api-backup-eth-amm-sim.magro.dev`. That is **not** Cloudflare DNS failover: the primary hostname must stay on Ubuntu; the MacBook must only advertise the backup hostname. Apply with `scripts/apply-hosted-origins.sh`. Origin of truth while healthy is Ubuntu (`127.0.0.1:8103` / `:11545`).
 - **Same machine (local):** REST goes through Vite’s **`/api/*` proxy** to Go on `:8080`. WebSocket uses **`ws://127.0.0.1:8080/stream`**.
 - **UI against Ubuntu from your laptop:**  
   `VITE_DEV_BACKEND_URL=https://api-staging-eth-amm-sim.magro.dev VITE_WS_URL=wss://api-staging-eth-amm-sim.magro.dev/stream npm run dev`
@@ -505,7 +509,7 @@ Common knobs:
 
 ## WebSocket
 - Local: [ws://localhost:8080/stream](ws://localhost:8080/stream)
-- Hosted: [wss://api-staging-eth-amm-sim.magro.dev/stream](wss://api-staging-eth-amm-sim.magro.dev/stream)
+- Hosted: [wss://api-staging-eth-amm-sim.magro.dev/stream](wss://api-staging-eth-amm-sim.magro.dev/stream) (Ubuntu primary); backup [wss://api-backup-eth-amm-sim.magro.dev/stream](wss://api-backup-eth-amm-sim.magro.dev/stream)
 - Message types: `trade`, `price`, `lp_metrics`, `key_event`, `session_state`, `account_update`, `trades`, `candles`, `events`.
 - When `ETH_AMM_SIM_API_TOKEN` is set, authenticate with `Sec-WebSocket-Protocol: eth-amm-sim.bearer.<token>` (or `Authorization: Bearer` for non-browser clients). Never put the token in the query string.
 
@@ -525,7 +529,7 @@ If logs show **broadcast queue full** or the UI stops updating while the backend
 - **`npm run build` stalls / `Operation timed out` on `node_modules/.bin/tsc`**: `npm run build` no longer invokes `tsc` (only **`vite build`**). Run types separately with **`npm run lint`**, or both with **`npm run verify`**. If `npm run lint` still times out, use the system Node binary (not an IDE‑bundled helper): `PATH="/opt/homebrew/bin:$PATH" npm run lint`.
 - **“It built as HTML” / opening the app from Finder doesn’t work**: `vite build` writes static assets under **`frontend/dist/`**. Use **`npm run dev`** (development), or **`npm run build` then `npm run preview`** (production-like static server with `/api` proxy). Open [http://localhost:3000](http://localhost:3000) in a browser - client routing and `/api` proxy expect that origin plus the Go backend on `:8080`.
 - **Ports in use**: run `make kill-all` then retry.
-- **No data in UI**: confirm the connection chip shows **eth-amm-sim.vercel.app** (hosted) or **local backend**, then check `https://eth-amm-sim.vercel.app/api/healthz` (or tunnel `https://api-staging-eth-amm-sim.magro.dev/healthz`) or local `:8080/healthz` and that contracts are deployed.
+- **No data in UI**: confirm the connection chip shows **eth-amm-sim.vercel.app** (Ubuntu) or **eth-amm-sim.vercel.app · MBP backup**, then check `https://eth-amm-sim.vercel.app/api/healthz`, backup `https://api-backup-eth-amm-sim.magro.dev/healthz`, or local `:8080/healthz` and that contracts are deployed.
 - **Reset does not reseed / price not back near 1.0**: session must be idle (not running). Use **Stop/Pause** first, then **Reseed** reset.
 - **Deploy failed**: if manual redeploy runs on a dirty chain, LP account funds can be exhausted; use reseed reset (which runs `anvil_reset` before deploy) or restart from fresh Anvil.
 - **Deploy fails with `max fee per gas less than block base fee`**: update scripts and retry; repo `scripts/deploy.sh` now pins local gas price for Anvil deploys.

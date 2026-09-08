@@ -1,0 +1,18 @@
+# Intended Ubuntu cloudflared ingress (tunnel: eth-l2-ubuntu).
+# Primary public AMM hostname MUST live here, not on the MacBook.
+#
+# Apply on the VPS, then:
+#   cloudflared tunnel route dns --overwrite-dns eth-l2-ubuntu api-staging-eth-amm-sim.magro.dev
+#   systemctl restart cloudflared-eth-backends
+#
+# See scripts/apply-hosted-origins.sh and README "Hosted failover".
+
+tunnel: eth-l2-ubuntu
+credentials-file: /etc/cloudflared/48f7fef0-5044-4e73-998b-5b12ab87bfe3.json
+
+ingress:
+  - hostname: api-staging-eth-l2.magro.dev
+    service: http://127.0.0.1:8080
+  - hostname: api-staging-eth-amm-sim.magro.dev
+    service: http://127.0.0.1:8103
+  - service: http_status:404

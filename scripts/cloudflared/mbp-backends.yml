@@ -1,0 +1,20 @@
+# Intended MacBook cloudflared ingress (tunnel: magro-mbp-backends).
+# AMM backup hostname only — never claim api-staging-eth-amm-sim.magro.dev.
+# eth-tx stays on this machine (different project).
+#
+# Apply on the MBP, then:
+#   cloudflared tunnel route dns magro-mbp-backends api-backup-eth-amm-sim.magro.dev
+#   launchctl kickstart -k "gui/$(id -u)/com.openclaw.cloudflared-magro-mbp-backends"
+#
+# Keep LaunchAgents com.openclaw.eth-amm-sim.anvil + .backend running so
+# failover has a live origin. See scripts/apply-hosted-origins.sh.
+
+tunnel: magro-mbp-backends
+credentials-file: /Users/openclaw/.cloudflared/2fe4b8e6-5acb-448b-baa9-0aa0b809e194.json
+
+ingress:
+  - hostname: api-backup-eth-amm-sim.magro.dev
+    service: http://127.0.0.1:8103
+  - hostname: api-staging-eth-tx.magro.dev
+    service: http://127.0.0.1:8081
+  - service: http_status:404

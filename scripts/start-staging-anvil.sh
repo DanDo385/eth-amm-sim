@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Durable staging Anvil for api-staging-eth-amm-sim (MBP tunnel origin).
+# Durable staging Anvil for the MacBook backup origin
+# (api-backup-eth-amm-sim.magro.dev). KeepAlive LaunchAgent. On each start:
 # LaunchAgent KeepAlive runs this in the foreground. On each start:
 #   1) start Anvil on 127.0.0.1:11545
 #   2) deploy contracts once it is ready
